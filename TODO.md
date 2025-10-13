@@ -1,0 +1,6 @@
+- Finish downloading and fixing dataset -> Final testing
+- Central datacleaning and normalising options with spacy or something -> data.utils.py? data.cleaning.py?
+- Interactive CLI?
+- CLI: Param for dataset?
+- Dataset ID in source json?
+- CLI option to cleanup downloads

@@ -1,0 +1,9 @@
+# Core Dependencies
+requests>=2.31.0
+tqdm>=4.66.0
+click>=8.1.0
+python-dotenv>=1.0.0
+
+# Development Dependencies (install with: pip install -r requirements.txt -r requirements-dev.txt)
+# Or install everything with: pip install -e ".[dev]"
+# Or use uv: uv pip install -e ".[dev]"

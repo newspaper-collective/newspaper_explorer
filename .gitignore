@@ -143,6 +143,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.python-version
+
+# UV
+.uv/
 
 # Spyder project settings
 .spyderproject
@@ -205,3 +209,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific: Downloaded newspaper data
+# Keep .gitkeep files but ignore the actual data
+data/downloads/*.tar.gz
+data/downloads/*.zip
+data/extracted/
+data/raw/
+!data/downloads/.gitkeep
+!data/extracted/.gitkeep
+!data/raw/.gitkeep
