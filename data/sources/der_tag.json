@@ -1,0 +1,58 @@
+{
+    "dataset_name": "der_tag",
+    "data_type": "xml_ocr",
+    "collection_id": "17232177",
+    "collection_url": "https://zenodo.org/records/17232177",
+    "description": "Der Tag newspaper collection from Zenodo (XML OCR data)",
+    "parts": [
+        {
+            "name": "dertag_1900-1902",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1900-1902.tar.gz?download=1",
+            "years": "1900-1902",
+            "md5": "83408fdd6963bd12e2edd59809d2571f",
+            "size": "1.4 GB"
+        },
+        {
+            "name": "dertag_1903-1905",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1903-1905.tar.gz?download=1",
+            "years": "1903-1905",
+            "md5": "db4e3da2f901d70787a3285ceb5587e7",
+            "size": "375.8 MB"
+        },
+        {
+            "name": "dertag_1906-1908",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1906-1908.tar.gz?download=1",
+            "years": "1906-1908",
+            "md5": "29f8adf3a6ea2dfa58c52e44b6037280",
+            "size": "450.5 MB"
+        },
+        {
+            "name": "dertag_1909-1911",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1909-1911.tar.gz?download=1",
+            "years": "1909-1911",
+            "md5": "e342d68ab69836c3ac24ddf70af83dff",
+            "size": "2.8 GB"
+        },
+        {
+            "name": "dertag_1912-1914",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1912-1914.tar.gz?download=1",
+            "years": "1912-1914",
+            "md5": "876b19372cec8642ae5fc750d7f627c3",
+            "size": "3.1 GB"
+        },
+        {
+            "name": "dertag_1915-1917",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1915-1917.tar.gz?download=1",
+            "years": "1915-1917",
+            "md5": "affb61989f9353219dfaacee578f205c",
+            "size": "1.6 GB"
+        },
+        {
+            "name": "dertag_1918-1920",
+            "url": "https://zenodo.org/records/17232177/files/dertag_1918-1920.tar.gz?download=1",
+            "years": "1918-1920",
+            "md5": "40e7eb5778cf97527d6ed89f3f53bd6b",
+            "size": "732.9 MB"
+        }
+    ]
+}
