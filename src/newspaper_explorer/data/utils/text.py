@@ -4,6 +4,7 @@ Provides functions for loading, aggregating, and processing text data.
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -556,3 +557,66 @@ def remove_stopwords(
     logger.info("Stopword removal complete")
 
     return result_df
+
+
+def normalize_german_text(text: str) -> str:
+    """
+    Normalize historical German text for entity extraction and analysis.
+
+    This function applies a series of transformations to historical German text:
+    - Replaces archaic German characters (ẞ, ß, ſ)
+    - Removes diacritics (ä -> a, ö -> o, ü -> u)
+    - Lowercases text
+    - Normalizes whitespace
+    - Removes non-alphabetic characters (except punctuation)
+    - Lemmatizes tokens (assumes NOUN)
+
+    Args:
+        text: Text to normalize
+
+    Returns:
+        Normalized text string
+
+    Example:
+        >>> text = "Dieſes iſt ein Beiſpiel mit alten Buchſtaben"
+        >>> normalize_german_text(text)
+        'dieser ist ein beispiel mit alten buchstaben'
+
+    Note:
+        Requires germalemma package: pip install germalemma
+    """
+    try:
+        from germalemma import GermaLemma
+        from unidecode import unidecode
+    except ImportError:
+        raise ImportError(
+            "germalemma and unidecode are required for German text normalization. "
+            "Install with: pip install germalemma unidecode"
+        )
+
+    # Initialize lemmatizer (could be cached globally)
+    lemmatizer = GermaLemma()
+
+    text = str(text)
+
+    # Replace archaic German characters
+    text = text.replace("ẞ", "SS").replace("ß", "ss")
+    text = text.replace("ſs", "ss").replace("ſ", "s")
+
+    # Remove diacritics
+    text = unidecode(text)
+
+    # Lowercase
+    text = text.lower()
+
+    # Normalize whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    # Remove non-alphabetic characters (keep punctuation)
+    text = re.sub(r'[^a-zäöüß .,;:!?\'"-]', "", text)
+
+    # Lemmatize tokens
+    tokens = text.split()
+    lemmas = [lemmatizer.find_lemma(token, "NOUN") for token in tokens]
+
+    return " ".join(lemmas).strip()

@@ -6,7 +6,8 @@ A tool for exploring and analyzing historical newspaper data.
 
 import click
 
-from newspaper_explorer.utils.cli import data
+from newspaper_explorer.cli.analyze import analyze
+from newspaper_explorer.cli import data
 
 
 @click.group()
@@ -19,6 +20,7 @@ def cli() -> None:
 
 # Register command groups
 cli.add_command(data)
+cli.add_command(analyze)
 
 
 def main() -> None:
