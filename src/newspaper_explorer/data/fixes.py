@@ -41,9 +41,9 @@ class DataFixer:
             fixes_applied += self._fix_dertag_1900_mislabeled_files(extract_path)
 
         if fixes_applied > 0:
-            print(f"✓ Applied {fixes_applied} error fix(es)")
+            print(f"Applied {fixes_applied} error fix(es)")
         else:
-            print("✓ No known errors to fix")
+            print("No known errors to fix")
 
         return fixes_applied
 
@@ -195,7 +195,7 @@ class DataFixer:
                     shutil.rmtree(issue_dir)
                     old_path = f"{old_year}/{month}/{day}/{issue_num}"
                     new_path = f"{new_year}/{month}/{day}/{issue_num}"
-                    print(f"    ✓ Relocated {files_fixed} files: {old_path} -> {new_path}")
+                    print(f"    Relocated {files_fixed} files: {old_path} -> {new_path}")
 
                     # Clean up empty parent directories
                     self._cleanup_empty_dirs(raw_dir / old_year)
@@ -205,7 +205,7 @@ class DataFixer:
             return 1 if files_fixed > 0 else 0
 
         except Exception as e:
-            print(f"    ✗ Error relocating issue: {e}")
+            print(f"    Error relocating issue: {e}")
             return 0
 
     def _cleanup_empty_dirs(self, start_dir: Path):
@@ -229,7 +229,7 @@ class DataFixer:
                         # Try to remove if directory is empty
                         if dir_path.exists() and not any(dir_path.iterdir()):
                             dir_path.rmdir()
-                    except (OSError, PermissionError):
+                    except OSError:
                         # Directory not empty or permission issue, skip
                         pass
 
@@ -237,7 +237,7 @@ class DataFixer:
             try:
                 if start_dir.exists() and not any(start_dir.iterdir()):
                     start_dir.rmdir()
-            except (OSError, PermissionError):
+            except OSError:
                 pass
         except Exception:
             # Silently ignore cleanup errors

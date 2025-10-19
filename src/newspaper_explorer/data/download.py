@@ -4,7 +4,7 @@ Handles downloading and extraction of Zenodo newspaper collections.
 """
 
 import hashlib
-import json
+import logging
 import shutil
 import tarfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +16,9 @@ from tqdm import tqdm
 
 from newspaper_explorer.data.fixes import DataFixer
 from newspaper_explorer.utils.config import get_config
+from newspaper_explorer.utils.sources import load_source_config
+
+logger = logging.getLogger(__name__)
 
 
 class ZenodoDownloader:
@@ -42,9 +45,8 @@ class ZenodoDownloader:
         config.ensure_directories()
 
         # Load Zenodo links configuration from sources directory
-        links_file = config.sources_dir / "der_tag.json"
-        with open(links_file, "r", encoding="utf-8") as f:
-            self.config: dict[str, Any] = json.load(f)
+        # TODO: Make this configurable instead of hardcoded to 'der_tag'
+        self.config: dict[str, Any] = load_source_config("der_tag")
 
         # Get dataset metadata
         self.dataset_name: str = str(self.config.get("dataset_name", "unknown"))
@@ -87,16 +89,16 @@ class ZenodoDownloader:
         Returns:
             True if checksum matches, False otherwise
         """
-        print("  Verifying checksum...")
+        logger.info("Verifying checksum...")
         actual_md5 = self._calculate_md5(filepath)
 
         if actual_md5 == expected_md5:
-            print(f"  ✓ Checksum verified: {actual_md5}")
+            logger.info(f"Checksum verified: {actual_md5}")
             return True
         else:
-            print("  ✗ Checksum mismatch!")
-            print(f"    Expected: {expected_md5}")
-            print(f"    Got:      {actual_md5}")
+            logger.warning("Checksum mismatch!")
+            logger.warning(f"  Expected: {expected_md5}")
+            logger.warning(f"  Got:      {actual_md5}")
             return False
 
     def download_part(self, part_name: str, force_redownload: bool = False) -> Path:
@@ -134,19 +136,19 @@ class ZenodoDownloader:
 
         # Check if file already exists
         if filepath.exists() and not force_redownload:
-            print(f"File {filename} already exists.")
+            logger.info(f"File {filename} already exists")
             # Verify checksum if available
             if "md5" in part_info:
                 if self._verify_checksum(filepath, part_info["md5"]):
-                    print("  Skipping download - file verified.")
+                    logger.info("Skipping download - file verified")
                     return filepath
                 else:
-                    print("  Checksum failed - will re-download.")
+                    logger.warning("Checksum failed - will re-download")
             else:
-                print("  Skipping download (no checksum available).")
+                logger.info("Skipping download (no checksum available)")
                 return filepath
 
-        print(f"Downloading {part_name}...")
+        logger.info(f"Downloading {part_name}...")
 
         # Download with progress bar
         response = requests.get(url, stream=True)
@@ -168,13 +170,13 @@ class ZenodoDownloader:
                 size = f.write(chunk)
                 pbar.update(size)
 
-        print(f"✓ Downloaded {filename}")
+        logger.info(f"Downloaded {filename}")
 
         # Verify checksum if available
         if "md5" in part_info:
             if not self._verify_checksum(filepath, part_info["md5"]):
-                print("  ✗ Warning: Downloaded file checksum does not match!")
-                print("  File may be corrupted. Consider re-downloading.")
+                logger.warning("Downloaded file checksum does not match!")
+                logger.warning("File may be corrupted. Consider re-downloading.")
 
         return filepath
 
@@ -226,7 +228,7 @@ class ZenodoDownloader:
         dertagcopy_path = temp_extract_path / "dertagcopy"
         if dertagcopy_path.exists():
             # Move year directories from dertagcopy directly to raw/dataset_name/data_type/
-            print(f"Organizing data into raw/{self.dataset_name}/{self.data_type}/...")
+            logger.info(f"Organizing data into raw/{self.dataset_name}/{self.data_type}/")
 
             years_processed = []
             for year_dir in dertagcopy_path.iterdir():
@@ -236,14 +238,14 @@ class ZenodoDownloader:
 
                     # If year directory already exists, merge contents
                     if dest.exists():
-                        print(f"  Merging {year_name} data...")
+                        logger.info(f"Merging {year_name} data...")
                         # Move contents of year_dir into existing dest
                         for item in year_dir.iterdir():
                             item_dest = dest / item.name
                             if not item_dest.exists():
                                 shutil.move(str(item), str(item_dest))
                     else:
-                        print(f"  Moving {year_name} data...")
+                        logger.info(f"Moving {year_name} data...")
                         shutil.move(str(year_dir), str(dest))
 
                     years_processed.append(year_name)
@@ -254,7 +256,7 @@ class ZenodoDownloader:
             # Clean up empty parent directories in extracted dir
             self._cleanup_empty_parent_dirs(dataset_extracted_dir)
 
-            print(f"✓ Extracted and organized years: {', '.join(years_processed)}")
+            logger.info(f"Extracted and organized years: {', '.join(years_processed)}")
 
             # Apply error corrections if needed
             if fix_errors:
@@ -262,7 +264,7 @@ class ZenodoDownloader:
 
             return raw_dir
         else:
-            print(f"✓ Extracted to {temp_extract_path}")
+            logger.info(f"Extracted to {temp_extract_path}")
 
             # Apply error corrections if needed
             if fix_errors:
@@ -302,7 +304,7 @@ class ZenodoDownloader:
                         # Try to remove if directory is empty
                         if dir_path.exists() and not any(dir_path.iterdir()):
                             dir_path.rmdir()
-                    except (OSError, PermissionError):
+                    except OSError:
                         # Directory not empty or permission issue, skip
                         pass
 
@@ -310,7 +312,7 @@ class ZenodoDownloader:
             try:
                 if start_dir.exists() and not any(start_dir.iterdir()):
                     start_dir.rmdir()
-            except (OSError, PermissionError):
+            except OSError:
                 pass
         except Exception:
             # Silently ignore cleanup errors
@@ -324,20 +326,20 @@ class ZenodoDownloader:
             start_dir: Starting directory to clean up from (e.g., extracted/der_tag/xml_ocr)
         """
         try:
-            # Remove empty directories from start_dir up to self.extracted_dir
+            # Remove empty directories from start_dir up to and including self.extracted_dir
             current = start_dir
-            while current != self.extracted_dir and current.exists():
+            while current.exists() and current >= self.extracted_dir:
                 # Check if directory is empty
                 if current.is_dir() and not any(current.iterdir()):
                     current.rmdir()
                     rel_path = current.relative_to(self.extracted_dir.parent)
-                    print(f"  Cleaned up empty directory: {rel_path}")
+                    logger.debug(f"Cleaned up empty directory: {rel_path}")
                     # Move up to parent
                     current = current.parent
                 else:
                     # Directory not empty or doesn't exist, stop
                     break
-        except (OSError, PermissionError):
+        except OSError:
             # Silently ignore cleanup errors
             pass
 
@@ -371,7 +373,7 @@ class ZenodoDownloader:
                     filepath = future.result()
                     downloaded_paths.append(filepath)
                 except Exception as e:
-                    print(f"✗ Error downloading {part_name}: {e}")
+                    logger.error(f"Error downloading {part_name}: {e}")
 
         return downloaded_paths
 
@@ -401,27 +403,29 @@ class ZenodoDownloader:
 
         if parallel and len(part_names) > 1:
             # Download all parts in parallel
-            print(f"Downloading {len(part_names)} parts in parallel (max {max_workers} workers)...")
+            logger.info(
+                f"Downloading {len(part_names)} parts in parallel (max {max_workers} workers)"
+            )
             self.download_parts_parallel(part_names, max_workers=max_workers)
 
             # Extract sequentially (extraction is I/O bound and can conflict)
             for part_name in part_names:
                 try:
-                    print(f"\n{'='*60}")
-                    print(f"Extracting {part_name}")
-                    print(f"{'='*60}")
+                    logger.info(f"\n{'='*60}")
+                    logger.info(f"Extracting {part_name}")
+                    logger.info(f"{'='*60}")
                     extract_path = self.extract_part(part_name, fix_errors=fix_errors)
                     extracted_paths.append(extract_path)
                 except Exception as e:
-                    print(f"✗ Error extracting {part_name}: {e}")
+                    logger.error(f"Error extracting {part_name}: {e}")
                     continue
         else:
             # Sequential download and extract
             for part_name in part_names:
                 try:
-                    print(f"\n{'='*60}")
-                    print(f"Processing {part_name}")
-                    print(f"{'='*60}")
+                    logger.info(f"\n{'='*60}")
+                    logger.info(f"Processing {part_name}")
+                    logger.info(f"{'='*60}")
 
                     # Download
                     self.download_part(part_name)
@@ -431,12 +435,12 @@ class ZenodoDownloader:
                     extracted_paths.append(extract_path)
 
                 except Exception as e:
-                    print(f"✗ Error processing {part_name}: {e}")
+                    logger.error(f"Error processing {part_name}: {e}")
                     continue
 
-        print(f"\n{'='*60}")
-        print(f"✓ Successfully processed {len(extracted_paths)}/{len(part_names)} parts")
-        print(f"{'='*60}\n")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Successfully processed {len(extracted_paths)}/{len(part_names)} parts")
+        logger.info(f"{'='*60}\n")
 
         return extracted_paths
 
@@ -493,7 +497,12 @@ class ZenodoDownloader:
         return status
 
     def print_status_summary(self):
-        """Print a summary of download and extraction status."""
+        """
+        Print a summary of download and extraction status.
+
+        Note: This method uses print() for formatted table output, which is
+        appropriate for this display-only utility method called from CLI.
+        """
         status = self.get_extraction_status()
 
         print("\n" + "=" * 90)
@@ -503,8 +512,8 @@ class ZenodoDownloader:
         print("-" * 90)
 
         for part_name, info in status.items():
-            downloaded = "✓ Yes" if info["downloaded"] else "✗ No"
-            extracted = "✓ Yes" if info["extracted"] else "✗ No"
+            downloaded = "Yes" if info["downloaded"] else "No"
+            extracted = "Yes" if info["extracted"] else "No"
             size = info.get("size", "unknown")
             print(
                 f"{part_name:<25} {info['years']:<12} {size:<12} "
