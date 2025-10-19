@@ -62,7 +62,7 @@ def get_source_paths(config_data: Dict[str, Any]) -> Dict[str, Path]:
         config_data: Source configuration dictionary
 
     Returns:
-        Dictionary with 'raw_dir', 'text_dir', and 'output_file' paths
+        Dictionary with 'raw_dir', 'text_dir', 'images_dir', and 'output_file' paths
     """
     config = get_config()
     dataset_name = config_data["dataset_name"]
@@ -70,10 +70,12 @@ def get_source_paths(config_data: Dict[str, Any]) -> Dict[str, Path]:
 
     raw_dir = config.data_dir / "raw" / dataset_name / data_type
     text_dir = config.data_dir / "raw" / dataset_name / "text"
+    images_dir = config.data_dir / "raw" / dataset_name / "images"
     output_file = text_dir / f"{dataset_name}_lines.parquet"
 
     return {
         "raw_dir": raw_dir,
         "text_dir": text_dir,
+        "images_dir": images_dir,
         "output_file": output_file,
     }
