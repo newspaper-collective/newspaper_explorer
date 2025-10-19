@@ -7,7 +7,7 @@ A tool for exploring and analyzing historical newspaper data.
 import click
 
 from newspaper_explorer.cli.analyze import analyze
-from newspaper_explorer.cli import data
+from newspaper_explorer.cli.data import data
 
 
 @click.group()

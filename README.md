@@ -1,6 +1,6 @@
 # Newspaper Explorer
 
-A high-performance tool for exploring and analyzing historical newspaper data from ALTO XML archives with METS metadata enrichment.
+A toolkit for exploring and analyzing historical newspaper data from ALTO XML archives with additional METS metadata.
 
 ## 📦 Installation
 
@@ -16,6 +16,11 @@ cp .env.example .env
 
 # Install in development mode
 pip install -e .
+
+# Optional: Install additional features
+pip install -e ".[nlp]"        # For sentence splitting
+pip install -e ".[normalize]"  # For text normalization
+pip install transformers torch # For entity extraction
 ```
 
 ### Using uv (recommended - faster!)
@@ -37,6 +42,11 @@ uv venv
 # or: source .venv/bin/activate  # Linux/Mac
 
 uv pip install -e .
+
+# Optional: Install additional features
+uv pip install -e ".[nlp]"        # For sentence splitting
+uv pip install -e ".[normalize]"  # For text normalization
+uv pip install transformers torch # For entity extraction
 ```
 
 See [INSTALL.md](INSTALL.md) for detailed installation instructions.
@@ -195,6 +205,8 @@ df = DataLoader.load_parquet("data/raw/der_tag/text/der_tag_lines.parquet")
 - [Data Management Guide](docs/DATA.md) - Detailed guide for data downloading, extraction, and source configuration
 - [Data Loader Guide](docs/DATA_LOADER.md) - ALTO XML parsing, METS metadata, DataFrame operations, and resume functionality
 - [Normalization Guide](docs/NORMALIZATION.md) - Historical German text normalization to modern orthography
+- [Entity Extraction Guide](docs/ENTITIES.md) - Named entity recognition with GLiNER
+- [Image Downloading Guide](docs/IMAGES.md) - Download high-resolution page scans
 - [Installation Guide](docs/INSTALL.md) - Setup instructions for pip and uv
 - [Configuration Philosophy](docs/CONFIGURATION_PHILOSOPHY.md) - Design decisions for config vs CLI flags
 
@@ -235,7 +247,10 @@ newspaper_explorer/
 ├── src/
 │   └── newspaper_explorer/
 │       ├── main.py              # Main CLI entry point
-│       ├── data/                # Data handling (no __init__.py)
+│       ├── cli/                 # CLI commands
+│       │   ├── data.py          # Data management commands
+│       │   └── analyze.py       # Analysis commands
+│       ├── data/                # Data handling
 │       │   ├── download.py      # Download/extract from Zenodo
 │       │   ├── fixes.py         # Error correction utilities
 │       │   ├── loading.py       # ALTO XML parser with METS integration
@@ -243,18 +258,20 @@ newspaper_explorer/
 │       │   └── utils/
 │       │       ├── alto_parser.py   # ALTO XML parsing
 │       │       ├── mets_parser.py   # METS metadata extraction
+│       │       ├── images.py        # Image downloading from METS
 │       │       └── text.py          # Text aggregation & sentence splitting
-│       ├── analysis/            # Analysis modules (placeholders)
-│       │   ├── concepts/
-│       │   ├── emotions/
-│       │   ├── entities/
-│       │   ├── layout/
-│       │   └── topics/
+│       ├── analysis/            # Analysis modules
+│       │   ├── concepts/        # Concept extraction (placeholder)
+│       │   ├── emotions/        # Emotion analysis (placeholder)
+│       │   ├── entities/        # Entity extraction (GLiNER)
+│       │   │   └── extraction.py
+│       │   ├── layout/          # Layout analysis (placeholder)
+│       │   └── topics/          # Topic modeling (placeholder)
 │       ├── ui/                  # UI components (future)
 │       └── utils/               # Utilities (no __init__.py)
 │           ├── config.py        # Configuration management
 │           ├── sources.py       # Source configuration utilities
-│           └── cli.py           # CLI commands
+│           └── llm.py           # LLM utilities
 ├── data/
 │   ├── sources/
 │   │   └── der_tag.json         # Source config (URLs, paths, metadata)
@@ -262,8 +279,15 @@ newspaper_explorer/
 │   └── raw/                     # Organized extracted data
 │       └── der_tag/
 │           ├── xml_ocr/         # Raw XML files by year
+│           ├── images/          # Downloaded page scans by year/month
 │           └── text/            # Parsed Parquet files
 ├── results/                     # Analysis results and outputs
+│   └── der_tag/
+│       ├── entities/            # Entity extraction results
+│       ├── concepts/            # Concept extraction results
+│       ├── emotions/            # Emotion analysis results
+│       ├── layout/              # Layout analysis results
+│       └── topics/              # Topic modeling results
 ├── docs/                        # Documentation
 └── tests/                       # Test suite
 ```
@@ -295,7 +319,7 @@ newspaper_explorer/
 
 ### Data Loading & Parsing
 
-- ✅ **High-performance ALTO XML parsing** with multiprocessing
+- ✅ **ALTO XML parsing** with multiprocessing
 - ✅ **METS metadata integration** - Enriches data with newspaper title, dates, volumes
 - ✅ **Line-level DataFrame output** with text coordinates and metadata
 - ✅ **Resume functionality** - Skips already processed files
@@ -303,6 +327,7 @@ newspaper_explorer/
 - ✅ **Polars DataFrames** - Fast, memory-efficient data structures
 - ✅ **Automatic text block aggregation** - Groups related lines
 - ✅ **Source configuration system** - Easy to add new newspaper sources
+- ✅ **Image downloading** - Parallel downloads from METS XML references
 
 ### CLI Commands
 
@@ -324,16 +349,31 @@ newspaper_explorer/
   - `--no-resume` - Reprocess all files (ignores already processed)
 - `data load-status` - Check loading status for a source
 
-### Analysis Modules (Planned)
+#### Analysis
+
+- `analyze extract-entities` - Extract named entities (persons, organizations, locations, events) using GLiNER
+  - `--source <name>` - Source name (required)
+  - `--input <path>` - Input parquet file (required)
+  - `--text-column <col>` - Column containing text (default: "text")
+  - `--id-column <col>` - Column to use as identifier (default: "text_block_id")
+  - `--normalize/--no-normalize` - Normalize text before extraction (default: normalize)
+  - `--model <name>` - GLiNER model from Hugging Face (default: "urchade/gliner_multi-v2.1")
+  - `--labels <labels>` - Comma-separated entity labels (default: Person,Organisation,Ereignis,Ort)
+  - `--threshold <float>` - Confidence threshold 0-1 (default: 0.5)
+  - `--batch-size <n>` - Processing batch size (default: 32)
+  - `--format <format>` - Output format: parquet, json, or both (default: both)
+
+### Analysis Modules
 
 - ✅ **Text processing utilities** - Aggregate text blocks and split into sentences (German)
 - ✅ **Text normalization** - Normalize historical German text to modern orthography
 - ✅ **ALTO XML parsing** - Extract text with coordinates from newspaper pages
 - ✅ **METS metadata extraction** - Newspaper titles, dates, volumes, page counts
+- ✅ **Entity extraction** - Named entity recognition using GLiNER (persons, organizations, locations, events)
+- ✅ **Image downloading** - Download high-resolution page scans from METS references
 - 📝 Text cleaning and preprocessing
 - 📝 Concept extraction
 - 📝 Emotion analysis
-- 📝 Entity recognition
 - 📝 Layout analysis
 - 📝 Topic modeling
 
@@ -385,6 +425,87 @@ pip install -e ".[normalize]"
 ```
 
 See [Normalization Guide](docs/NORMALIZATION.md) for detailed usage.
+
+### Entity Extraction
+
+Extract named entities from historical newspaper text using GLiNER:
+
+```python
+from newspaper_explorer.analysis.entities.extraction import EntityExtractor
+
+# Initialize extractor
+extractor = EntityExtractor(
+    source_name="der_tag",
+    model_name="urchade/gliner_multi-v2.1",
+    labels=["Person", "Organisation", "Ereignis", "Ort"],
+    threshold=0.5,
+    batch_size=32
+)
+
+# Extract entities from text blocks or sentences
+results = extractor.extract_and_save(
+    input_path="data/processed/der_tag/text/textblocks.parquet",
+    text_column="text",
+    id_column="text_block_id",
+    normalize=True,  # Normalize before extraction
+    output_format="both"  # Save as parquet and json
+)
+
+# Results saved to results/{source}/entities/
+# - entities_raw.parquet: All extracted entities with IDs
+# - entities_grouped.json: Entities grouped by ID and label
+```
+
+**CLI usage:**
+
+```bash
+newspaper-explorer analyze extract-entities \
+    --source der_tag \
+    --input data/processed/der_tag/text/textblocks.parquet \
+    --normalize \
+    --threshold 0.6
+```
+
+**Requirements for entity extraction:**
+
+```bash
+pip install transformers torch
+```
+
+### Image Downloading
+
+Download high-resolution page scans from METS XML references:
+
+```python
+from newspaper_explorer.data.utils.images import ImageDownloader
+
+# Initialize downloader
+downloader = ImageDownloader(
+    source_name="der_tag",
+    max_workers=8,  # Parallel downloads
+    max_retries=3,
+    timeout=30
+)
+
+# Find all METS files
+mets_files = downloader.find_mets_files()
+print(f"Found {len(mets_files)} METS files")
+
+# Download images from specific METS file
+from pathlib import Path
+mets_file = Path("data/raw/der_tag/xml_ocr/1901/01/18010101.xml")
+downloaded, failed = downloader.download_images_from_mets(mets_file)
+
+# Or download all images from all METS files
+stats = downloader.download_all_images(skip_existing=True)
+print(f"Downloaded: {stats['downloaded']}")
+print(f"Skipped: {stats['skipped']}")
+print(f"Failed: {stats['failed']}")
+```
+
+**Image organization:**
+
+Images are saved to `data/raw/{source}/images/{year}/{month}/` with filenames matching the METS file structure.
 
 ## 📊 Available Dataset
 
