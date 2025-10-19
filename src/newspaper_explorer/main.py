@@ -6,15 +6,13 @@ A tool for exploring and analyzing historical newspaper data.
 
 import click
 
-from newspaper_explorer.cli.data import data
+from newspaper_explorer.utils.cli import data
 
 
 @click.group()
 def cli() -> None:
     """
     Newspaper Explorer - Explore and analyze historical newspaper data.
-
-    Use the subcommands to manage data, run analysis, and more.
     """
     pass
 

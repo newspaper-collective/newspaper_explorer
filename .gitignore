@@ -219,3 +219,6 @@ data/raw/
 !data/downloads/.gitkeep
 !data/extracted/.gitkeep
 !data/raw/.gitkeep
+
+
+__scrap/

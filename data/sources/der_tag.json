@@ -4,6 +4,18 @@
     "collection_id": "17232177",
     "collection_url": "https://zenodo.org/records/17232177",
     "description": "Der Tag newspaper collection from Zenodo (XML OCR data)",
+    "metadata": {
+        "newspaper_title": "Der Tag",
+        "language": "de",
+        "years_available": "1900-1920",
+        "location": "Berlin, Germany",
+        "format": "ALTO XML"
+    },
+    "loading": {
+        "pattern": "**/fulltext/*.xml",
+        "output_format": "parquet",
+        "compression": "zstd"
+    },
     "parts": [
         {
             "name": "dertag_1900-1902",
