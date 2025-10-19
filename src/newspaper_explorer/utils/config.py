@@ -37,6 +37,13 @@ class Config:
         # Logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
 
+        # LLM settings
+        self.llm_base_url = os.getenv("LLM_BASE_URL", "")
+        self.llm_api_key = os.getenv("LLM_API_KEY", "")
+        self.llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "2000"))
+
     def _get_path(self, env_var: str, default: Path) -> Path:
         """Get a path from environment variable or use default."""
         value = os.getenv(env_var)
@@ -47,6 +54,19 @@ class Config:
                 path = self.project_root / path
             return path
         return default
+
+    def get(self, key: str, default: str = "") -> str:
+        """
+        Get a configuration value by key.
+
+        Args:
+            key: Configuration key (e.g., "llm_base_url", "llm_api_key").
+            default: Default value if key not found.
+
+        Returns:
+            Configuration value.
+        """
+        return getattr(self, key, default)
 
     def ensure_directories(self):
         """Create necessary directories if they don't exist."""
