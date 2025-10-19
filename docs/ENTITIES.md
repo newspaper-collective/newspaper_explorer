@@ -1,327 +1,531 @@
 # Entity Extraction
 
-Extract named entities (persons, organizations, events, locations) from historical newspaper text using GLiNER.
+Extract named entities (persons, organizations, locations) from historical newspaper text using **LLM** or **GLiNER**.
 
 ## Overview
 
 **Purpose**: Identify and extract named entities from newspaper text for analysis and research.
 
+**Two Methods Available**:
+
+1. **LLM-based** - High quality, structured validation, context-aware (requires API)
+2. **GLiNER-based** - Fast, offline, traditional ML (runs locally)
+
 **Supported Entities**:
 
-- **Person**: Names of individuals
-- **Organisation**: Companies, institutions, groups
-- **Ereignis**: Events, occurrences
-- **Ort**: Locations, places
+- **person**: Names of individuals
+- **location**: Places, cities, countries
+- **organization**: Companies, institutions, groups
 
-**Output Structure**: `results/{source}/entities/`
+**Output Structure**: `results/{source}/entities/{method_id}/`
+
+- `entities.parquet`: Extracted entities with line_id foreign key
+- `metadata.json`: Method details, parameters, timestamps
+
+**Architecture**: Both methods follow the same data architecture pattern:
+
+- Save to `results/{source}/entities/{method_id}/`
+- Include `line_id` foreign key for source attribution
+- Create `metadata.json` for reproducibility
+- Queryable via `QueryEngine` with DuckDB
 
 ## Quick Start
 
-```bash
-# Extract entities from text blocks
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data/processed/der_tag/text/textblocks.parquet
+### LLM-based Extraction (High Quality)
+
+```python
+from newspaper_explorer.analysis.entities.llm_extraction import extract_entities_llm
+
+# Test with first 100 lines
+results = extract_entities_llm(
+    source_name="der_tag",
+    model_name="gpt-4o-mini",
+    temperature=0.3,
+    limit=100
+)
+
+# Full extraction
+results = extract_entities_llm(source_name="der_tag")
+
+print(f"Extracted {len(results['results_df'])} entities")
+print(f"Saved to: {results['output_dir']}")
+print(f"Method ID: {results['metadata']['analysis_id']}")
 ```
 
-## Usage
+### GLiNER-based Extraction (Fast & Local)
 
-### CLI Command
+```python
+from newspaper_explorer.analysis.entities.gliner_extraction import extract_entities_gliner
 
-```bash
-newspaper-explorer analyze extract-entities \
-    --source SOURCE \
-    --input INPUT_FILE \
-    [OPTIONS]
+# Test with first 100 lines
+results = extract_entities_gliner(
+    source_name="der_tag",
+    threshold=0.5,
+    batch_size=32,
+    limit=100
+)
+
+# Full extraction
+results = extract_entities_gliner(source_name="der_tag")
+
+print(f"Extracted {len(results['results_df'])} entities")
+print(f"Saved to: {results['output_dir']}")
+print(f"Method ID: {results['metadata']['analysis_id']}")
 ```
 
-**Required Arguments**:
+### Compare Both Methods
 
-- `--source`: Source name (e.g., `der_tag`)
-- `--input`: Path to input parquet file (textblocks or sentences)
+```python
+from newspaper_explorer.analysis.entities.method_comparison import run_both_methods, compare_entities
 
-**Options**:
+# Run both on same data
+results = run_both_methods(source_name="der_tag", limit=100)
 
-- `--text-column`: Column containing text (default: `text`)
-- `--id-column`: Column to use as identifier (default: `text_block_id`)
-- `--normalize / --no-normalize`: Normalize text before extraction (default: `True`)
-- `--model`: GLiNER model from Hugging Face (default: `urchade/gliner_multi-v2.1`)
-- `--labels`: Comma-separated entity labels (default: `Person,Organisation,Ereignis,Ort`)
-- `--threshold`: Confidence threshold 0-1 (default: `0.5`)
-- `--batch-size`: Batch size for processing (default: `32`)
-- `--min-length`: Minimum text length to process (default: `100`)
-- `--max-length`: Maximum text length, truncate longer (default: `500`)
-- `--format`: Output format (`parquet`, `json`, or `both`, default: `both`)
+# Compare results
+comparisons = compare_entities(
+    source_name="der_tag",
+    llm_method_id=results["llm"]["metadata"]["analysis_id"],
+    gliner_method_id=results["gliner"]["metadata"]["analysis_id"]
+)
 
-### Examples
+print(comparisons["statistics"])  # Overall stats
+print(comparisons["agreement"])   # Entities found by both
+```
+
+## LLM-based Extraction
+
+### Configuration
+
+Requires environment variables in `.env`:
 
 ```bash
-# Basic extraction with defaults
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data/processed/der_tag/text/textblocks.parquet
-
-# Extract from sentences with custom settings
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data/processed/der_tag/text/sentences.parquet \
-    --text-column sentence \
-    --batch-size 64 \
-    --threshold 0.6
-
-# Custom labels without normalization
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data/processed/der_tag/text/textblocks.parquet \
-    --labels "Person,Ort,Firma,Produkt" \
-    --no-normalize \
-    --format json
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=your-api-key
+LLM_MODEL=gpt-4o-mini
+LLM_TEMPERATURE=0.3
+LLM_MAX_TOKENS=1000
 ```
 
 ### Python API
 
 ```python
-from newspaper_explorer.analysis.entities.extraction import EntityExtractor
+from newspaper_explorer.analysis.entities.llm_extraction import LLMEntityExtractor
 
-# Initialize extractor
-extractor = EntityExtractor(
+# Initialize with custom settings
+extractor = LLMEntityExtractor(
     source_name="der_tag",
-    model_name="urchade/gliner_multi-v2.1",
-    labels=["Person", "Organisation", "Ereignis", "Ort"],
-    threshold=0.5,
-    batch_size=32,
-    min_text_length=100,
-    max_text_length=500
+    model_name="gpt-4o-mini",
+    temperature=0.3,
+    max_tokens=1000,
+    batch_size=10
 )
 
-# Run complete pipeline
-results = extractor.extract_and_save(
-    input_path="data/processed/der_tag/text/textblocks.parquet",
-    text_column="text",
-    id_column="text_block_id",
-    normalize=True,
-    output_format="both"
-)
+# Extract from DataFrame (limit for testing)
+from newspaper_explorer.data.loading import DataLoader
+loader = DataLoader(source_name="der_tag")
+df = loader.load_source().head(50)
 
-# Access results
-entities_df = results["entities"]  # Polars DataFrame
-serialized = results["serialized"]  # Dict[str, Dict[str, List[str]]]
+results = extractor.extract_from_dataframe(df)
+print(f"Extracted {len(results)} entities")
+
+# Save with metadata
+saved = extractor.extract_and_save(limit=100)
+print(f"Saved to: {saved['output_dir']}")
 ```
 
-### Advanced Usage
+### Output Schema
+
+Parquet file with schema:
+
+- `line_id` (str): Foreign key to source lines
+- `entity_text` (str): The extracted entity text
+- `entity_type` (str): One of: person, location, organization
+- `start_char` (int): Character offset in text (optional)
+- `end_char` (int): Character offset in text (optional)
+
+### Advantages
+
+- High accuracy with context understanding
+- Consistent entity type classification
+- Handles ambiguous cases well
+- Structured validation via Pydantic
+
+### Limitations
+
+- Requires API access and costs
+- Slower than GLiNER (API calls)
+- Needs internet connection
+
+## GLiNER-based Extraction
+
+### Configuration
+
+No API required - runs completely offline.
+
+### Python API
 
 ```python
-import polars as pl
-from newspaper_explorer.analysis.entities.extraction import EntityExtractor
+from newspaper_explorer.analysis.entities.gliner_extraction import GLiNEREntityExtractor
 
-# Initialize
-extractor = EntityExtractor(source_name="der_tag")
+# Initialize extractor
+extractor = GLiNEREntityExtractor(
+    source_name="der_tag",
+    model_name="urchade/gliner_multi-v2.1",
+    threshold=0.5,
+    batch_size=32,
+    normalize=True
+)
 
-# Load and prepare data manually
-df = pl.read_parquet("data/processed/der_tag/text/textblocks.parquet")
-df_prepared = extractor.prepare_texts(df, normalize=True)
+# Extract from DataFrame
+from newspaper_explorer.data.loading import DataLoader
+loader = DataLoader(source_name="der_tag")
+df = loader.load_source().head(100)
 
-# Extract entities
-entities_df = extractor.extract_entities(df_prepared)
+results = extractor.extract_from_dataframe(df)
+print(f"Extracted {len(results)} entities")
 
-# Serialize
-serialized = extractor.serialize_entities(entities_df)
-
-# Save with custom logic
-extractor.save_results(entities_df, serialized, format="json")
+# Save with metadata
+saved = extractor.extract_and_save(limit=500)
+print(f"Saved to: {saved['output_dir']}")
 ```
 
-## Output Format
+### Output Schema
 
-### Raw Entities (`entities_raw.parquet`)
+Same schema as LLM method:
 
-Polars DataFrame with all extracted entities:
+- `line_id` (str): Foreign key to source lines
+- `entity_text` (str): The extracted entity text
+- `entity_type` (str): One of: person, location, organization
+- `confidence` (float): Model confidence score (0-1)
+- `start_char` (int): Character offset in text
+- `end_char` (int): Character offset in text
 
-| id               | entity                                                         |
-| ---------------- | -------------------------------------------------------------- |
-| `text_block_123` | `{"text": "Berlin", "label": "Ort", "score": 0.95}`            |
-| `text_block_123` | `{"text": "Kaiser Wilhelm", "label": "Person", "score": 0.88}` |
+### Advantages
 
-### Grouped Entities (`entities_grouped.json`)
+- Fast processing (especially with GPU)
+- No API costs or internet required
+- Good performance on German text
+- Confidence scores for filtering
 
-JSON structure grouped by ID and label:
+### Limitations
 
-```json
-{
-  "text_block_123": {
-    "Person": ["kaiser wilhelm", "bismarck"],
-    "Organisation": ["reichstag", "berliner morgenpost"],
-    "Ereignis": ["weltkrieg"],
-    "Ort": ["berlin", "paris"]
-  },
-  "text_block_124": {
-    ...
-  }
-}
+- May miss subtle context
+- Requires GPU for best performance
+- ~500MB model download
+
+### Model Information
+
+**Default Model**: `urchade/gliner_multi-v2.1`
+
+- Type: GLiNER (Generalist and Lightweight Named Entity Recognition)
+- Languages: Multilingual (including German)
+- Zero-shot entity recognition
+- Good on historical text
+
+**Alternative Models**:
+
+```python
+# Larger model for better accuracy
+extractor = GLiNEREntityExtractor(
+    source_name="der_tag",
+    model_name="urchade/gliner_large-v2.1"
+)
 ```
 
-## Pipeline Integration
+## Querying Results
 
-Complete workflow from raw XML to entity extraction:
+Both methods output compatible formats queryable with `QueryEngine`:
 
-```bash
-# 1. Download and extract XML data
-newspaper-explorer data download --source der_tag --all
+```python
+from newspaper_explorer.utils.queries import QueryEngine
 
-# 2. Load XML to Parquet (line-level)
-newspaper-explorer data load --source der_tag
+with QueryEngine(source="der_tag") as qe:
+    # Find all mentions of "Berlin"
+    mentions = qe.find_entity_mentions(
+        entity_text="Berlin",
+        method_id="gliner_multi_v2_1_20241019"
+    )
 
-# 3. Aggregate into text blocks
-python -c "
-from newspaper_explorer.data.utils.text import load_and_aggregate_textblocks
-df = load_and_aggregate_textblocks('data/raw/der_tag/text/der_tag_lines.parquet')
-"
+    # Entity frequency
+    freq = qe.entity_frequency(
+        method_id="llm_gpt4o_mini_20241019",
+        entity_type="person",
+        limit=20
+    )
 
-# 4. Extract entities
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data/processed/der_tag/text/textblocks.parquet
+    # Compare methods
+    diff = qe.compare_entity_methods(
+        method1="llm_gpt4o_mini_20241019",
+        method2="gliner_multi_v2_1_20241019"
+    )
 ```
+
+## Method Comparison
+
+Use the comparison utility to evaluate both methods:
+
+```python
+from newspaper_explorer.analysis.entities.method_comparison import (
+    run_both_methods,
+    compare_entities,
+    print_comparison_report
+)
+
+# Run both on same sample
+results = run_both_methods(source_name="der_tag", limit=100)
+
+# Get detailed comparison
+comparisons = compare_entities(
+    source_name="der_tag",
+    llm_method_id=results["llm"]["metadata"]["analysis_id"],
+    gliner_method_id=results["gliner"]["metadata"]["analysis_id"]
+)
+
+# Print formatted report
+print_comparison_report(results, comparisons)
+```
+
+Output includes:
+
+- Execution metadata (duration, model, parameters)
+- Overall statistics (total/unique entities)
+- Entity type distribution
+- Entities found by both methods
+- Method-specific entities (LLM-only, GLiNER-only)
+- Line coverage comparison
+
+## Usage Recommendations
+
+**Use LLM when**:
+
+- Quality is critical over speed
+- Working with ambiguous historical text
+- Budget allows API costs
+- Need context-aware extraction
+
+**Use GLiNER when**:
+
+- Processing large volumes quickly
+- No internet/API access available
+- Running on local hardware
+- Cost is a concern
+
+**Use Both when**:
+
+- Evaluating extraction quality
+- Building ground truth datasets
+- Comparing different approaches
+- Maximum coverage desired (union of results)
 
 ## Text Normalization
 
-Entity extraction benefits from text normalization for historical German:
+Entity extraction can use text normalization for historical German:
 
-**Normalization steps**:
+**Normalization steps** (when `normalize=True`):
 
 1. Replace archaic characters (ſ → s, ẞ → SS, ß → ss)
 2. Remove diacritics (ä → a, ö → o, ü → u)
 3. Lowercase text
 4. Normalize whitespace
-5. Remove non-alphabetic characters
-6. Lemmatize tokens
+5. Clean punctuation
 
 **Example**:
 
 ```
 Input:  "Dieſes Beiſpiel zeigt die Schönheit alter Buchſtaben"
-Output: "dieser beispiel zeigen schonheit alter buchstabe"
+Output: "dieses beispiel zeigt die schonheit alter buchstaben"
 ```
 
-Normalization can be disabled with `--no-normalize` if working with already normalized text or modern German.
+**Usage**:
+
+```python
+# LLM extraction with normalization
+results = extract_entities_llm(source_name="der_tag", normalize=True)
+
+# GLiNER extraction without normalization
+extractor = GLiNEREntityExtractor(source_name="der_tag", normalize=False)
+```
+
+**Recommendation**: Enable normalization for historical text, disable for modern German.
 
 ## Performance
 
-### Processing Speed
+### LLM-based
 
-Typical performance with default settings:
+- **Speed**: ~10-50 lines/minute (depends on API rate limits)
+- **Memory**: Minimal (<1GB)
+- **Cost**: Per API call (~$0.0001-0.001 per line depending on model)
 
-- **CPU**: ~50-100 texts/minute
-- **GPU**: ~500-1000 texts/minute
+### GLiNER-based
 
-Adjust `--batch-size` based on available memory:
+- **Speed**:
+  - CPU: ~50-100 lines/minute
+  - GPU: ~500-1000 lines/minute
+- **Memory**:
+  - Model: ~500MB (one-time download)
+  - Runtime (CPU): ~2-4GB
+  - Runtime (GPU): ~4-8GB (depends on batch size)
+- **Cost**: Free (runs locally)
 
-- Small GPU (4-8GB): `--batch-size 16`
-- Medium GPU (8-16GB): `--batch-size 32` (default)
-- Large GPU (16GB+): `--batch-size 64` or higher
+### Batch Size Guidelines
 
-### Memory Requirements
+GLiNER batch size based on hardware:
 
-- **Model size**: ~500MB (downloaded once, cached)
-- **Runtime memory**:
-  - CPU: ~2-4GB
-  - GPU: ~4-8GB (depends on batch size)
+- Small GPU (4-8GB): `batch_size=16`
+- Medium GPU (8-16GB): `batch_size=32` (default)
+- Large GPU (16GB+): `batch_size=64`
+- CPU: `batch_size=8`
 
-### Disk Space
+## Examples
 
-Output size depends on text volume and entity density:
+See dedicated example files:
 
-- **Raw parquet**: ~10-50MB per 10K texts
-- **Grouped JSON**: ~5-20MB per 10K texts
-
-## Model Information
-
-### Default Model: `urchade/gliner_multi-v2.1`
-
-- **Type**: GLiNER (Generalist and Lightweight Named Entity Recognition)
-- **Languages**: Multilingual (including German)
-- **Advantages**:
-  - Zero-shot entity recognition
-  - Custom labels without retraining
-  - Good performance on historical text
-  - Efficient inference
-
-### Alternative Models
-
-You can use any GLiNER model from Hugging Face:
-
-```bash
-# Larger model for better accuracy
-newspaper-explorer analyze extract-entities \
-    --source der_tag \
-    --input data.parquet \
-    --model urchade/gliner_large-v2.1
-```
+- `src/newspaper_explorer/analysis/entities/llm_examples.py` - LLM extraction examples
+- `src/newspaper_explorer/analysis/entities/gliner_examples.py` - GLiNER extraction examples
+- `src/newspaper_explorer/analysis/entities/method_comparison.py` - Comparison examples
 
 ## Troubleshooting
 
-### "No entities found"
+### LLM Method
 
-- Lower `--threshold` (e.g., `0.3`)
-- Check `--min-length` isn't too restrictive
+**API errors**:
+
+- Check `.env` has correct `LLM_BASE_URL` and `LLM_API_KEY`
+- Verify API key has sufficient credits
+- Check network connection
+
+**No entities found**:
+
+- Try lower `temperature` (e.g., `0.1`)
+- Increase `max_tokens` if responses are truncated
+- Check prompt in `utils/prompts.py` is appropriate for your text
+
+**Rate limiting**:
+
+- Reduce `batch_size` to slow request rate
+- Add delays between requests (modify LLMClient)
+
+### GLiNER Method
+
+**No entities found**:
+
+- Lower `threshold` (e.g., `0.3`)
+- Check text has sufficient length (`min_text_length`)
+- Try without normalization
 - Verify text column contains actual text
-- Try without normalization (`--no-normalize`)
 
-### Out of memory errors
+**Out of memory errors**:
 
-- Reduce `--batch-size` (e.g., `16` or `8`)
-- Use CPU instead of GPU (automatic fallback)
-- Reduce `--max-length` to process shorter texts
+- Reduce `batch_size` (e.g., `16` or `8`)
+- Will automatically fall back to CPU
+- Use CPU explicitly: `device="cpu"`
 
-### Slow processing
+**Slow processing**:
 
-- Increase `--batch-size` if memory allows
+- Increase `batch_size` if memory allows
 - Use GPU if available (automatic detection)
-- Process smaller batches of data
+- Check GPU is being used: `extractor.device`
 
-### Poor entity quality
+**Poor entity quality**:
 
-- Increase `--threshold` (e.g., `0.6` or `0.7`)
-- Customize `--labels` for your domain
-- Use normalization (`--normalize`)
+- Increase `threshold` (e.g., `0.6` or `0.7`)
+- Try different GLiNER model
+- Enable normalization for historical text
+
+### Both Methods
+
+**Missing source attribution**:
+
+- Ensure input DataFrame has `line_id` column
+- Check results include `line_id` in output
+
+**Can't query results**:
+
+- Verify parquet file exists in `results/{source}/entities/{method_id}/`
+- Check `metadata.json` is present
+- Use correct method_id in QueryEngine
 
 ## Analysis Examples
 
-### Count Entity Frequencies
+### Find Entity Mentions
+
+```python
+from newspaper_explorer.utils.queries import QueryEngine
+
+with QueryEngine(source="der_tag") as qe:
+    # Find all mentions of "Berlin"
+    mentions = qe.find_entity_mentions(
+        entity_text="Berlin",
+        method_id="gliner_multi_v2_1_20241019"
+    )
+
+    # Get original text for context
+    for mention in mentions[:5].iter_rows(named=True):
+        line_id = mention["line_id"]
+        text = qe.query(f"SELECT text FROM lines WHERE line_id = '{line_id}'")
+        print(f"Found in: {text}")
+```
+
+### Entity Frequency Analysis
+
+```python
+with QueryEngine(source="der_tag") as qe:
+    # Most common persons
+    persons = qe.entity_frequency(
+        method_id="llm_gpt4o_mini_20241019",
+        entity_type="person",
+        limit=20
+    )
+    print(persons)
+
+    # All organizations
+    orgs = qe.entity_frequency(
+        method_id="gliner_multi_v2_1_20241019",
+        entity_type="organization"
+    )
+    print(orgs)
+```
+
+### Custom Queries
 
 ```python
 import polars as pl
+from newspaper_explorer.utils.queries import QueryEngine
 
-# Load raw entities
-df = pl.read_parquet("results/der_tag/entities/entities_raw.parquet")
+with QueryEngine(source="der_tag") as qe:
+    # Entities by year
+    by_year = qe.query("""
+        SELECT
+            YEAR(l.date) as year,
+            e.entity_type,
+            COUNT(DISTINCT e.entity_text) as unique_entities
+        FROM 'results/der_tag/entities/{method_id}/entities.parquet' e
+        JOIN lines l ON e.line_id = l.line_id
+        GROUP BY year, e.entity_type
+        ORDER BY year
+    """)
 
-# Count by label
-by_label = df.group_by(pl.col("entity").struct.field("label")).count()
-print(by_label)
-
-# Most common persons
-persons = df.filter(pl.col("entity").struct.field("label") == "Person")
-top_persons = persons.group_by(pl.col("entity").struct.field("text")).count().sort("count", descending=True)
-print(top_persons.head(20))
-```
-
-### Find Co-occurring Entities
-
-```python
-import json
-
-# Load grouped entities
-with open("results/der_tag/entities/entities_grouped.json") as f:
-    data = json.load(f)
-
-# Find texts mentioning specific person and place
-for text_id, entities in data.items():
-    if "berlin" in entities["Ort"] and any("wilhelm" in p for p in entities["Person"]):
-        print(f"Found co-occurrence in {text_id}")
+    # Co-occurring entities (same line)
+    cooccurrence = qe.query("""
+        SELECT
+            e1.entity_text as entity1,
+            e2.entity_text as entity2,
+            COUNT(*) as cooccurrence_count
+        FROM 'results/der_tag/entities/{method_id}/entities.parquet' e1
+        JOIN 'results/der_tag/entities/{method_id}/entities.parquet' e2
+            ON e1.line_id = e2.line_id
+            AND e1.entity_text < e2.entity_text
+        WHERE e1.entity_type = 'person' AND e2.entity_type = 'person'
+        GROUP BY entity1, entity2
+        ORDER BY cooccurrence_count DESC
+        LIMIT 20
+    """)
 ```
 
 ## Related Documentation
 
-- [Text Utilities](../data/utils/text.py) - Text processing functions
+- [LLM Utilities](LLM.md) - LLM client and prompts
+- [Data Architecture](DATA_ARCHITECTURE.md) - Storage and querying patterns
+- [Query Architecture](QUERY_ARCHITECTURE.md) - QueryEngine details
 - [Data Loading](DATA_LOADER.md) - Loading newspaper data
 - [CLI Reference](CLI.md) - Complete command reference

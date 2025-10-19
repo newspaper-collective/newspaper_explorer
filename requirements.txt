@@ -3,6 +3,11 @@ requests>=2.31.0
 tqdm>=4.66.0
 click>=8.1.0
 python-dotenv>=1.0.0
+polars>=0.20.0
+lxml>=5.0.0
+pyarrow>=15.0.0
+duckdb>=0.9.0
+pydantic>=2.0.0
 
 # Development Dependencies (install with: pip install -r requirements.txt -r requirements-dev.txt)
 # Or install everything with: pip install -e ".[dev]"
