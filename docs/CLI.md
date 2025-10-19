@@ -89,6 +89,39 @@ newspaper-explorer data verify dertag_1900-1902
 newspaper-explorer data verify dertag_1900-1902 dertag_1903-1905
 ```
 
+#### Load Text Data
+
+```bash
+# Load source to Parquet (parse ALTO XML)
+newspaper-explorer data load --source der_tag
+
+# Resume loading (skip already processed files)
+newspaper-explorer data load --source der_tag
+
+# Force reprocess all files
+newspaper-explorer data load --source der_tag --force
+
+# Check loading status
+newspaper-explorer data load-status --source der_tag
+```
+
+#### Download Images
+
+```bash
+# Download high-resolution page images
+newspaper-explorer data download-images --source der_tag
+
+# Customize parallel workers (default: 8)
+newspaper-explorer data download-images --source der_tag --max-workers 16
+
+# Adjust retry attempts for unstable connections (default: 3)
+newspaper-explorer data download-images --source der_tag --max-retries 5
+```
+
+Images are stored in `data/raw/{source}/images/` with the same directory structure as XML files.
+
+See [IMAGES.md](IMAGES.md) for detailed image downloading documentation.
+
 ## Help
 
 Get help for any command:
