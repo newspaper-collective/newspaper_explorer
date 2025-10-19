@@ -28,10 +28,10 @@ from newspaper_explorer.utils.queries import QueryEngine
 with QueryEngine(source="der_tag") as qe:
     # Find entity mentions
     mentions = qe.find_entity_mentions("Kaiser Wilhelm II")
-    
+
     # Get full text for line
     line = qe.get_line(line_id="...")
-    
+
     # Custom SQL
     result = qe.query("SELECT ... FROM source_lines WHERE ...")
 ```
@@ -43,6 +43,7 @@ with QueryEngine(source="der_tag") as qe:
 ```
 
 Examples:
+
 - `llm_gpt4o_mini_20241019_143022`
 - `spacy_de_core_news_lg_20241019_150000`
 - `bertopic_20241019_151500`
@@ -91,6 +92,7 @@ with open(output_dir / "metadata.json", "w") as f:
 ## UI Pattern
 
 ### FastAPI
+
 ```python
 from fastapi import FastAPI
 from newspaper_explorer.utils.queries import QueryEngine
@@ -104,6 +106,7 @@ def get_entity(name: str, method: str = "llm_gpt4o_mini"):
 ```
 
 ### Streamlit
+
 ```python
 import streamlit as st
 from newspaper_explorer.utils.queries import QueryEngine
@@ -117,26 +120,31 @@ if entity:
 ## Common Queries
 
 ### All mentions of entity
+
 ```python
 qe.find_entity_mentions("Berlin", method="llm_gpt4o_mini")
 ```
 
 ### Entity frequency by year
+
 ```python
 qe.entity_frequency(method="llm_gpt4o_mini", group_by="year")
 ```
 
 ### Compare methods
+
 ```python
 qe.compare_entity_methods("llm_gpt4o_mini", "spacy_de")
 ```
 
 ### Search text
+
 ```python
 qe.search_text("Kaiser", start_date="1901-01-01", limit=100)
 ```
 
 ### Get line details
+
 ```python
 qe.get_line(line_id="der_tag_1901_01_15_001")
 ```

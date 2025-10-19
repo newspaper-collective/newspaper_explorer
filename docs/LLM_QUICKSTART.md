@@ -33,15 +33,15 @@ print(response.persons)  # Type-safe!
 
 ## Available Prompts
 
-| Prompt Name | Use For | Schema |
-|-------------|---------|--------|
-| `entity_extraction` | Extract persons, locations, orgs | `EntityResponse` |
-| `topic_classification` | Classify into topics | `TopicClassificationResponse` |
-| `topic_generation` | Generate topic labels | `TopicGenerationResponse` |
-| `emotion_analysis` | Analyze sentiment/emotions | `EmotionAnalysisResponse` |
-| `concept_extraction` | Extract concepts + relationships | `ConceptExtractionResponse` |
-| `summarization` | Summarize text | `SummarizationResponse` |
-| `text_quality` | Assess OCR quality | `TextQualityResponse` |
+| Prompt Name            | Use For                          | Schema                        |
+| ---------------------- | -------------------------------- | ----------------------------- |
+| `entity_extraction`    | Extract persons, locations, orgs | `EntityResponse`              |
+| `topic_classification` | Classify into topics             | `TopicClassificationResponse` |
+| `topic_generation`     | Generate topic labels            | `TopicGenerationResponse`     |
+| `emotion_analysis`     | Analyze sentiment/emotions       | `EmotionAnalysisResponse`     |
+| `concept_extraction`   | Extract concepts + relationships | `ConceptExtractionResponse`   |
+| `summarization`        | Summarize text                   | `SummarizationResponse`       |
+| `text_quality`         | Assess OCR quality               | `TextQualityResponse`         |
 
 ## Custom Parameters
 

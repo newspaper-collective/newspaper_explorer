@@ -5,6 +5,7 @@ Comprehensive utilities for interacting with Large Language Models (LLMs) in the
 ## Overview
 
 The LLM utilities provide a flexible, production-ready framework for:
+
 - **Configurable API access** with URL and token management
 - **Automatic retries** with exponential backoff
 - **Response validation** using Pydantic schemas
@@ -50,6 +51,7 @@ LLM_MAX_TOKENS=2000
 ### Supported API Endpoints
 
 Any OpenAI-compatible API:
+
 - **OpenAI**: `https://api.openai.com/v1`
 - **Azure OpenAI**: `https://your-resource.openai.azure.com/openai/deployments/your-deployment`
 - **Local models** (e.g., Ollama): `http://localhost:11434/v1`
@@ -135,15 +137,15 @@ except LLMValidationError as e:
 
 Use `get_prompt(name)` to retrieve templates:
 
-| Name | Purpose | Schema |
-|------|---------|--------|
-| `entity_extraction` | Extract persons, locations, organizations | `EntityResponse` |
-| `topic_classification` | Classify text into predefined topics | `TopicClassificationResponse` |
-| `topic_generation` | Generate topic labels for text | `TopicGenerationResponse` |
-| `emotion_analysis` | Analyze sentiment and emotions | `EmotionAnalysisResponse` |
-| `concept_extraction` | Extract key concepts and relationships | `ConceptExtractionResponse` |
-| `summarization` | Summarize text with key points | `SummarizationResponse` |
-| `text_quality` | Assess OCR quality and readability | `TextQualityResponse` |
+| Name                   | Purpose                                   | Schema                        |
+| ---------------------- | ----------------------------------------- | ----------------------------- |
+| `entity_extraction`    | Extract persons, locations, organizations | `EntityResponse`              |
+| `topic_classification` | Classify text into predefined topics      | `TopicClassificationResponse` |
+| `topic_generation`     | Generate topic labels for text            | `TopicGenerationResponse`     |
+| `emotion_analysis`     | Analyze sentiment and emotions            | `EmotionAnalysisResponse`     |
+| `concept_extraction`   | Extract key concepts and relationships    | `ConceptExtractionResponse`   |
+| `summarization`        | Summarize text with key points            | `SummarizationResponse`       |
+| `text_quality`         | Assess OCR quality and readability        | `TextQualityResponse`         |
 
 ### List Available Prompts
 
@@ -272,6 +274,7 @@ client = LLMClient(
 ### Exponential Backoff
 
 Delays between retries:
+
 - Attempt 1: `retry_delay` (e.g., 1s)
 - Attempt 2: `retry_delay * 2` (e.g., 2s)
 - Attempt 3: `retry_delay * 4` (e.g., 4s)
@@ -395,6 +398,7 @@ Requires `.env` with valid `LLM_BASE_URL` and `LLM_API_KEY`.
 ### "base_url must be provided"
 
 Set `LLM_BASE_URL` in `.env`:
+
 ```bash
 LLM_BASE_URL=https://api.openai.com/v1
 ```
@@ -402,6 +406,7 @@ LLM_BASE_URL=https://api.openai.com/v1
 ### "api_key must be provided"
 
 Set `LLM_API_KEY` in `.env`:
+
 ```bash
 LLM_API_KEY=sk-your-key-here
 ```
@@ -409,6 +414,7 @@ LLM_API_KEY=sk-your-key-here
 ### Rate Limit Errors
 
 Increase retry settings:
+
 ```python
 client = LLMClient(max_retries=10, retry_delay=5.0)
 ```
@@ -416,6 +422,7 @@ client = LLMClient(max_retries=10, retry_delay=5.0)
 ### Validation Errors
 
 Check LLM response format. Enable debug logging:
+
 ```python
 import logging
 logging.basicConfig(level=logging.DEBUG)
@@ -424,6 +431,7 @@ logging.basicConfig(level=logging.DEBUG)
 ### Timeout Errors
 
 Increase timeout:
+
 ```python
 client = LLMClient(timeout=120.0)
 ```
@@ -431,6 +439,7 @@ client = LLMClient(timeout=120.0)
 ## Future Enhancements
 
 Potential additions:
+
 - [ ] Streaming responses for long outputs
 - [ ] Batch request optimization
 - [ ] Caching layer for repeated prompts
