@@ -1,4 +1,9 @@
 - Finish downloading and fixing dataset -> Final testing
+- **PRIORITY: Implement preprocessing pipeline** (see `__scrap/PREPROCESSING_DESIGN.md`)
+  - Create `data.preprocessing.py` with TextPreprocessor class
+  - Add `newspaper-explorer data preprocess` command
+  - Compute normalization once, save to data/processed/
+  - Update EntityExtractor to use preprocessed data (remove inline normalization)
 - Central datacleaning and normalising options with spacy or something -> data.utils.py? data.cleaning.py?
 - Interactive CLI?
 - CLI: Param for dataset?
