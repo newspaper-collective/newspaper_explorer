@@ -5,6 +5,7 @@
 A comprehensive, production-ready LLM utilities framework for the Newspaper Explorer project with:
 
 ### 1. Core LLM Client (`utils/llm.py`)
+
 - ✅ **Configurable API access** - URL and API key from environment
 - ✅ **Model parameters** - `model_name`, `temperature`, `max_tokens`
 - ✅ **Retry logic** - Exponential backoff with configurable `max_retries` and `retry_delay`
@@ -16,6 +17,7 @@ A comprehensive, production-ready LLM utilities framework for the Newspaper Expl
 - ✅ **OpenAI-compatible** - Works with any OpenAI-format API
 
 ### 2. Prompt Templates (`utils/prompts.py`)
+
 - ✅ **Centralized management** - All prompts in one place
 - ✅ **Variable substitution** - Template formatting with `.format(**kwargs)`
 - ✅ **Pre-built prompts** for common tasks:
@@ -28,6 +30,7 @@ A comprehensive, production-ready LLM utilities framework for the Newspaper Expl
 - ✅ **Helper functions** - `get_prompt(name)`, `list_prompts()`
 
 ### 3. Response Schemas (`utils/schemas.py`)
+
 - ✅ **Pydantic models** - Type-safe response validation
 - ✅ **Matching schemas** for all prompt templates:
   - `EntityResponse`
@@ -42,6 +45,7 @@ A comprehensive, production-ready LLM utilities framework for the Newspaper Expl
 - ✅ **Helper functions** - `get_schema(name)`, `list_schemas()`
 
 ### 4. Configuration (`utils/config.py`)
+
 - ✅ **Extended Config class** with LLM settings:
   - `llm_base_url` - API endpoint
   - `llm_api_key` - Authentication token
@@ -52,6 +56,7 @@ A comprehensive, production-ready LLM utilities framework for the Newspaper Expl
 - ✅ **Getter method** - `config.get(key, default)` for flexible access
 
 ### 5. Documentation
+
 - ✅ **Comprehensive guide** (`docs/LLM.md`) with:
   - Architecture overview
   - Configuration instructions
@@ -65,6 +70,7 @@ A comprehensive, production-ready LLM utilities framework for the Newspaper Expl
 ## Key Features
 
 ### Retry Logic with Exponential Backoff
+
 ```python
 client = LLMClient(
     max_retries=3,      # Number of retry attempts
@@ -74,11 +80,13 @@ client = LLMClient(
 ```
 
 Retries on:
+
 - Rate limits (429)
 - Server errors (500, 502, 503, 504)
 - Timeouts
 
 ### Response Validation
+
 ```python
 # Automatically validates against Pydantic schema
 response = client.complete(
@@ -92,6 +100,7 @@ print(response.locations)    # List[str]
 ```
 
 ### Flexible Configuration
+
 ```python
 # From environment (.env)
 client = LLMClient()  # Uses LLM_* vars
@@ -113,6 +122,7 @@ response = client.complete(
 ```
 
 ### Centralized Prompts
+
 ```python
 # Get pre-built prompt
 prompt = get_prompt("entity_extraction")
@@ -140,7 +150,7 @@ response = client.complete(
 ✅ **Response schemas** - `schemas.py` with Pydantic models  
 ✅ **Validation** - Automatic validation against schemas  
 ✅ **Logging** - Comprehensive logging throughout  
-✅ **Error handling** - Custom exceptions for different error types  
+✅ **Error handling** - Custom exceptions for different error types
 
 ## Usage Example
 
@@ -172,6 +182,7 @@ print(f"Locations: {response.locations}")
 ## Files Created/Modified
 
 ### New Files
+
 1. `src/newspaper_explorer/utils/llm.py` - Main LLM client (300+ lines)
 2. `src/newspaper_explorer/utils/prompts.py` - Prompt templates (250+ lines)
 3. `src/newspaper_explorer/utils/schemas.py` - Response schemas (200+ lines)
@@ -179,6 +190,7 @@ print(f"Locations: {response.locations}")
 5. `docs/LLM.md` - Comprehensive documentation (500+ lines)
 
 ### Modified Files
+
 1. `src/newspaper_explorer/utils/config.py` - Added LLM configuration
 2. `.env.example` - Added LLM environment variables
 
@@ -202,6 +214,7 @@ To use this in your analysis pipeline:
 1. **Set environment variables** - Copy `.env.example` to `.env` and configure
 2. **Install dependencies** - Ensure `requests` and `pydantic` are installed
 3. **Import and use**:
+
    ```python
    from newspaper_explorer.utils.llm import LLMClient
    from newspaper_explorer.utils.prompts import get_prompt
@@ -213,6 +226,7 @@ To use this in your analysis pipeline:
 ## Testing
 
 Run examples to verify setup:
+
 ```bash
 python src/newspaper_explorer/utils/llm_examples.py
 ```

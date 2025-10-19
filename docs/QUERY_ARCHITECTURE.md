@@ -9,7 +9,7 @@ A **DuckDB-based query layer** that solves all your data access challenges:
 ✅ **Track method/model provenance** in directory structure + metadata  
 ✅ **Enable efficient UI queries** for web interfaces  
 ✅ **Compare methods** (LLM vs traditional, different models)  
-✅ **SQL interface** for complex analytics  
+✅ **SQL interface** for complex analytics
 
 ## Architecture Overview
 
@@ -30,17 +30,20 @@ data/raw/{source}/text/        results/{source}/{type}/{method}/
 ## Key Design Decisions
 
 ### 1. **Parquet for Storage** (No Change)
+
 - Keep your existing efficient columnar format
 - Source data: `data/raw/{source}/text/{source}_lines.parquet`
 - Results: `results/{source}/{type}/{method}/results.parquet`
 
 ### 2. **DuckDB for Queries** (New)
+
 - Reads Parquet files directly (no duplication!)
 - SQL interface for complex queries
 - Blazing fast on GB-scale data
 - Python-friendly API
 
 ### 3. **Method Tracking via Directory Structure**
+
 ```
 results/der_tag/entities/
 ├── llm_gpt4o_mini_20241019_143022/
@@ -52,7 +55,9 @@ results/der_tag/entities/
 ```
 
 ### 4. **Source Attribution via `line_id`**
+
 Every result row has `line_id` foreign key back to source:
+
 ```python
 {
     "line_id": "der_tag_1901_01_15_001_block_003_line_001",  # FK
@@ -65,6 +70,7 @@ Every result row has `line_id` foreign key back to source:
 ## Result Schema Patterns
 
 ### Entity Extraction
+
 ```python
 {
     "line_id": str,          # FK to source
@@ -75,6 +81,7 @@ Every result row has `line_id` foreign key back to source:
 ```
 
 ### Topic Analysis
+
 ```python
 {
     "line_id": str,
@@ -85,6 +92,7 @@ Every result row has `line_id` foreign key back to source:
 ```
 
 ### Metadata (JSON alongside results)
+
 ```json
 {
     "analysis_id": "llm_gpt4o_mini_20241019_143022",
@@ -99,6 +107,7 @@ Every result row has `line_id` foreign key back to source:
 ## Usage Examples
 
 ### Find All Entity Mentions
+
 ```python
 from newspaper_explorer.utils.queries import QueryEngine
 
@@ -107,23 +116,25 @@ with QueryEngine(source="der_tag") as qe:
         entity_name="Kaiser Wilhelm II",
         method="llm_gpt4o_mini"
     )
-    
+
     for row in mentions.iter_rows(named=True):
         print(f"[{row['date']}] {row['text']}")
 ```
 
 ### Compare Methods
+
 ```python
 with QueryEngine() as qe:
     diff = qe.compare_entity_methods(
         method1="llm_gpt4o_mini",
         method2="spacy_de_core_news_lg"
     )
-    
+
     print(f"Found {len(diff)} differences")
 ```
 
 ### Entity Frequency Over Time
+
 ```python
 with QueryEngine() as qe:
     freq = qe.entity_frequency(
@@ -135,10 +146,11 @@ with QueryEngine() as qe:
 ```
 
 ### Custom SQL Query
+
 ```python
 with QueryEngine() as qe:
     result = qe.query("""
-        SELECT 
+        SELECT
             e.entity_text,
             COUNT(*) as mentions,
             MIN(s.date) as first_mention,
@@ -155,6 +167,7 @@ with QueryEngine() as qe:
 ## UI Backend Pattern
 
 ### FastAPI Example
+
 ```python
 from fastapi import FastAPI
 from newspaper_explorer.utils.queries import QueryEngine
@@ -174,6 +187,7 @@ def get_line(line_id: str):
 ```
 
 ### Streamlit Example
+
 ```python
 import streamlit as st
 from newspaper_explorer.utils.queries import QueryEngine
@@ -191,26 +205,31 @@ if entity:
 ## Benefits
 
 ### 1. **No Memory Issues**
+
 - DuckDB streams data, doesn't load entire file
 - Query multi-GB Parquet files efficiently
 - Only result set needs to fit in memory
 
 ### 2. **Fast Queries**
+
 - Millisecond queries on GB-scale data
 - Columnar format = read only needed columns
 - Optimized for analytics
 
 ### 3. **Flexible**
+
 - SQL interface for any query
 - Join across multiple files
 - Aggregate, filter, group by anything
 
 ### 4. **Provenance Tracking**
+
 - Method/model in directory structure
 - Metadata JSON with full parameters
 - Easy to compare results from different methods
 
 ### 5. **Source Attribution**
+
 - Every result links back via `line_id`
 - Fetch full text on demand
 - No data duplication
@@ -218,18 +237,23 @@ if entity:
 ## Next Steps
 
 ### Phase 1: Update Analysis Pipelines
+
 Modify analysis code to:
+
 1. Save results as Parquet with `line_id` FK
 2. Create metadata.json with method info
 3. Use standardized directory structure
 
 ### Phase 2: Install DuckDB
+
 ```bash
 pip install duckdb
 ```
 
 ### Phase 3: Use Query Engine
+
 Import and query:
+
 ```python
 from newspaper_explorer.utils.queries import QueryEngine
 
@@ -238,7 +262,9 @@ with QueryEngine(source="der_tag") as qe:
 ```
 
 ### Phase 4: Build UI
+
 Choose one:
+
 - **FastAPI** for REST API + frontend
 - **Streamlit** for quick internal tool
 
@@ -285,6 +311,7 @@ A: `qe.get_line(line_id)` fetches on demand from Parquet.
 ## Summary
 
 You now have a **scalable, efficient data architecture** that:
+
 - ✅ Stores source and results as Parquet (efficient)
 - ✅ Queries via DuckDB (fast, SQL interface)
 - ✅ Tracks method/model provenance (reproducible)

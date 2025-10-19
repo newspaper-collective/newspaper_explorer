@@ -36,6 +36,7 @@ data/raw/{source}/text/{source}_lines.parquet
 ```
 
 **Schema:**
+
 ```python
 {
     "line_id": str,          # Primary key (e.g., "der_tag_1901_01_15_001_block_003_line_001")
@@ -58,6 +59,7 @@ results/{source}/{analysis_type}/{method_id}/results.parquet
 ```
 
 Example structure:
+
 ```
 results/der_tag/
 ├── entities/
@@ -81,20 +83,20 @@ Each analysis run creates a `metadata.json` alongside results:
 
 ```json
 {
-    "analysis_id": "llm_gpt4o_mini_20241019_143022",
-    "analysis_type": "entities",
-    "method_type": "llm",
-    "model_name": "gpt-4o-mini",
-    "model_version": null,
-    "parameters": {
-        "temperature": 0.3,
-        "max_tokens": 2000,
-        "prompt_template": "entity_extraction"
-    },
-    "source": "der_tag",
-    "created_at": "2024-10-19T14:30:22Z",
-    "line_count": 15420,
-    "duration_seconds": 3600
+  "analysis_id": "llm_gpt4o_mini_20241019_143022",
+  "analysis_type": "entities",
+  "method_type": "llm",
+  "model_name": "gpt-4o-mini",
+  "model_version": null,
+  "parameters": {
+    "temperature": 0.3,
+    "max_tokens": 2000,
+    "prompt_template": "entity_extraction"
+  },
+  "source": "der_tag",
+  "created_at": "2024-10-19T14:30:22Z",
+  "line_count": 15420,
+  "duration_seconds": 3600
 }
 ```
 
@@ -211,7 +213,7 @@ result_pl = pl.from_pandas(result)
 ```python
 # Query entities and join with source text
 query = """
-SELECT 
+SELECT
     e.entity_text,
     e.entity_type,
     s.text,
@@ -232,14 +234,14 @@ mentions = con.execute(query).df()
 ```python
 # Compare entity extraction from two methods
 query = """
-SELECT 
+SELECT
     llm.entity_text AS llm_entity,
     spacy.entity_text AS spacy_entity,
     s.text,
     s.date
 FROM 'results/der_tag/entities/llm_gpt4o_mini/entities.parquet' llm
 FULL OUTER JOIN 'results/der_tag/entities/spacy_de/entities.parquet' spacy
-    ON llm.line_id = spacy.line_id 
+    ON llm.line_id = spacy.line_id
     AND llm.entity_text = spacy.entity_text
 JOIN 'data/raw/der_tag/text/der_tag_lines.parquet' s
     ON COALESCE(llm.line_id, spacy.line_id) = s.line_id
@@ -254,7 +256,7 @@ differences = con.execute(query).df()
 ```python
 # Entity frequency by year
 query = """
-SELECT 
+SELECT
     YEAR(s.date) as year,
     e.entity_text,
     COUNT(*) as mention_count
@@ -296,7 +298,7 @@ con = duckdb.connect('results/der_tag/query_cache.duckdb')
 def get_entity_mentions(entity_name: str, method: str = "llm_gpt4o_mini"):
     """Get all mentions of an entity with context."""
     query = f"""
-    SELECT 
+    SELECT
         e.entity_text,
         e.entity_type,
         s.text,
@@ -334,16 +336,16 @@ def search_text(q: str, start_date: str = None, end_date: str = None):
     WHERE text LIKE ?
     """
     params = [f"%{q}%"]
-    
+
     if start_date:
         query += " AND date >= ?"
         params.append(start_date)
     if end_date:
         query += " AND date <= ?"
         params.append(end_date)
-    
+
     query += " LIMIT 100"
-    
+
     result = con.execute(query, params).df()
     return result.to_dict(orient='records')
 ```
@@ -365,7 +367,7 @@ st.title("Newspaper Explorer")
 entity = st.text_input("Search entity:")
 if entity:
     query = f"""
-    SELECT 
+    SELECT
         e.entity_text,
         s.text,
         s.date
@@ -377,7 +379,7 @@ if entity:
     """
     result = con.execute(query).df()
     st.dataframe(result)
-    
+
     # Visualization
     if len(result) > 0:
         fig = px.histogram(result, x='date', title=f"Mentions of {entity} over time")
@@ -387,19 +389,23 @@ if entity:
 ## Migration Path
 
 ### Phase 1: Current State
+
 - ✅ Parquet source files exist
 - Results saved as Parquet (implement new schema)
 
 ### Phase 2: Query Layer
+
 - Add DuckDB for ad-hoc queries
 - Create query utilities in `utils/queries.py`
 
 ### Phase 3: UI Backend
+
 - Implement FastAPI endpoints
 - OR build Streamlit app
 - Use DuckDB to query Parquet files
 
 ### Phase 4: Optimization
+
 - Create DuckDB views for common queries
 - Add indexes if needed
 - Cache frequently accessed data
@@ -448,7 +454,7 @@ Create DuckDB views to simplify repeated queries:
 ```python
 con.execute("""
 CREATE VIEW entity_mentions AS
-SELECT 
+SELECT
     e.line_id,
     e.entity_text,
     e.entity_type,
@@ -467,16 +473,19 @@ result = con.execute("SELECT * FROM entity_mentions WHERE entity_text = 'Berlin'
 ## Performance Considerations
 
 ### File Size
+
 - **Parquet** is highly compressed (typically 5-10x smaller than CSV)
 - **DuckDB** reads only required columns (columnar format)
 - Multi-GB files are fine - DuckDB doesn't load entire file
 
 ### Memory Usage
+
 - DuckDB streams data, doesn't load everything
 - Only result set needs to fit in memory
 - Use `LIMIT` for large result sets in UI
 
 ### Query Speed
+
 - DuckDB is **very fast** on Parquet (C++ implementation)
 - Expect millisecond queries on GB-scale data
 - Add indexes for repeated filter columns if needed
@@ -487,9 +496,10 @@ result = con.execute("SELECT * FROM entity_mentions WHERE entity_text = 'Berlin'
 **Query:** DuckDB (SQL interface, reads Parquet directly)  
 **UI:** FastAPI + DuckDB OR Streamlit + DuckDB  
 **Provenance:** Method ID in directory structure + metadata.json  
-**Relations:** Foreign keys via `line_id`  
+**Relations:** Foreign keys via `line_id`
 
 This architecture is:
+
 - ✅ Scalable (handles multi-GB files)
 - ✅ Efficient (no data duplication)
 - ✅ Queryable (SQL interface)
