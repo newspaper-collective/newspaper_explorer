@@ -215,9 +215,11 @@ __marimo__/
 data/downloads/*.tar.gz
 data/downloads/*.zip
 data/extracted/
+data/processed/
 data/raw/
 !data/downloads/.gitkeep
 !data/extracted/.gitkeep
+!data/processed/.gitkeep
 !data/raw/.gitkeep
 
 

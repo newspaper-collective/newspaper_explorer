@@ -10,7 +10,7 @@ from newspaper_explorer.analysis.entities.llm_extraction import (
     LLMEntityExtractor,
     extract_entities_llm,
 )
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

@@ -237,7 +237,7 @@ extractor = GLiNEREntityExtractor(
 Both methods output compatible formats queryable with `QueryEngine`:
 
 ```python
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Find all mentions of "Berlin"
@@ -450,7 +450,7 @@ See dedicated example files:
 ### Find Entity Mentions
 
 ```python
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Find all mentions of "Berlin"
@@ -490,7 +490,7 @@ with QueryEngine(source="der_tag") as qe:
 
 ```python
 import polars as pl
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Entities by year

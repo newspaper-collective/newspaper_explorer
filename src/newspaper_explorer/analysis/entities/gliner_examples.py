@@ -10,7 +10,7 @@ from newspaper_explorer.analysis.entities.gliner_extraction import (
     GLiNEREntityExtractor,
     extract_entities_gliner,
 )
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

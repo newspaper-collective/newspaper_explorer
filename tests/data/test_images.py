@@ -7,17 +7,17 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from newspaper_explorer.data.utils.images import ImageDownloader, ImageReference
+from newspaper_explorer.data.images import ImageDownloader, ImageReference
 
 
 @pytest.fixture
 def mock_config():
     """Mock configuration."""
-    with patch("newspaper_explorer.data.utils.images.get_config") as mock:
+    with patch("newspaper_explorer.data.images.get_config") as mock:
         config = Mock()
         config.data_dir = Path("/fake/data")
         mock.return_value = config
-        yield mock
+        yield config
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def mock_source_config():
 
 def test_image_downloader_initialization(mock_config, mock_source_config):
     """Test ImageDownloader initialization."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
 
         downloader = ImageDownloader(source_name="test_source", max_workers=4, max_retries=2)
@@ -58,7 +58,7 @@ def test_image_reference():
 
 def test_find_mets_files(mock_config, mock_source_config, tmp_path):
     """Test finding METS files."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
 
         # Create test directory structure
@@ -89,7 +89,7 @@ def test_find_mets_files(mock_config, mock_source_config, tmp_path):
 
 def test_get_image_path(mock_config, mock_source_config, tmp_path):
     """Test image path calculation."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
 
         # Setup paths
@@ -118,7 +118,7 @@ def test_get_image_path(mock_config, mock_source_config, tmp_path):
 
 def test_extract_image_references(mock_config, mock_source_config, tmp_path):
     """Test extracting image references from METS XML."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
         mock_config.return_value.data_dir = tmp_path
 
@@ -153,7 +153,7 @@ def test_extract_image_references(mock_config, mock_source_config, tmp_path):
 
 def test_extract_image_references_no_max_group(mock_config, mock_source_config, tmp_path):
     """Test handling METS without MAX fileGrp."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
         mock_config.return_value.data_dir = tmp_path
 
@@ -178,14 +178,14 @@ def test_extract_image_references_no_max_group(mock_config, mock_source_config, 
 @pytest.mark.integration
 def test_download_single_image(mock_config, mock_source_config, tmp_path):
     """Test downloading a single image."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
         mock_config.return_value.data_dir = tmp_path
 
         downloader = ImageDownloader(source_name="test_source")
 
         # Mock requests.get
-        with patch("newspaper_explorer.data.utils.images.requests.get") as mock_get:
+        with patch("newspaper_explorer.data.images.requests.get") as mock_get:
             mock_response = Mock()
             mock_response.content = b"fake image data"
             mock_response.raise_for_status = Mock()
@@ -206,7 +206,7 @@ def test_download_single_image(mock_config, mock_source_config, tmp_path):
 
 def test_download_single_image_already_exists(mock_config, mock_source_config, tmp_path):
     """Test skipping already downloaded images."""
-    with patch("newspaper_explorer.data.utils.images.load_source_config") as mock_load:
+    with patch("newspaper_explorer.data.images.load_source_config") as mock_load:
         mock_load.return_value = mock_source_config
         mock_config.return_value.data_dir = tmp_path
 
