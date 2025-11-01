@@ -747,13 +747,13 @@ result = engine.query("""
 
 ## 📊 Available Datasets
 
-### Der Tag (1900-1929)
+### Der Tag (1900-1920)
 
 Historical Austrian newspaper "Der Tag" - ALTO XML with METS metadata.
 
 **Collection**: [Der Tag on Zenodo](https://zenodo.org/records/17232177)
 
-**Coverage**: 1900-1929 (multiple archive parts)  
+**Coverage**: 1900-1920 (multiple archive parts)  
 **Format**: ALTO XML (OCR fulltext) + METS XML (metadata)  
 **Language**: German (historical orthography)
 
