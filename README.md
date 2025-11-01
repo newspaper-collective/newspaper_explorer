@@ -477,7 +477,7 @@ pip install transformers torch
 Download high-resolution page scans from METS XML references:
 
 ```python
-from newspaper_explorer.data.utils.images import ImageDownloader
+from newspaper_explorer.data.images import ImageDownloader
 
 # Initialize downloader
 downloader = ImageDownloader(

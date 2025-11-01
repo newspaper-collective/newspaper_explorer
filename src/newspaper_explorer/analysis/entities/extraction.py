@@ -18,8 +18,8 @@ import torch
 from gliner import GLiNER
 from tqdm import tqdm
 
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.text import normalize_german_text
-from newspaper_explorer.utils.config import get_config
 from newspaper_explorer.utils.sources import load_source_config
 
 logger = logging.getLogger(__name__)

@@ -8,19 +8,27 @@
 
 ### Core Components
 
-1. **ZenodoDownloader** (`data/download.py`) - Configuration-driven download/extraction
+1. **ZenodoDownloader** (`data/download/text.py`) - Configuration-driven archive download/extraction
    - Reads from `data/sources/{source}.json` for URLs, checksums, metadata
    - Organizes archives into `data/raw/{source}/{data_type}/YYYY/` structure
    - Automatic error correction via `DataFixer` for known data issues
    
-2. **DataLoader** (`data/loading.py`) - Configuration-driven XML parsing
-   - **NEW**: Initialized with `source_name` (e.g., `DataLoader("der_tag")`)
+2. **ImageDownloader** (`data/download/images.py`) - Page image download from METS
+   - Downloads high-resolution newspaper page images from METS XML references
+   - Stores in `data/raw/{source}/images/` mirroring XML directory structure
+   - Parallel download with progress tracking and resume support
+   - Provides download status via `get_download_status()` method
+   
+3. **DataLoader** (`data/loading/`) - Configuration-driven XML parsing (modular)
+   - `loader.py`: Main DataLoader class, initialized with `source_name`
+   - `workers.py`: Parallel processing workers for ALTO/METS parsing
+   - `aggregation.py`: Text aggregation utilities (lines → text blocks)
    - Reads source config from `data/sources/{source}.json` for paths and patterns
    - Parallel ALTO XML parsing with METS metadata enrichment
    - Outputs line-level Polars DataFrames to `data/raw/{source}/text/{source}_lines.parquet`
    - Resume functionality: skips already-processed files by default
 
-3. **ALTO/METS Parsers** (`data/utils/`) - XML extraction layer
+4. **ALTO/METS Parsers** (`data/parser/`) - XML extraction layer
    - ALTOParser: Extracts text lines with coordinates from fulltext pages
    - METSParser: Extracts issue-level metadata (title, date, volume, page count)
    - Automatic namespace detection for ALTO version compatibility
@@ -51,31 +59,139 @@
 
 ### Package Organization
 - **NO `__init__.py` files** - Use explicit imports
-- Import style: `from newspaper_explorer.data.loading import DataLoader`
+- Import style: `from newspaper_explorer.data.loading.loader import DataLoader`
 - Never: `from newspaper_explorer.data import DataLoader`
+
+### Module Structure
+```
+src/newspaper_explorer/
+├── config/                 # Configuration management
+│   ├── environment.py     # Environment variable loading
+│   └── base.py           # Main Config class
+├── llm/                   # LLM functionality (first-class module)
+│   ├── client.py         # LLM client with retry & validation
+│   ├── examples.py       # Usage examples
+│   ├── prompts/          # Individual prompt templates (direct import)
+│   │   ├── base.py      # PromptTemplate base class
+│   │   ├── entity_extraction.py
+│   │   ├── topic_analysis.py
+│   │   ├── emotion_analysis.py
+│   │   ├── concept_extraction.py
+│   │   ├── summarization.py
+│   │   └── text_quality.py
+│   └── schemas/         # Individual response schemas (direct import)
+│       ├── entity_extraction.py
+│       ├── topic_analysis.py
+│       ├── emotion_analysis.py
+│       ├── concept_extraction.py
+│       ├── summarization.py
+│       └── text_quality.py
+├── data/                 # Data acquisition & processing
+│   ├── download/        # Download modules
+│   │   ├── text.py     # Archive downloads (ZenodoDownloader)
+│   │   └── images.py   # Image downloads (ImageDownloader)
+│   ├── parser/         # XML parsers
+│   │   ├── alto.py    # ALTO fulltext parser
+│   │   └── mets.py    # METS metadata parser
+│   ├── utils/         # Data utilities
+│   │   ├── fixes.py  # DataFixer for corrections
+│   │   └── text.py   # Text utilities
+│   ├── loading.py    # DataLoader (main parsing)
+│   └── preprocessing.py # Text normalization
+├── cli/               # Command-line interface
+│   ├── data/         # Data management commands (modular)
+│   │   ├── commands.py    # Main group registration
+│   │   ├── download.py    # download, unpack, verify
+│   │   ├── images.py      # download-images
+│   │   ├── info.py        # info, list-sources
+│   │   ├── loading.py     # parse, aggregate, find-empty
+│   │   ├── preprocessing.py # preprocess
+│   │   └── common.py      # Shared constants
+│   ├── analyze.py     # Analysis commands
+│   └── main.py        # CLI entry point
+├── analysis/          # Analysis modules
+│   ├── concepts/     # Concept extraction
+│   ├── embeddings/   # Embedding generation
+│   ├── emotions/     # Emotion analysis
+│   ├── entities/     # Entity extraction
+│   ├── layout/       # Layout analysis
+│   ├── topics/       # Topic modeling
+│   └── query/        # Query engine for analysis
+│       ├── engine.py    # DuckDB query engine
+│       └── examples.py  # Usage examples
+├── utils/             # Lean utilities (infrastructure only)
+│   ├── config.py     # DEPRECATED: compatibility shim
+│   └── sources.py    # Source configuration
+└── ui/                # User interface (if any)
+```
 
 ### CLI Commands (Click)
 All commands follow: `newspaper-explorer {group} {command} --option value`
 
-**Data commands** (in `cli/data.py`):
-- `download --source der_tag` - Download from Zenodo
-- `load --source der_tag` - Parse XML to Parquet
-- `sources` - List available sources
-- `load-status --source der_tag` - Check processing status
-- `status` - Show download/extraction status
+**Data commands** (modular structure in `cli/data/`):
+- `download` - Download archives from Zenodo
+- `unpack --source <name>` - Extract downloaded archives
+- `parse --source <name>` - Parse XML to Parquet
+- `aggregate --source <name>` - Aggregate lines into text blocks
+- `info --source <name>` - Show comprehensive source status
+- `list-sources` - List available sources
+- `download-images --source <name>` - Download page images
+- `find-empty --source <name>` - Find empty XML files
+- `preprocess --source <name>` - Preprocess text data
+- `verify` - Verify checksums
 
 ### Configuration Management
 ```python
-from newspaper_explorer.utils.config import get_config
+from newspaper_explorer.config.base import get_config
 
 config = get_config()
 # Paths: data_dir, download_dir, sources_dir, results_dir
 # All configurable via .env (defaults to data/)
 ```
 
+### LLM Usage with Metadata
+```python
+from newspaper_explorer.llm.client import LLMClient
+from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
+from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
+
+# Get prompt template (direct import, no wrapper)
+prompt = ENTITY_EXTRACTION
+
+# Format with text and metadata for better context
+metadata = {
+    "source": "Der Tag",
+    "newspaper_title": "Der Tag",
+    "date": "1920-01-15",
+    "year_volume": "1920/15",
+    "page_number": 3,
+}
+prompts = prompt.format(text="...", metadata=metadata)
+
+# Make LLM request
+with LLMClient() as client:
+    response = client.complete(
+        prompt=prompts["user"],
+        system_prompt=prompts["system"],
+        response_schema=EntityResponse,
+    )
+```
+
+**Metadata Support**: All prompts accept optional metadata dict with fields:
+- `source` - Source identifier (e.g., "der_tag")
+- `newspaper_title` - Full newspaper title (e.g., "Der Tag")
+- `date` - Publication date (ISO format: "1920-01-15")
+- `year_volume` - Year and volume info
+- `page_number` - Page number in the issue
+- Any custom fields relevant to the analysis
+
+Prompts with `include_metadata=True` automatically append context section.
+
+**Direct Imports**: No wrapper files - import prompts and schemas directly from their modules.
+
 ### Working with DataFrames (Polars, NOT Pandas)
 ```python
-from newspaper_explorer.data.loading import DataLoader
+from newspaper_explorer.data.loading.loader import DataLoader
 
 # Load via source name (recommended)
 loader = DataLoader(source_name="der_tag")
@@ -198,8 +314,37 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 **Example**: When we moved from path-based to source-based loading, we completely replaced the CLI interface. The old `newspaper-explorer data load <path>` was removed in favor of `newspaper-explorer data load --source <name>`. No compatibility mode, no warnings, clean break.
 
 ## Key Files to Reference
+
+### Configuration & Data
 - `data/sources/der_tag.json` - Source configuration example
-- `data/loading.py` - Configuration-driven loading pattern
-- `data/utils/alto_parser.py` - XML parsing with dataclasses
-- `cli/data.py` - CLI command patterns with Click
+- `data/loading/loader.py` - Main DataLoader class
+- `data/loading/workers.py` - Parallel processing workers
+- `data/loading/aggregation.py` - Text aggregation utilities
+- `data/download/text.py` - Archive download (ZenodoDownloader)
+- `data/download/images.py` - Image download (ImageDownloader)
+- `data/parser/alto.py` - ALTO XML parsing with dataclasses
+- `data/parser/mets.py` - METS metadata extraction
+- `data/preprocessing.py` - Text normalization pipeline
+- `data/utils/fixes.py` - DataFixer for automatic error correction
+- `data/utils/validation.py` - Data quality validation utilities
+
+### CLI
+- `cli/data/commands.py` - Main data command group registration
+- `cli/data/download.py` - Download & unpack commands
+- `cli/data/images.py` - Image download command
+- `cli/data/loading.py` - Parse, aggregate, find-empty commands
+- `cli/data/info.py` - Info & list-sources commands (with image status)
+- `cli/data/preprocessing.py` - Preprocess command
+- `cli/data/common.py` - Shared CLI constants
+
+### Analysis
+- `analysis/query/engine.py` - DuckDB query engine for analysis results
+- `analysis/query/examples.py` - Query usage examples
+
+### Documentation
 - `docs/DATA_LOADER.md` - Detailed loading architecture
+- `docs/CLI_REFACTORING.md` - CLI modular structure
+- `docs/OUTPUT_STANDARDS.md` - Output handling guidelines
+- `docs/IMAGES.md` - Image download documentation
+- `docs/QUERY_ARCHITECTURE.md` - Query engine documentation
+- `docs/LLM.md` - Complete LLM utilities guide (client, prompts, schemas, metadata)

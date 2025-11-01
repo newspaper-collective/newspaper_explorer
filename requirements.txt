@@ -9,6 +9,28 @@ pyarrow>=15.0.0
 duckdb>=0.9.0
 pydantic>=2.0.0
 
-# Development Dependencies (install with: pip install -r requirements.txt -r requirements-dev.txt)
-# Or install everything with: pip install -e ".[dev]"
-# Or use uv: uv pip install -e ".[dev]"
+# Optional Dependencies
+# Install specific feature sets as needed:
+#
+# For NLP features (text processing, sentence splitting, lemmatization):
+#   pip install -e ".[nlp]"
+#   Includes: spacy, germalemma, unidecode
+#
+# For text normalization (historical German):
+#   pip install -e ".[normalize]"
+#   Includes: transformers, torch
+#
+# For analysis features (entity extraction, topic modeling, emotions):
+#   pip install -e ".[analysis]"
+#   Includes: openai, anthropic, gliner, bertopic, sentence-transformers
+#
+# For UI features (Streamlit web interface):
+#   pip install -e ".[ui]"
+#   Includes: streamlit, plotly, pandas
+#
+# For everything:
+#   pip install -e ".[all]"
+#
+# For development:
+#   pip install -e ".[dev]"
+#   Or: pip install -r requirements.txt -r requirements-dev.txt

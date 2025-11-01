@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from newspaper_explorer.data.loading import DataLoader
-from newspaper_explorer.data.utils.alto_parser import ALTOParser, TextLine
+from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.parser.alto import ALTOParser, TextLine
 
 
 class TestTextLine:

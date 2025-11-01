@@ -13,8 +13,8 @@ import polars as pl
 
 from newspaper_explorer.analysis.entities.llm_extraction import extract_entities_llm
 from newspaper_explorer.analysis.entities.gliner_extraction import extract_entities_gliner
-from newspaper_explorer.utils.queries import QueryEngine
-from newspaper_explorer.utils.config import get_config
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

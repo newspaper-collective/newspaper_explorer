@@ -16,12 +16,12 @@ from typing import Dict, List, Optional
 import polars as pl
 from tqdm import tqdm
 
-from newspaper_explorer.data.loading import DataLoader
-from newspaper_explorer.utils.config import get_config
-from newspaper_explorer.utils.llm import LLMClient, LLMRetryError, LLMValidationError
-from newspaper_explorer.utils.prompts import get_prompt
-from newspaper_explorer.utils.queries import create_result_metadata
-from newspaper_explorer.utils.schemas import EntityResponse
+from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.llm.client import LLMClient, LLMRetryError, LLMValidationError
+from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
+from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
+from newspaper_explorer.analysis.query.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -68,24 +68,27 @@ class LLMEntityExtractor:
         self.config = config
 
         # Get prompt template
-        self.prompt_template = get_prompt("entity_extraction")
+        self.prompt_template = ENTITY_EXTRACTION
 
         logger.info(f"Initialized LLMEntityExtractor for '{source_name}'")
         logger.info(f"Model: {model_name}, Temperature: {temperature}")
 
-    def extract_from_text(self, text: str, line_id: str) -> Optional[Dict]:
+    def extract_from_text(
+        self, text: str, line_id: str, metadata: Optional[Dict] = None
+    ) -> Optional[Dict]:
         """
         Extract entities from a single text.
 
         Args:
             text: Text content to analyze.
             line_id: Unique line identifier.
+            metadata: Optional metadata dict (source, date, newspaper_title, etc.)
 
         Returns:
             Dictionary with line_id and extracted entities, or None on failure.
         """
-        # Format prompt
-        prompts = self.prompt_template.format(text=text)
+        # Format prompt with optional metadata
+        prompts = self.prompt_template.format(text=text, metadata=metadata)
 
         # Make LLM request with validation
         with LLMClient(
@@ -175,8 +178,14 @@ class LLMEntityExtractor:
             if not text or len(text.strip()) < 50:
                 continue
 
-            # Extract entities
-            records = self.extract_from_text(text, line_id)
+            # Build metadata from row if available
+            metadata = {}
+            for field in ["source", "newspaper_title", "date", "year_volume", "page_number"]:
+                if field in row and row[field]:
+                    metadata[field] = row[field]
+
+            # Extract entities with metadata
+            records = self.extract_from_text(text, line_id, metadata=metadata if metadata else None)
 
             if records:
                 all_records.extend(records)

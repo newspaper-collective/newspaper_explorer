@@ -1,8 +1,8 @@
 # Query Architecture Implementation Summary
 
-## What We Built
+## What This Is
 
-A **DuckDB-based query layer** that solves all your data access challenges:
+A **DuckDB-based query engine** in `analysis/query/` that solves data access challenges:
 
 ✅ **Query multi-GB Parquet files** without loading into memory  
 ✅ **Maintain source attribution** via `line_id` foreign keys  
@@ -109,7 +109,7 @@ Every result row has `line_id` foreign key back to source:
 ### Find All Entity Mentions
 
 ```python
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     mentions = qe.find_entity_mentions(
@@ -170,7 +170,7 @@ with QueryEngine() as qe:
 
 ```python
 from fastapi import FastAPI
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 app = FastAPI()
 qe = QueryEngine(source="der_tag", in_memory=False)
@@ -190,7 +190,7 @@ def get_line(line_id: str):
 
 ```python
 import streamlit as st
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 st.title("Newspaper Explorer")
 
@@ -255,7 +255,7 @@ pip install duckdb
 Import and query:
 
 ```python
-from newspaper_explorer.utils.queries import QueryEngine
+from newspaper_explorer.analysis.query.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     results = qe.find_entity_mentions("Berlin")

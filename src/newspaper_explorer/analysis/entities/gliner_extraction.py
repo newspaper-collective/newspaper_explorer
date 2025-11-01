@@ -17,10 +17,10 @@ import torch
 from gliner import GLiNER
 from tqdm import tqdm
 
-from newspaper_explorer.data.loading import DataLoader
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.loading.loader import DataLoader
 from newspaper_explorer.data.utils.text import normalize_german_text
-from newspaper_explorer.utils.config import get_config
-from newspaper_explorer.utils.queries import create_result_metadata
+from newspaper_explorer.analysis.query.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 

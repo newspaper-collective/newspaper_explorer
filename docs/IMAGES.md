@@ -14,7 +14,7 @@ The directory structure mirrors the XML organization, making it easy to correlat
 
 ### ImageDownloader Class
 
-Located in `data/utils/images.py`, the `ImageDownloader` handles:
+Located in `data/images.py`, the `ImageDownloader` handles:
 
 1. **METS File Discovery** - Finds all METS XML files (non-fulltext)
 2. **URL Extraction** - Parses MAX fileGrp for maximum resolution image URLs
@@ -55,7 +55,7 @@ newspaper-explorer data download-images --source der_tag --max-retries 5
 ### Programmatic Usage
 
 ```python
-from newspaper_explorer.data.utils.images import ImageDownloader
+from newspaper_explorer.data.images import ImageDownloader
 
 # Initialize downloader
 downloader = ImageDownloader(
