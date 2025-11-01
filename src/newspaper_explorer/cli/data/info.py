@@ -290,5 +290,121 @@ def register_info_commands(data_group):
         click.echo()
         click.echo("Tip: Use 'newspaper-explorer data info --source <name>' to see status")
 
+    @data_group.command("check-completeness")
+    @click.option(
+        "--source",
+        "-s",
+        type=str,
+        required=True,
+        help="Source name (e.g., der_tag)",
+    )
+    @click.option(
+        "--save-report",
+        type=click.Path(),
+        default=None,
+        help="Save list of missing files to a report file",
+    )
+    def check_completeness(source, save_report):
+        """
+        Check completeness of downloaded files against METS references.
+
+        Checks that all images and ALTO XML files referenced in METS files
+        have been successfully downloaded. Reports missing files.
+
+        \b
+        Examples:
+          newspaper-explorer data check-completeness --source der_tag
+          newspaper-explorer data check-completeness --source der_tag --save-report missing_files.txt
+        """
+        import logging
+
+        from newspaper_explorer.data.utils.validation import verify_mets_completeness
+
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
+
+        try:
+            click.echo(f"Verifying completeness for source: {source}\n")
+
+            result = verify_mets_completeness(source)
+
+            click.echo("\n" + "=" * 60)
+            click.echo("COMPLETENESS VERIFICATION SUMMARY")
+            click.echo("=" * 60)
+            click.echo(f"METS files checked: {result['mets_files_checked']}\n")
+
+            click.echo("IMAGES:")
+            click.echo(f"  Expected:  {result['images_expected']}")
+            click.echo(f"  Found:     {result['images_found']}")
+            click.echo(f"  Missing:   {result['images_missing']}")
+            if result["images_expected"] > 0:
+                coverage = result["images_found"] / result["images_expected"] * 100
+                click.echo(f"  Coverage:  {coverage:.1f}%")
+
+            click.echo("\nALTO XML FILES:")
+            click.echo(f"  Expected:  {result['alto_expected']}")
+            click.echo(f"  Found:     {result['alto_found']}")
+            click.echo(f"  Missing:   {result['alto_missing']}")
+            if result["alto_expected"] > 0:
+                coverage = result["alto_found"] / result["alto_expected"] * 100
+                click.echo(f"  Coverage:  {coverage:.1f}%")
+
+            click.echo("=" * 60)
+
+            # Show sample of missing files
+            if result["images_missing"] > 0:
+                click.echo("\nSample of missing images (first 10):")
+                for path in result["missing_images_list"][:10]:
+                    click.echo(f"  - {path}")
+                if len(result["missing_images_list"]) > 10:
+                    remaining = len(result["missing_images_list"]) - 10
+                    click.echo(f"  ... and {remaining} more")
+
+            if result["alto_missing"] > 0:
+                click.echo("\nSample of missing ALTO files (first 10):")
+                for path in result["missing_alto_list"][:10]:
+                    click.echo(f"  - {path}")
+                if len(result["missing_alto_list"]) > 10:
+                    remaining = len(result["missing_alto_list"]) - 10
+                    click.echo(f"  ... and {remaining} more")
+
+            # Save report if requested
+            if save_report:
+                with open(save_report, "w") as f:
+                    f.write("# File Completeness Report\n")
+                    f.write(f"# Source: {source}\n\n")
+
+                    f.write("## Missing Images\n")
+                    f.write(f"# Total: {result['images_missing']}\n")
+                    for path in result["missing_images_list"]:
+                        f.write(f"{path}\n")
+
+                    f.write("\n## Missing ALTO Files\n")
+                    f.write(f"# Total: {result['alto_missing']}\n")
+                    for path in result["missing_alto_list"]:
+                        f.write(f"{path}\n")
+
+                click.echo(f"\nMissing files report saved to: {save_report}")
+
+            # Summary message
+            total_missing = result["images_missing"] + result["alto_missing"]
+            if total_missing > 0:
+                click.echo(
+                    f"\n⚠ Warning: {total_missing} files are missing!",
+                    err=True,
+                )
+            else:
+                click.echo("\n✓ All referenced files are present!")
+
+        except Exception as e:
+            click.echo(f"\nError: {e}", err=True)
+            import traceback
+
+            traceback.print_exc()
+            raise click.Abort()
+
     # Register the command
     data_group.command("list-sources")(list_sources)

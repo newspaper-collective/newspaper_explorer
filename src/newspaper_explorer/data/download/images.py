@@ -1,6 +1,6 @@
 """
 Image downloader for newspaper page scans.
-Downloads high-resolution images from METS XML references.
+Downloads high-resolution images from METS XML references with validation.
 """
 
 import logging
@@ -17,6 +17,7 @@ from natsort import natsorted
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.validation import validate_image_file
 from newspaper_explorer.utils.sources import load_source_config
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class ImageDownloader:
         max_workers: int = 8,
         max_retries: int = 3,
         timeout: int = 30,
+        validate: bool = True,
+        min_image_size: int = 1024,
     ):
         """
         Initialize image downloader.
@@ -54,11 +57,15 @@ class ImageDownloader:
             max_workers: Maximum parallel download threads
             max_retries: Maximum retry attempts for failed downloads
             timeout: Request timeout in seconds
+            validate: Whether to validate downloaded images (default: True)
+            min_image_size: Minimum expected image size in bytes (default: 1KB)
         """
         self.source_name = source_name
         self.max_workers = max_workers
         self.max_retries = max_retries
         self.timeout = timeout
+        self.validate = validate
+        self.min_image_size = min_image_size
 
         # Load source configuration
         self.config = load_source_config(source_name)
@@ -74,6 +81,7 @@ class ImageDownloader:
         logger.info(f"Initialized ImageDownloader for '{source_name}'")
         logger.info(f"XML directory: {self.xml_dir}")
         logger.info(f"Images directory: {self.images_dir}")
+        logger.info(f"Validation: {'enabled' if self.validate else 'disabled'}")
 
     def find_mets_files(self) -> List[Path]:
         """
@@ -166,7 +174,7 @@ class ImageDownloader:
 
     def _download_single_image(self, url: str, save_path: Path, img_id: str) -> Dict[str, Any]:
         """
-        Download a single image with retry logic.
+        Download a single image with retry logic and validation.
 
         Args:
             url: Image URL
@@ -174,16 +182,35 @@ class ImageDownloader:
             img_id: Image identifier
 
         Returns:
-            Result dictionary with status
+            Result dictionary with status and validation info
         """
-        # Skip if already exists
+        # Skip if already exists and is valid
         if save_path.exists():
-            return {
-                "success": True,
-                "skipped": True,
-                "filename": save_path.name,
-                "id": img_id,
-            }
+            # Optionally validate existing file
+            if self.validate:
+                validation = validate_image_file(save_path, self.min_image_size)
+                if not validation.is_valid:
+                    logger.warning(
+                        f"Existing file {save_path.name} failed validation: {validation.error}"
+                    )
+                    # Remove invalid file and re-download
+                    save_path.unlink()
+                else:
+                    return {
+                        "success": True,
+                        "skipped": True,
+                        "filename": save_path.name,
+                        "id": img_id,
+                        "validated": True,
+                    }
+            else:
+                return {
+                    "success": True,
+                    "skipped": True,
+                    "filename": save_path.name,
+                    "id": img_id,
+                    "validated": False,
+                }
 
         # Retry loop
         last_error = None
@@ -199,11 +226,32 @@ class ImageDownloader:
 
                 temp_path.rename(save_path)
 
+                # Validate downloaded image if enabled
+                if self.validate:
+                    validation = validate_image_file(save_path, self.min_image_size)
+                    if not validation.is_valid:
+                        # Remove invalid file
+                        save_path.unlink()
+                        last_error = f"Validation failed: {validation.error}"
+                        if attempt < self.max_retries - 1:
+                            time.sleep(1 * (attempt + 1))
+                            continue
+                        # Final attempt failed
+                        return {
+                            "success": False,
+                            "skipped": False,
+                            "filename": save_path.name,
+                            "id": img_id,
+                            "error": last_error,
+                            "validated": True,
+                        }
+
                 return {
                     "success": True,
                     "skipped": False,
                     "filename": save_path.name,
                     "id": img_id,
+                    "validated": self.validate,
                 }
 
             except Exception as e:
@@ -218,6 +266,7 @@ class ImageDownloader:
             "filename": save_path.name,
             "id": img_id,
             "error": last_error,
+            "validated": False,
         }
 
     def download_images(self, mets_files: Optional[List[Path]] = None) -> Dict[str, int]:
@@ -341,4 +390,78 @@ class ImageDownloader:
             "total_images_expected": total_expected,
             "images_downloaded": downloaded,
             "coverage_pct": coverage_pct,
+        }
+
+    def validate_downloaded_images(self, min_size_bytes: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Validate all downloaded images in the images directory.
+
+        Args:
+            min_size_bytes: Minimum expected image size (uses self.min_image_size if None)
+
+        Returns:
+            Dictionary with validation statistics:
+            - total: Total images checked
+            - valid: Number of valid images
+            - invalid: Number of invalid images
+            - invalid_list: List of (path, error) tuples for invalid images
+        """
+        if min_size_bytes is None:
+            min_size_bytes = self.min_image_size
+
+        if not self.images_dir.exists():
+            logger.warning(f"Images directory not found: {self.images_dir}")
+            return {
+                "total": 0,
+                "valid": 0,
+                "invalid": 0,
+                "invalid_list": [],
+            }
+
+        # Find all image files
+        logger.info(f"Scanning for images in {self.images_dir}")
+        image_files: List[Path] = []
+        for ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
+            image_files.extend(self.images_dir.rglob(f"*{ext}"))
+
+        if not image_files:
+            logger.warning("No image files found")
+            return {
+                "total": 0,
+                "valid": 0,
+                "invalid": 0,
+                "invalid_list": [],
+            }
+
+        logger.info(f"Found {len(image_files)} images to validate")
+
+        valid_count = 0
+        invalid_count = 0
+        invalid_list = []
+
+        # Validate images with progress bar
+        for img_path in tqdm(image_files, desc="Validating images", unit="img"):
+            result = validate_image_file(img_path, min_size_bytes)
+
+            if result.is_valid:
+                valid_count += 1
+            else:
+                invalid_count += 1
+                relative_path = img_path.relative_to(self.images_dir)
+                invalid_list.append((str(relative_path), result.error))
+                logger.debug(f"Invalid image: {relative_path} - {result.error}")
+
+        # Log summary
+        logger.info("=" * 60)
+        logger.info("Validation complete!")
+        logger.info(f"Total images: {len(image_files)}")
+        logger.info(f"Valid: {valid_count}")
+        logger.info(f"Invalid: {invalid_count}")
+        logger.info("=" * 60)
+
+        return {
+            "total": len(image_files),
+            "valid": valid_count,
+            "invalid": invalid_count,
+            "invalid_list": invalid_list,
         }

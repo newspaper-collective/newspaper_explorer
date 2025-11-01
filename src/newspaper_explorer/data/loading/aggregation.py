@@ -33,9 +33,12 @@ def load_and_aggregate_textblocks(
     All metadata (text_block_id, page_id, date, filename, newspaper_id,
     newspaper_title, year, month, day, and spatial information) is preserved.
 
+
     Args:
         parquet_path: Path to the parquet file
-        group_by: Columns to group by. Default is ["text_block_id", "page_id", "date"]
+        group_by: Columns to group by. Default is ["text_block_id"]
+                  Since text_block_id is globally unique and contains the date,
+                  no additional grouping columns are needed.
         sort_by: Columns to sort by within each group before aggregating.
                  Default is ["y", "x"] to maintain reading order
         save_path: If provided, save the result to this parquet file (overrides auto_save)
@@ -58,6 +61,9 @@ def load_and_aggregate_textblocks(
         >>>
         >>> # Get text blocks for a specific date
         >>> filtered = df.filter(pl.col("date") == "1901-01-08")
+        >>>
+        >>> # Group by text_block_id alone (now safe!)
+        >>> df = load_and_aggregate_textblocks(..., group_by=["text_block_id"])
     """
     parquet_path = Path(parquet_path)
 
@@ -71,8 +77,10 @@ def load_and_aggregate_textblocks(
     logger.info(f"Loaded {len(df)} lines from parquet")
 
     # Set default grouping and sorting
+    # Note: text_block_id is now globally unique (includes page_id prefix),
+    # so no additional grouping columns are needed for uniqueness.
     if group_by is None:
-        group_by = ["text_block_id", "page_id", "date"]
+        group_by = ["text_block_id"]
 
     if sort_by is None:
         sort_by = ["y", "x"]

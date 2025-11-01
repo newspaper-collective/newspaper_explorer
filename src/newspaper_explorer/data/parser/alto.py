@@ -19,13 +19,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TextLine:
-    """Represents a single text line from ALTO XML with enriched metadata"""
+    """
+    Represents a single text line from ALTO XML with enriched metadata.
+
+    Note: text_block_id is globally unique (format: "{page_id}_{original_block_id}"),
+    constructed by prefixing the ALTO XML block ID with the page identifier.
+    This ensures blocks from different pages don't get accidentally merged.
+    """
 
     # Core identifiers
-    line_id: str
-    text: str
-    text_block_id: str
-    filename: str
+    line_id: str  # Format: {filename}_{block_id}_{line_id}
+    text: str  # OCR text content
+    text_block_id: str  # Format: {page_id}_{block_id} (globally unique)
+    filename: str  # Source ALTO XML filename
 
     # Date information
     date: Optional[datetime] = None
@@ -201,6 +207,10 @@ class ALTOParser:
             List of TextLine objects
         """
         try:
+            # Ensure filepath is a Path object
+            if not isinstance(filepath, Path):
+                filepath = Path(filepath)
+
             tree = etree.parse(str(filepath))
             root = tree.getroot()
 
@@ -225,11 +235,23 @@ class ALTOParser:
 
             lines = []
 
+            # Construct page_id once for all lines on this page
+            # Format: YYYY-MM-DD_issue_H_daily_page (e.g., "1901-01-08_006_H_1_001")
+            if date and issue_number and daily_issue_number and page_number:
+                page_id_str = f"{date.strftime('%Y-%m-%d')}_{issue_number:03d}_H_{daily_issue_number}_{page_number:03d}"
+            else:
+                # Fallback: use filename without extension
+                page_id_str = Path(filename).stem
+
             # Find all TextBlocks
             for text_block in root.findall(".//alto:TextBlock", ns):
                 block_id = text_block.get("ID", "")
                 if not block_id:
                     continue
+
+                # Create globally unique text_block_id by prefixing with page_id
+                # This prevents accidental merging of blocks from different pages
+                unique_text_block_id = f"{page_id_str}_{block_id}"
 
                 # Parse each TextLine
                 for text_line_elem in text_block.findall(".//alto:TextLine", ns):
@@ -277,7 +299,7 @@ class ALTOParser:
                         TextLine(
                             line_id=unique_line_id,
                             text=text,
-                            text_block_id=block_id,
+                            text_block_id=unique_text_block_id,  # Now globally unique!
                             filename=filename,
                             date=date,
                             x=safe_int(x),
