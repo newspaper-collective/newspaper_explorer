@@ -3,7 +3,7 @@
 > **Initially created at [culture.explore(data)](https://lab.sbb.berlin/culture-explore-data/) Hackathon**  
 > *7-8 October 2025, Staatsbibliothek zu Berlin*
 
-A comprehensive toolkit for exploring historical newspapers through computational analysis. Built during a two-day hackathon as an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** that combines traditional data analysis with modern AI approaches. **This project serves as a showcase for different computational methods** — from statistical analysis and named entity recognition to topic modeling, layout detection, and LLM-powered insights—demonstrating how diverse approaches can work together on cultural heritage data. It provides researchers with a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated — answering questions not yet asked.
+A comprehensive toolkit for exploring historical newspapers through computational analysis. Built during a two-day hackathon as an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** that combines traditional data analysis with modern AI approaches. This project serves as a showcase for different computational methods, from statistical analysis and named entity recognition to topic modeling, layout detection, and LLM-powered insights, demonstrating how diverse approaches can work together on cultural heritage data. It provides researchers with a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated.
 
 **The Challenge**: Historical newspaper archives contain millions of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing—with no standardized tools connecting the raw data to various analysis methods (statistics, NLP, computer vision, LLMs).
 
@@ -21,7 +21,7 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz and th
 - Extract named entities, analyze topics, and detect emotions in 19th/20th century texts
 - Query multi-gigabyte datasets with SQL without loading them into memory
 - Leverage LLMs for structured information extraction with type-safe outputs
-- Detect headlines, articles, and images with computer vision (YOLOv11)
+- Detect layout components with computer vision (YOLOv11)
 - Track complete data lineage from raw ALTO XML to analysis results
 - Combine multiple analysis methods seamlessly through unified foreign keys
 
@@ -93,8 +93,6 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz and th
 
 ## Installation
 
-### Quick Start (Recommended: uv)
-
 ```bash
 # Install uv if needed
 pip install uv
@@ -112,36 +110,14 @@ uv venv
 source .venv/bin/activate  # Linux/Mac
 # or: .venv\Scripts\Activate.ps1  # Windows PowerShell
 
+# Install with all dependencies
 uv pip install -e .
 
-# Optional: Install additional features
-uv pip install -e ".[nlp]"        # For sentence splitting (spacy)
-uv pip install -e ".[normalize]"  # For text normalization
-uv pip install transformers torch # For entity extraction (GLiNER)
+# Optional: Install development tools
+uv pip install -e ".[dev]"
 ```
 
-### Alternative: pip
-
-```bash
-# Clone the repository
-git clone https://github.com/newspaper-collective/newspaper_explorer.git
-cd newspaper_explorer
-
-# Setup environment
-cp .env.example .env
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-
-# Install
-pip install -e .
-
-# Optional features
-pip install -e ".[nlp]"
-pip install -e ".[normalize]"
-pip install transformers torch
-```
-
-See **[Installation Guide](docs/INSTALL.md)** for detailed instructions, troubleshooting, and optional features.
+See **[Installation Guide](docs/INSTALL.md)** for detailed instructions and troubleshooting.
 
 ---
 
