@@ -5,7 +5,7 @@
 
 A toolkit for exploring historical newspapers through computational analysis. Built during a two-day hackathon as an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** that combines traditional data analysis with modern AI approaches. This project serves as a showcase for different computational methods, from statistical analysis and named entity recognition to topic modeling, layout detection, and LLM-powered insights, demonstrating how diverse approaches can work together on cultural heritage data. It provides researchers with a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated.
 
-**The Challenge**: Historical newspaper archives contain millions of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing—with no standardized tools connecting the raw data to various analysis methods (statistics, NLP, computer vision, LLMs).
+**The Challenge**: Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing—with no standardized tools connecting the raw data to various analysis methods (statistics, NLP, computer vision, LLMs).
 
 **The Solution**: Newspaper Explorer provides a complete pipeline from raw digitized newspapers to actionable insights:
 - **Unified data interface**: Query millions of text lines with SQL, Python, or CLI commands
