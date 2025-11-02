@@ -17,11 +17,11 @@ The layout analysis system provides:
 ```
 analysis/layout/
 ├── detector.py         # YOLOv11 wrapper (library-style, no CLI)
-├── text_matcher.py     # Universal text extraction (NEW - unified approach)
-├── headline_matcher.py # Headline-specific wrapper using TextMatcher
-├── image_extractor.py  # Image + caption extraction using TextMatcher
+├── text_linker.py      # Universal text extraction (DataFrame-based, FAST)
+├── headline_matcher.py # Headline-specific wrapper using TextLinker
+├── image_extractor.py  # Image + caption extraction using TextLinker
 ├── article_builder.py  # Article reconstruction
-├── visualizer.py       # Debug visualizations (NEW)
+├── visualizer.py       # Debug visualizations
 └── schemas.py          # Data schemas
 
 cli/layout.py           # Layout analysis CLI commands
@@ -29,29 +29,35 @@ cli/layout.py           # Layout analysis CLI commands
 
 ## Key Design Decisions
 
-### 1. Unified Text Matching
+### 1. Unified Text Linking (DataFrame-Based)
 
-**Problem**: Extracting OCR text for captions and headlines uses the same technique (bounding box overlap with ALTO XML).
+**Problem**: Extracting OCR text for captions and headlines uses the same technique (bounding box overlap).
 
-**Solution**: Created `TextMatcher` class that works for ANY detection type:
+**Solution**: Created `TextLinker` class that works with pre-parsed DataFrames for FAST batch processing:
 
 ```python
-from newspaper_explorer.analysis.layout.text_matcher import TextMatcher
+from newspaper_explorer.analysis.layout.text_linker import TextLinker
+from newspaper_explorer.data.loading.loader import DataLoader
 
-matcher = TextMatcher(overlap_threshold=0.3)
+# Load parquet ONCE (contains ALL pages)
+df = DataLoader.load_parquet("data/processed/der_tag/text/der_tag_lines.parquet")
 
-# Works for any detection type
-matched_headlines = matcher.match_detections_to_text(
-    detections=headlines,
-    lines_df=lines_df,
-    page_id="1902_01_01_001"
-)
+linker = TextLinker(overlap_threshold=0.3)
 
-matched_captions = matcher.match_detections_to_text(
-    detections=captions,
-    lines_df=lines_df,
-    page_id="1902_01_01_001"
-)
+# Process many pages - NO XML parsing overhead!
+for page_id in page_ids:
+    matched_headlines = linker.link_detections_to_text(
+        detections=headlines,
+        lines_df=df,  # Reuse same DataFrame
+        page_id=page_id
+    )
+    
+    matched_captions = linker.link_detections_to_text(
+        detections=captions,
+        lines_df=df,
+        page_id=page_id
+    )
+
 ```
 
 ### 2. Visualization for Debugging

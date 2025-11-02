@@ -1,9 +1,15 @@
 ## Current Priorities
 - update pyproject.toml
 - update requirements.txt and requirements-dev.txt
+- unify ids, generation and usage, more linability
+- remove emojis from cli
+- unifiy output styling
 
+- remove newspaper subtitle
 
 ### Data Issues
+- Images need fixing too
+
 - **Data integrity: Mixed issues in same directory**
   - 12 directories have ALTO files from multiple issues mixed together (0.09% of data)
   - Example: `1901/03/19/01` has issue 103 METS but contains ALTO files from both 103 and 104
@@ -21,3 +27,11 @@
 - CLI option to cleanup downloads
 - Page Classification using DONUT -> Detect Ads?
 - Update EntityExtractor to use preprocessed data (remove inline normalization)
+
+
+
+]Skipping 3074409X_1901-07-14_000_297_H_1_-01.xml: Missing required ID components (date=None, issue=None, daily=None, page=None)
+
+Transkribus OCR -> Problem with alto-export
+
+- validate xml files

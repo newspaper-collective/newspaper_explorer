@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_file_worker(
-    filepath: str, mets_cache: Optional[Dict[str, Dict]] = None
+    filepath: str, source_name: str, mets_cache: Optional[Dict[str, Dict]] = None
 ) -> tuple[List[Dict], bool]:
     """
     Worker function for parallel processing with METS enrichment.
@@ -26,6 +26,7 @@ def parse_file_worker(
 
     Args:
         filepath: Path to ALTO XML file
+        source_name: Source identifier (e.g., "der_tag")
         mets_cache: Optional cache of already-parsed METS metadata
 
     Returns:
@@ -53,7 +54,6 @@ def parse_file_worker(
                         "year_volume": issue_metadata.year_volume,
                         "page_count": issue_metadata.page_count,
                         "newspaper_title": issue_metadata.newspaper_title,
-                        "newspaper_subtitle": issue_metadata.newspaper_subtitle,
                     }
                     # Cache for this worker
                     if mets_cache is not None:
@@ -61,7 +61,9 @@ def parse_file_worker(
 
         # Parse ALTO file with METS metadata
         alto_parser = ALTOParser()
-        lines = alto_parser.parse_file(filepath_obj, mets_metadata=mets_metadata)
+        lines = alto_parser.parse_file(
+            filepath_obj, source_name=source_name, mets_metadata=mets_metadata
+        )
 
         return [line.model_dump() for line in lines], True
 
@@ -90,7 +92,6 @@ def parse_mets_worker(mets_path: str) -> tuple[str, Optional[Dict]]:
                 "year_volume": issue_metadata.year_volume,
                 "page_count": issue_metadata.page_count,
                 "newspaper_title": issue_metadata.newspaper_title,
-                "newspaper_subtitle": issue_metadata.newspaper_subtitle,
             }
             return mets_path, metadata
         return mets_path, None

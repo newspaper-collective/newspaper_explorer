@@ -17,16 +17,16 @@ from newspaper_explorer.analysis.layout.schemas import (
     Headline,
     PageLayout,
 )
-from newspaper_explorer.analysis.layout.alto_linker import ALTOLinker
+from newspaper_explorer.analysis.layout.text_linker import TextLinker
 
 logger = logging.getLogger(__name__)
 
 
 class HeadlineMatcher:
     """
-    Matches detected headlines to OCR text content from ALTO XML.
+    Matches detected headlines to OCR text content.
 
-    This is a specialized wrapper around ALTOLinker for headlines.
+    This is a specialized wrapper around TextLinker for headlines.
     """
 
     def __init__(
@@ -41,7 +41,7 @@ class HeadlineMatcher:
             overlap_threshold: Minimum IoU for matching (0.0-1.0)
             min_confidence: Minimum detection confidence to consider
         """
-        self.alto_linker = ALTOLinker(
+        self.text_linker = TextLinker(
             overlap_threshold=overlap_threshold,
             min_confidence=min_confidence,
         )
@@ -54,16 +54,14 @@ class HeadlineMatcher:
     def match_headlines(
         self,
         page_layout: PageLayout,
-        alto_xml_path: Optional[Path] = None,
-        lines_df: Optional[pl.DataFrame] = None,
+        lines_df: pl.DataFrame,
     ) -> List[Headline]:
         """
-        Match headline detections to OCR text from ALTO XML.
+        Match headline detections to OCR text from pre-parsed DataFrame.
 
         Args:
             page_layout: PageLayout with detected headlines
-            alto_xml_path: Path to ALTO XML file (optional if lines_df provided)
-            lines_df: Optional Polars DataFrame with parsed lines (faster)
+            lines_df: Polars DataFrame with parsed lines from parquet
 
         Returns:
             List of Headline objects with matched text
@@ -74,10 +72,9 @@ class HeadlineMatcher:
 
         logger.debug(f"Matching {len(page_layout.headlines)} headlines in {page_layout.page_id}")
 
-        # Use ALTOLinker to extract text for headlines
-        matched_detections = self.alto_linker.link_detections_to_text(
+        # Use TextLinker to extract text for headlines
+        matched_detections = self.text_linker.link_detections_to_text(
             detections=page_layout.headlines,
-            alto_xml_path=alto_xml_path,
             lines_df=lines_df,
             page_id=page_layout.page_id,
         )

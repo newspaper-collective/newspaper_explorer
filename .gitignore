@@ -217,6 +217,8 @@ data/downloads/*.zip
 data/extracted/
 data/processed/
 data/raw/
+models/
+!models/.gitkeep
 !data/downloads/.gitkeep
 !data/extracted/.gitkeep
 !data/processed/.gitkeep

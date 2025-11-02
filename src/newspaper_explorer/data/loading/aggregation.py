@@ -30,7 +30,7 @@ def load_and_aggregate_textblocks(
     The output will be saved to data/processed/{source_name}/text/textblocks.parquet
     (unless save_path is explicitly provided or auto_save is False).
 
-    All metadata (text_block_id, page_id, date, filename, newspaper_id,
+    All metadata (text_block_id, page_id, date, filename,
     newspaper_title, year, month, day, and spatial information) is preserved.
 
 
@@ -113,7 +113,6 @@ def load_and_aggregate_textblocks(
             pl.col("y").max().alias("max_y"),
             # Keep other metadata (take first value from group)
             pl.col("filename").first().alias("filename"),
-            pl.col("newspaper_id").first().alias("newspaper_id"),
             pl.col("newspaper_title").first().alias("newspaper_title"),
             pl.col("year").first().alias("year"),
             pl.col("month").first().alias("month"),

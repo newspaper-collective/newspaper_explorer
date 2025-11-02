@@ -31,6 +31,40 @@ class DataLoader:
 
     Configuration-driven: loads source metadata from JSON files.
 
+    Output DataFrame Schema:
+        The loader produces line-level data with the following columns:
+
+        Primary Key:
+            line_id (str): Unique line identifier
+                Format: {source}_{date}_{issue}_{daily}_{page}_{block}_{line}
+                Example: "3074409-X_1902-09-05_415_2_005_TB_1_TL_1"
+
+        Foreign Keys (for linking and querying):
+            source_id (str): Source identifier (e.g., "3074409-X" for ZDB, or "der_tag")
+            issue_id (str): Issue identifier
+                Format: {source}_{date}_{issue}_{daily}
+                Example: "3074409-X_1902-09-05_415_2"
+            page_id (str): Page identifier
+                Format: {issue_id}_{page}
+                Example: "3074409-X_1902-09-05_415_2_005"
+            text_block_id (str): Text block identifier
+                Format: {page_id}_{block_id}
+                Example: "3074409-X_1902-09-05_415_2_005_TB_1"
+
+        Data Columns:
+            text (str): OCR text content
+            filename (str): Source ALTO XML filename
+            date (datetime): Publication date
+            x, y, width, height (int): Layout coordinates
+
+        Metadata (denormalized for convenience):
+            issue_number (int): Issue number from filename
+            daily_issue_number (int): Daily issue number (2nd issue that day)
+            page_number (int): Page number
+            year_volume (str): Year volume from METS (e.g., "Jahrgang 1902")
+            page_count (int): Total pages in issue from METS
+            newspaper_title (str): Newspaper title from METS (e.g., "Der Tag")
+
     Note: For source configuration utilities (list sources, load config, get paths),
     import directly from newspaper_explorer.utils.sources module.
 
@@ -38,6 +72,10 @@ class DataLoader:
         >>> from newspaper_explorer.data.loading.loader import DataLoader
         >>> loader = DataLoader(source_name="der_tag")
         >>> df = loader.load_source()
+        >>> # Filter by issue
+        >>> issue_df = df.filter(pl.col("issue_id") == "3074409-X_1902-09-05_415_2")
+        >>> # Filter by source
+        >>> source_df = df.filter(pl.col("source_id") == "3074409-X")
     """
 
     def __init__(self, source_name: Optional[str] = None, max_workers: Optional[int] = None):
@@ -248,11 +286,27 @@ class DataLoader:
 
         all_lines = []
 
+        # Verify we have source_name
+        if not self.source_name:
+            raise RuntimeError(
+                "source_name is required for ID generation. "
+                "Initialize DataLoader with source_name parameter."
+            )
+
+        # Determine source ID for ID generation (prefer zdb_source_id, fallback to source_name)
+        source_id = self.source_name
+        if self.config_data and self.config_data.metadata.zdb_source_id:
+            source_id = self.config_data.metadata.zdb_source_id
+            logger.info(f"Using ZDB source ID for ID generation: {source_id}")
+        else:
+            logger.info(f"Using source name for ID generation: {source_id}")
+
         # Process files in parallel with METS cache
         logger.info("Processing ALTO XML files in parallel...")
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
-                executor.submit(parse_file_worker, str(fp), mets_cache): fp for fp in xml_files
+                executor.submit(parse_file_worker, str(fp), source_id, mets_cache): fp
+                for fp in xml_files
             }
 
             for future in tqdm(as_completed(futures), total=len(futures), desc="Parsing XML files"):
@@ -382,6 +436,7 @@ class DataLoader:
         self,
         filepaths: List[Path],
         output_parquet: Optional[Path] = None,
+        source_name: Optional[str] = None,
     ) -> pl.DataFrame:
         """
         Load specific ALTO XML files in parallel.
@@ -389,17 +444,36 @@ class DataLoader:
         Args:
             filepaths: List of paths to ALTO XML files
             output_parquet: If provided, save result to Parquet file
+            source_name: Source identifier (defaults to self.source_name)
 
         Returns:
             Polars DataFrame with line-level data
         """
         logger.info(f"Loading {len(filepaths)} ALTO XML files")
 
+        # Use provided source_name or fall back to instance source_name
+        src = source_name or self.source_name
+        if not src:
+            raise RuntimeError(
+                "source_name is required for ID generation. "
+                "Provide source_name parameter or initialize DataLoader with source_name."
+            )
+
+        # Determine source ID for ID generation (prefer zdb_source_id if available)
+        source_id = src
+        if self.config_data and self.config_data.metadata.zdb_source_id:
+            source_id = self.config_data.metadata.zdb_source_id
+            logger.info(f"Using ZDB source ID for ID generation: {source_id}")
+        else:
+            logger.info(f"Using source name for ID generation: {source_id}")
+
         all_lines = []
 
         # Process files in parallel
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {executor.submit(parse_file_worker, str(fp)): fp for fp in filepaths}
+            futures = {
+                executor.submit(parse_file_worker, str(fp), source_id): fp for fp in filepaths
+            }
 
             for future in tqdm(as_completed(futures), total=len(futures), desc="Parsing XML files"):
                 lines_dicts, success = future.result()

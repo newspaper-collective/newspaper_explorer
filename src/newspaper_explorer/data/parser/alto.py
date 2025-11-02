@@ -14,6 +14,14 @@ from lxml import etree
 from lxml.etree import _Element
 from pydantic import BaseModel, computed_field
 
+from newspaper_explorer.data.utils.ids import (
+    generate_issue_id,
+    generate_line_id,
+    generate_page_id,
+    generate_source_id,
+    generate_text_block_id,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,15 +29,21 @@ class TextLine(BaseModel):
     """
     Represents a single text line from ALTO XML with enriched metadata.
 
-    Note: text_block_id is globally unique (format: "{page_id}_{original_block_id}"),
-    constructed by prefixing the ALTO XML block ID with the page identifier.
-    This ensures blocks from different pages don't get accidentally merged.
+    Note: Uses unified ID system with proper foreign key hierarchy:
+    source_id -> issue_id -> page_id -> text_block_id -> line_id
     """
 
-    # Core identifiers
-    line_id: str  # Format: {filename}_{block_id}_{line_id}
+    # Primary key and data
+    line_id: str  # PRIMARY: {source}_{date}_{issue}_{daily}_{page}_{block}_{line}
     text: str  # OCR text content
-    text_block_id: str  # Format: {page_id}_{block_id} (globally unique)
+
+    # Foreign keys (for linking and querying)
+    source_id: str  # FK: Source identifier (e.g., "der_tag")
+    issue_id: str  # FK: {source}_{date}_{issue}_{daily}
+    page_id: str  # FK: {source}_{date}_{issue}_{daily}_{page}
+    text_block_id: str  # FK: {page_id}_{block_id}
+
+    # Original reference (for debugging)
     filename: str  # Source ALTO XML filename
 
     # Date information
@@ -41,48 +55,27 @@ class TextLine(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
 
-    # From filename parsing
-    newspaper_id: Optional[str] = None  # e.g., "3074409X"
+    # From filename parsing (denormalized for convenience)
     issue_number: Optional[int] = None  # from filename (may differ from METS)
     daily_issue_number: Optional[int] = None  # Number after H (2nd issue that day)
     page_number: Optional[int] = None  # Last number in filename (e.g., 005)
 
-    # From METS metadata
+    # From METS metadata (denormalized for convenience)
     year_volume: Optional[str] = None  # e.g., "Jahrgang 1902"
     page_count: Optional[int] = None  # Total pages in issue
     newspaper_title: Optional[str] = None  # e.g., "Der Tag"
-    newspaper_subtitle: Optional[str] = None
 
-    @property
-    @computed_field
-    def page_id(self) -> Optional[str]:
-        """
-        Construct unique page identifier from date, issue, and page number.
-        Format: YYYY-MM-DD_issue_H_page (e.g., "1901-01-08_21_H_1_005")
-        Falls back to filename without .xml extension if date is missing.
-        """
-        if self.date and self.issue_number and self.daily_issue_number and self.page_number:
-            date_str = self.date.strftime("%Y-%m-%d")
-            return f"{date_str}_{self.issue_number:03d}_H_{self.daily_issue_number}_{self.page_number:03d}"
-        elif self.filename:
-            # Fallback: use filename without extension
-            return Path(self.filename).stem
-        return None
-
-    @property
     @computed_field
     def year(self) -> Optional[int]:
         """Extract year from date"""
         return self.date.year if self.date else None
 
-    @property
     @computed_field
     def month(self) -> Optional[int]:
         """Extract month from date"""
         return self.date.month if self.date else None
 
-    @property
-    @computed_field  
+    @computed_field
     def day(self) -> Optional[int]:
         """Extract day from date"""
         return self.date.day if self.date else None
@@ -123,7 +116,6 @@ class ALTOParser:
         return result
 
     def _parse_filename(self, filename: str) -> Tuple[
-        Optional[str],  # newspaper_id
         Optional[datetime],  # date
         Optional[int],  # issue_number
         Optional[int],  # daily_issue_number
@@ -134,7 +126,7 @@ class ALTOParser:
 
         Format: 3074409X_1902-09-05_000_415_H_2_005.xml
         Components:
-        - 3074409X: newspaper ID
+        - 3074409X: newspaper ID (ignored, we use source_id from config instead)
         - 1902-09-05: date (YYYY-MM-DD)
         - 000: unknown field (always 000)
         - 415: issue number (may differ from METS)
@@ -143,16 +135,16 @@ class ALTOParser:
         - 005: page number
 
         Returns:
-            (newspaper_id, date, issue_number, daily_issue_number, page_number)
+            (date, issue_number, daily_issue_number, page_number)
         """
         # Single regex to capture all components
         pattern = r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_\d{3}_(\d+)_H_(\d+)_(\d+)"
         match = re.match(pattern, filename)
 
         if not match:
-            return None, None, None, None, None
+            return None, None, None, None
 
-        newspaper_id = match.group(1)
+        # Skip newspaper_id (group 1) - we use source_id from config instead
         year = int(match.group(2))
         month = int(match.group(3))
         day = int(match.group(4))
@@ -166,11 +158,12 @@ class ALTOParser:
         except ValueError:
             date = None
 
-        return newspaper_id, date, issue_number, daily_issue_number, page_number
+        return date, issue_number, daily_issue_number, page_number
 
     def parse_file(
         self,
         filepath: Path,
+        source_name: str,
         mets_metadata: Optional[Dict] = None,
     ) -> List[TextLine]:
         """
@@ -178,10 +171,11 @@ class ALTOParser:
 
         Args:
             filepath: Path to ALTO XML file
+            source_name: Source identifier (e.g., "der_tag")
             mets_metadata: Optional METS metadata dict to enrich lines
 
         Returns:
-            List of TextLine objects
+            List of TextLine objects with unified IDs
         """
         try:
             # Ensure filepath is a Path object
@@ -197,7 +191,6 @@ class ALTOParser:
             # Parse all filename metadata in one pass
             filename = filepath.name
             (
-                newspaper_id,
                 date,
                 issue_number,
                 daily_issue_number,
@@ -208,17 +201,26 @@ class ALTOParser:
             year_volume = mets_metadata.get("year_volume") if mets_metadata else None
             page_count = mets_metadata.get("page_count") if mets_metadata else None
             newspaper_title = mets_metadata.get("newspaper_title") if mets_metadata else None
-            newspaper_subtitle = mets_metadata.get("newspaper_subtitle") if mets_metadata else None
 
             lines = []
 
-            # Construct page_id once for all lines on this page
-            # Format: YYYY-MM-DD_issue_H_daily_page (e.g., "1901-01-08_006_H_1_001")
-            if date and issue_number and daily_issue_number and page_number:
-                page_id_str = f"{date.strftime('%Y-%m-%d')}_{issue_number:03d}_H_{daily_issue_number}_{page_number:03d}"
-            else:
-                # Fallback: use filename without extension
-                page_id_str = Path(filename).stem
+            # Generate source_id
+            source_id_str = generate_source_id(source_name)
+
+            # Generate IDs using unified ID system
+            # Skip if we don't have the required components
+            if not (date and issue_number and daily_issue_number and page_number):
+                logger.warning(
+                    f"Skipping {filename}: Missing required ID components "
+                    f"(date={date}, issue={issue_number}, daily={daily_issue_number}, page={page_number})"
+                )
+                return []
+
+            # Generate hierarchical IDs
+            issue_id_str = generate_issue_id(source_name, date, issue_number, daily_issue_number)
+            page_id_str = generate_page_id(
+                source_name, date, issue_number, daily_issue_number, page_number
+            )
 
             # Find all TextBlocks
             for text_block in root.findall(".//alto:TextBlock", ns):
@@ -226,14 +228,13 @@ class ALTOParser:
                 if not block_id:
                     continue
 
-                # Create globally unique text_block_id by prefixing with page_id
-                # This prevents accidental merging of blocks from different pages
-                unique_text_block_id = f"{page_id_str}_{block_id}"
+                # Generate globally unique text_block_id using unified system
+                unique_text_block_id = generate_text_block_id(page_id_str, block_id)
 
                 # Parse each TextLine
                 for text_line_elem in text_block.findall(".//alto:TextLine", ns):
-                    line_id = text_line_elem.get("ID", "")
-                    if not line_id:
+                    alto_line_id = text_line_elem.get("ID", "")
+                    if not alto_line_id:
                         continue
 
                     # Get position
@@ -259,8 +260,8 @@ class ALTOParser:
                     if not text:
                         continue
 
-                    # Create unique line_id
-                    unique_line_id = f"{filename}_{block_id}_{line_id}"
+                    # Generate unique line_id using unified system
+                    unique_line_id = generate_line_id(unique_text_block_id, alto_line_id)
 
                     # Helper function to safely convert coordinates (handles scientific notation)
                     def safe_int(value: Optional[str]) -> Optional[int]:
@@ -274,23 +275,30 @@ class ALTOParser:
 
                     lines.append(
                         TextLine(
+                            # Primary key
                             line_id=unique_line_id,
+                            # Data
                             text=text,
-                            text_block_id=unique_text_block_id,  # Now globally unique!
+                            # Foreign keys
+                            source_id=source_id_str,
+                            issue_id=issue_id_str,
+                            page_id=page_id_str,
+                            text_block_id=unique_text_block_id,
+                            # Original reference
                             filename=filename,
+                            # Date & coordinates
                             date=date,
                             x=safe_int(x),
                             y=safe_int(y),
                             width=safe_int(width),
                             height=safe_int(height),
-                            newspaper_id=newspaper_id,
+                            # Metadata (denormalized)
                             issue_number=issue_number,
                             daily_issue_number=daily_issue_number,
                             page_number=page_number,
                             year_volume=year_volume,
                             page_count=page_count,
                             newspaper_title=newspaper_title,
-                            newspaper_subtitle=newspaper_subtitle,
                         )
                     )
 

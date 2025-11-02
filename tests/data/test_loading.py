@@ -19,6 +19,9 @@ class TestTextLine:
         line = TextLine(
             line_id="test_line_1",
             text="Sample text",
+            source_id="3074409-X",  # ZDB source ID
+            issue_id="3074409-X_1901-01-01_001_1",
+            page_id="3074409-X_1901-01-01_001_1_001",
             text_block_id="block_1",
             filename="test.xml",
             date=datetime(1901, 1, 1),
@@ -26,20 +29,26 @@ class TestTextLine:
             y=200,
             width=500,
             height=20,
-            newspaper_id="3074409X",
         )
 
         assert line.line_id == "test_line_1"
         assert line.text == "Sample text"
-        assert line.year == 1901  # Property access
-        assert line.month == 1  # Property access
-        assert line.day == 1  # Property access
+        assert line.source_id == "3074409-X"
+        assert line.issue_id == "3074409-X_1901-01-01_001_1"
+        assert line.page_id == "3074409-X_1901-01-01_001_1_001"
+        # Verify computed fields
+        assert line.year == 1901
+        assert line.month == 1
+        assert line.day == 1
 
     def test_text_line_to_dict(self):
         """Test converting TextLine to dictionary"""
         line = TextLine(
             line_id="test_line_1",
             text="Sample text",
+            source_id="3074409-X",  # ZDB source ID
+            issue_id="3074409-X_1901-01-01_001_1",
+            page_id="3074409-X_1901-01-01_001_1_001",
             text_block_id="block_1",
             filename="test.xml",
         )
@@ -48,6 +57,9 @@ class TestTextLine:
         assert isinstance(d, dict)
         assert d["line_id"] == "test_line_1"
         assert d["text"] == "Sample text"
+        assert d["source_id"] == "3074409-X"
+        assert d["issue_id"] == "3074409-X_1901-01-01_001_1"
+        assert d["page_id"] == "3074409-X_1901-01-01_001_1_001"
 
 
 class TestALTOParser:
@@ -59,14 +71,12 @@ class TestALTOParser:
 
         # Standard format
         (
-            newspaper_id,
             date,
             issue_number,
             daily_issue_number,
             page_number,
         ) = parser._parse_filename("3074409X_1901-02-15_000_415_H_2_009.xml")
 
-        assert newspaper_id == "3074409X"
         assert date == datetime(1901, 2, 15)
         assert issue_number == 415
         assert daily_issue_number == 2
@@ -111,11 +121,22 @@ def test_parse_real_file():
         pytest.skip("No ALTO XML files found")
 
     parser = ALTOParser()
-    lines = parser.parse_file(xml_files[0])
+    lines = parser.parse_file(xml_files[0], source_name="der_tag")
 
     assert len(lines) > 0
     assert all(isinstance(line, TextLine) for line in lines)
     assert all(line.text for line in lines)
+    # Verify new ID fields are present
+    # Note: source_id should be ZDB ID if configured, otherwise source_name
+    assert all(line.source_id for line in lines)
+    assert all(line.issue_id for line in lines)
+    assert all(line.page_id for line in lines)
+    # Verify foreign key relationships
+    for line in lines:
+        assert line.source_id in line.issue_id
+        assert line.issue_id in line.page_id
+        assert line.page_id in line.text_block_id
+        assert line.text_block_id in line.line_id
 
 
 @pytest.mark.integration
@@ -130,7 +151,7 @@ def test_dataloader_load_small_batch():
     if len(xml_files) < 3:
         pytest.skip("Not enough ALTO XML files found")
 
-    loader = DataLoader(max_workers=2)
+    loader = DataLoader(source_name="der_tag", max_workers=2)
 
     # Load just 3 files for testing
     df = loader.load_directory(data_dir, pattern="**/fulltext/*.xml", max_files=3, auto_save=False)
@@ -142,7 +163,6 @@ def test_dataloader_load_small_batch():
     assert "text_block_id" in df.columns
     assert "filename" in df.columns
     assert "date" in df.columns
-    assert "newspaper_id" in df.columns
 
     # Verify we have data from 3 files
     unique_files = df["filename"].n_unique()
@@ -165,7 +185,7 @@ def test_dataloader_with_mets_enrichment():
     if not xml_files:
         pytest.skip("No ALTO XML files found")
 
-    loader = DataLoader(max_workers=1)
+    loader = DataLoader(source_name="der_tag", max_workers=1)
 
     # Load just 1 file
     df = loader.load_directory(data_dir, pattern="**/fulltext/*.xml", max_files=1, auto_save=False)
@@ -195,7 +215,7 @@ def test_dataloader_save_parquet():
     if not xml_files:
         pytest.skip("No ALTO XML files found")
 
-    loader = DataLoader(max_workers=1)
+    loader = DataLoader(source_name="der_tag", max_workers=1)
 
     # Create a temporary file path (but don't create the file yet)
     with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:

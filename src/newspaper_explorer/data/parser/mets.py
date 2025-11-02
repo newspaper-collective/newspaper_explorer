@@ -26,7 +26,6 @@ class IssueMetadata(BaseModel):
     year_volume: Optional[str] = None  # e.g., "Jahrgang 1902"
     page_count: Optional[int] = None
     newspaper_title: Optional[str] = None
-    newspaper_subtitle: Optional[str] = None
     newspaper_id: Optional[str] = None  # ZDB ID
     publisher: Optional[str] = None
     language: Optional[str] = None

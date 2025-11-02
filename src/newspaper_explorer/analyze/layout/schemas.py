@@ -5,7 +5,7 @@ Defines the structure for detected elements, matched headlines, and reconstructe
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -71,13 +71,24 @@ class BoundingBox(BaseModel):
 
 
 class Detection(BaseModel):
-    """A single layout detection."""
+    """
+    A single layout detection.
 
-    detection_id: str
+    Uses unified ID system with foreign keys for linking to source data.
+    """
+
+    # Primary key
+    detection_id: str  # Format: {page_id}_{class}_{uuid_short}
+
+    # Detection data
     class_name: str
     confidence: float
     bbox: BoundingBox
-    page_id: str
+
+    # Foreign keys
+    page_id: str  # FK: Links to source page
+    source_id: Optional[str] = None  # FK: Source identifier (e.g., "3074409-X")
+    issue_id: Optional[str] = None  # FK: Issue identifier
     image_path: Optional[str] = None
 
     # ALTO text content
@@ -92,68 +103,56 @@ class Detection(BaseModel):
 class Headline(BaseModel):
     """A detected headline matched to OCR text."""
 
+    # Primary key
     headline_id: str
+
+    # Related detection
     detection: Detection
+
+    # Data
     ocr_text: str
     text_block_ids: List[str]
     confidence: float
     match_score: float  # How well detection bbox matches OCR coordinates
 
-    # Position in document
-    page_id: str
+    # Foreign keys
+    page_id: str  # FK: Links to page
+    source_id: Optional[str] = None  # FK: Source identifier (e.g., "3074409-X")
+    issue_id: Optional[str] = None  # FK: Issue identifier
+    detection_id: Optional[str] = None  # FK: Link to detection
+
+    # Metadata
     year: int
     date: Optional[datetime] = None
     newspaper_title: Optional[str] = None
 
 
 class Article(BaseModel):
-    """A reconstructed newspaper article."""
+    """A detected article (reconstructed text block)."""
 
+    # Primary key
     article_id: str
-    headline: Headline
-    text_blocks: List[str]  # Text block IDs
-    full_text: str
-    page_id: str
-    year: int
 
-    # Associated media
-    images: List[Detection] = Field(default_factory=list)
-    tables: List[Detection] = Field(default_factory=list)
-    formulas: List[Detection] = Field(default_factory=list)
+    # Related data
+    headlines: List[Headline]
+    text_blocks: List[str]  # Text block IDs that make up the article
+    full_text: str
+    detection: Detection
+
+    # Foreign keys
+    page_id: str  # FK: Links to page
+    source_id: Optional[str] = None  # FK: Source identifier (e.g., "3074409-X")
+    issue_id: Optional[str] = None  # FK: Issue identifier
+    detection_id: Optional[str] = None  # FK: Link to detection
 
     # Metadata
+    year: int
     date: Optional[datetime] = None
     newspaper_title: Optional[str] = None
 
-    # Spatial extent
-    bbox: Optional[BoundingBox] = None
-
     # Quality metrics
-    completeness_score: float = 1.0  # Estimate of article completeness
-
-    @property
-    @computed_field
-    def num_images(self) -> int:
-        """Number of images in the article."""
-        return len(self.images)
-
-    @property
-    @computed_field
-    def num_tables(self) -> int:
-        """Number of tables in the article."""
-        return len(self.tables)
-
-    @property
-    @computed_field
-    def num_formulas(self) -> int:
-        """Number of formulas in the article."""
-        return len(self.formulas)
-
-    @property
-    @computed_field
-    def word_count(self) -> int:
-        """Word count of the article text."""
-        return len(self.full_text.split())
+    confidence: float  # Overall confidence
+    completeness: float  # Estimated percentage of article captured
 
 
 class PageLayout(BaseModel):
@@ -163,32 +162,28 @@ class PageLayout(BaseModel):
     image_path: str
     detections: List[Detection]
 
-    # Organized by type
-    headlines: List[Detection] = Field(default_factory=list)
-    images: List[Detection] = Field(default_factory=list)
-    captions: List[Detection] = Field(default_factory=list)
-    tables: List[Detection] = Field(default_factory=list)
-    text_blocks: List[Detection] = Field(default_factory=list)
-
     # Metadata
     year: int = 0
     date: Optional[datetime] = None
     newspaper_title: Optional[str] = None
 
-    @property
     @computed_field  # type: ignore[misc]
+    @property
     def total_detections(self) -> int:
         """Total number of detections."""
         return len(self.detections)
 
-    @property
     @computed_field  # type: ignore[misc]
+    @property
     def counts(self) -> Dict[str, int]:
-        """Count of each detection type."""
-        return {
-            "headlines": len(self.headlines),
-            "images": len(self.images),
-            "captions": len(self.captions),
-            "tables": len(self.tables),
-            "text_blocks": len(self.text_blocks),
-        }
+        """Count of each detection type from detections list."""
+        counts: Dict[str, int] = {}
+        for det in self.detections:
+            counts[det.class_name] = counts.get(det.class_name, 0) + 1
+        return counts
+
+    def filter_by_class(self, class_names: Union[str, List[str]]) -> List[Detection]:
+        """Filter detections by class name(s)."""
+        if isinstance(class_names, str):
+            class_names = [class_names]
+        return [d for d in self.detections if d.class_name in class_names]

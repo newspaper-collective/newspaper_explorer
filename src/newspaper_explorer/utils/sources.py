@@ -56,6 +56,9 @@ class SourceMetadata(BaseModel):
     newspaper_title: str = Field(description="Full newspaper title")
     language: Literal["de", "en"] = Field(description="Primary language code")
     years_available: str = Field(description="Year range (e.g., '1900-1920')")
+    zdb_source_id: Optional[str] = Field(
+        default=None, description="ZDB (Zeitschriftendatenbank) source identifier"
+    )
     publisher: Optional[str] = Field(default=None, description="Publisher name")
     location: Optional[str] = Field(default=None, description="Publication location")
     frequency: Optional[str] = Field(

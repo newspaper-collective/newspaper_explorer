@@ -1,32 +1,33 @@
 """
-ALTO Linker - Link detections to ALTO XML text content.
+Text Linker - Link detections to text content from DataFrames.
 
 This module provides functionality to match any detection type (headlines,
-captions, tables, etc.) to OCR text content from ALTO XML based on bounding
-box overlap with text lines.
+captions, tables, etc.) to OCR text content from pre-parsed DataFrames based
+on bounding box overlap with text lines.
+
+Uses the fast DataFrame path - parquet files are already parsed by ALTOParser
+with rich metadata and should be loaded once and reused for batch processing.
 """
 
 import logging
-import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Tuple
+
 import polars as pl
 
-from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox
+from newspaper_explorer.analysis.layout.schemas import BoundingBox, Detection
 
 logger = logging.getLogger(__name__)
 
 
-# ALTO XML namespace (v4)
-ALTO_NS = {"alto": "http://www.loc.gov/standards/alto/ns-v4#"}
-
-
-class ALTOLinker:
+class TextLinker:
     """
-    Universal ALTO linker for any detection type.
+    Universal text linker for any detection type.
 
-    Links detection bounding boxes to ALTO XML text content by finding
-    overlapping text lines/blocks based on IoU (Intersection over Union).
+    Links detection bounding boxes to text content from pre-parsed DataFrames
+    by finding overlapping text lines/blocks based on IoU (Intersection over Union).
+
+    Performance: Uses Polars DataFrames for fast filtering. Load parquet once,
+    then filter by page_id for each page - much faster than re-parsing XML.
     """
 
     def __init__(
@@ -35,7 +36,7 @@ class ALTOLinker:
         min_confidence: float = 0.2,
     ):
         """
-        Initialize the ALTOLinker.
+        Initialize the TextLinker.
 
         Args:
             overlap_threshold: Minimum IoU for matching (0.0-1.0)
@@ -45,27 +46,35 @@ class ALTOLinker:
         self.min_confidence = min_confidence
 
         logger.info(
-            f"ALTOLinker initialized: overlap_threshold={overlap_threshold}, "
+            f"TextLinker initialized: overlap_threshold={overlap_threshold}, "
             f"min_confidence={min_confidence}"
         )
 
     def link_detections_to_text(
         self,
         detections: List[Detection],
-        alto_xml_path: Optional[Path] = None,
-        lines_df: Optional[pl.DataFrame] = None,
-        page_id: Optional[str] = None,
+        lines_df: pl.DataFrame,
+        page_id: str,
     ) -> List[Detection]:
         """
-        Link detections to OCR text from ALTO XML.
+        Link detections to OCR text from pre-parsed DataFrame.
 
         Updates Detection objects in-place with text_content and alto_elements.
 
+        Performance: Load the parquet DataFrame once, then call this method
+        for each page. Much faster than re-parsing XML for every page.
+
+        Example:
+            >>> from newspaper_explorer.data.loading.loader import DataLoader
+            >>> df = DataLoader.load_parquet("data/processed/der_tag/text/der_tag_lines.parquet")
+            >>> linker = TextLinker()
+            >>> for page_id in page_ids:
+            ...     linker.link_detections_to_text(detections, df, page_id)
+
         Args:
             detections: List of detections to link
-            alto_xml_path: Path to ALTO XML file (if using XML parsing)
-            lines_df: Optional Polars DataFrame with parsed lines (faster)
-            page_id: Page identifier (required if using lines_df)
+            lines_df: Polars DataFrame with parsed ALTO lines (from parquet)
+            page_id: Page identifier to filter lines
 
         Returns:
             List of Detection objects with linked text
@@ -81,18 +90,13 @@ class ALTOLinker:
             logger.debug("No detections meet confidence threshold")
             return []
 
-        logger.debug(f"Linking {len(valid_detections)} detections to ALTO text")
+        logger.debug(f"Linking {len(valid_detections)} detections to text")
 
-        # Get ALTO lines
-        if lines_df is not None and page_id is not None:
-            alto_lines = self._lines_from_dataframe(lines_df, page_id)
-        elif alto_xml_path is not None:
-            alto_lines = self._parse_alto_lines(alto_xml_path)
-        else:
-            raise ValueError("Must provide either lines_df+page_id or alto_xml_path")
+        # Get ALTO lines from DataFrame
+        alto_lines = self._lines_from_dataframe(lines_df, page_id)
 
         if not alto_lines:
-            logger.warning("No text lines found in ALTO")
+            logger.warning(f"No text lines found for page_id: {page_id}")
             return valid_detections
 
         # Link each detection to text
@@ -163,79 +167,6 @@ class ALTOLinker:
         match_score = sum(ious) / len(ious) if ious else 0.0
 
         return text, list(alto_element_ids), match_score
-
-    def _parse_alto_lines(self, alto_xml_path: Path) -> List[Dict]:
-        """
-        Parse ALTO XML to extract text lines with coordinates.
-
-        Args:
-            alto_xml_path: Path to ALTO XML file
-
-        Returns:
-            List of line dictionaries with text and coordinates
-        """
-        try:
-            tree = ET.parse(alto_xml_path)
-            root = tree.getroot()
-        except Exception as e:
-            logger.error(f"Failed to parse ALTO XML {alto_xml_path}: {e}")
-            return []
-
-        lines = []
-
-        # Find all TextLine elements
-        for text_line in root.findall(".//alto:TextLine", ALTO_NS):
-            try:
-                # Get coordinates
-                hpos = int(text_line.get("HPOS", 0))
-                vpos = int(text_line.get("VPOS", 0))
-                width = int(text_line.get("WIDTH", 0))
-                height = int(text_line.get("HEIGHT", 0))
-
-                if width == 0 or height == 0:
-                    continue
-
-                # Get text from String elements
-                text_parts = []
-                for string_elem in text_line.findall(".//alto:String", ALTO_NS):
-                    content = string_elem.get("CONTENT", "")
-                    if content:
-                        text_parts.append(content)
-
-                if not text_parts:
-                    continue
-
-                text = " ".join(text_parts)
-
-                # Get IDs
-                line_id = text_line.get("ID")
-
-                # Get parent TextBlock ID
-                text_block = text_line.find("..", ALTO_NS)
-                while text_block is not None:
-                    if "TextBlock" in text_block.tag:
-                        break
-                    text_block = text_block.find("..", ALTO_NS)
-
-                text_block_id = text_block.get("ID") if text_block is not None else None
-
-                lines.append(
-                    {
-                        "text": text,
-                        "x": hpos,
-                        "y": vpos,
-                        "width": width,
-                        "height": height,
-                        "line_id": line_id,
-                        "text_block_id": text_block_id,
-                    }
-                )
-            except Exception as e:
-                logger.debug(f"Skipping invalid text line: {e}")
-                continue
-
-        logger.debug(f"Parsed {len(lines)} text lines from ALTO XML")
-        return lines
 
     def _lines_from_dataframe(self, df: pl.DataFrame, page_id: str) -> List[Dict]:
         """

@@ -44,6 +44,10 @@ class DataFixer:
         if part_name == "dertag_1900-1902" and self.dataset_name == "der_tag":
             fixes_applied += self._fix_dertag_mixed_issues(extract_path)
 
+        # Fix for dertag_1900-1902: Corrupted page numbers in 1901-07-14 issue
+        if part_name == "dertag_1900-1902" and self.dataset_name == "der_tag":
+            fixes_applied += self._fix_dertag_1901_07_14_page_numbers(extract_path)
+
         if fixes_applied > 0:
             print(f"Applied {fixes_applied} error fix(es)")
         else:
@@ -314,3 +318,78 @@ class DataFixer:
             print("    Note: Automatic fix not yet implemented - manual intervention required")
 
         return 0  # Return 0 since we're not actually fixing yet
+
+    def _fix_dertag_1901_07_14_page_numbers(self, raw_dir: Path) -> int:
+        """
+        Fix corrupted page numbers in 1901-07-14 issue 297.
+
+        The first page has a negative page number (-01 instead of 001), which
+        caused all subsequent pages to be numbered incorrectly (starting from 002
+        instead of 003). This fix renames all pages in reverse order to avoid
+        overwriting files.
+
+        Mapping:
+        - _-01.xml → _001.xml  (negative page number, should be first page)
+        - _001.xml → _002.xml  (misnamed, should be second page)
+        - _002.xml → _003.xml
+        - _003.xml → _004.xml
+        - ...
+        - _012.xml → _013.xml
+
+        Args:
+            raw_dir: Base raw directory (e.g., data/raw/der_tag/xml_ocr/)
+
+        Returns:
+            Number of files fixed
+        """
+        issue_dir = raw_dir / "1901" / "07" / "14" / "01" / "fulltext"
+
+        if not issue_dir.exists():
+            return 0
+
+        print("  Checking for corrupted page numbers in 1901-07-14...")
+
+        # Check if the corrupted file exists
+        corrupted_file = issue_dir / "3074409X_1901-07-14_000_297_H_1_-01.xml"
+        if not corrupted_file.exists():
+            return 0
+
+        print(f"    Found corrupted page numbering in {issue_dir.relative_to(raw_dir)}")
+
+        try:
+            # Rename files in reverse order to avoid conflicts
+            # Start from page 12 down to page 1, shifting each up by 1
+            files_renamed = 0
+
+            for old_page in range(12, 0, -1):  # 12, 11, 10, ..., 2, 1
+                new_page = old_page + 1
+                old_name = f"3074409X_1901-07-14_000_297_H_1_{old_page:03d}.xml"
+                new_name = f"3074409X_1901-07-14_000_297_H_1_{new_page:03d}.xml"
+
+                old_path = issue_dir / old_name
+                new_path = issue_dir / new_name
+
+                if old_path.exists():
+                    old_path.rename(new_path)
+                    files_renamed += 1
+                    print(f"      Renamed: {old_name} → {new_name}")
+                else:
+                    print(f"      Warning: Expected file not found: {old_name}")
+
+            # Finally, rename the corrupted -01 file to 001
+            if corrupted_file.exists():
+                correct_name = "3074409X_1901-07-14_000_297_H_1_001.xml"
+                correct_path = issue_dir / correct_name
+                corrupted_file.rename(correct_path)
+                files_renamed += 1
+                print(f"      Renamed: 3074409X_1901-07-14_000_297_H_1_-01.xml → {correct_name}")
+
+            if files_renamed > 0:
+                print(f"    Fixed page numbering: {files_renamed} file(s) renamed")
+                return 1  # Return 1 fix applied (the issue as a whole)
+
+        except Exception as e:
+            print(f"    Error fixing page numbers: {e}")
+            return 0
+
+        return 0

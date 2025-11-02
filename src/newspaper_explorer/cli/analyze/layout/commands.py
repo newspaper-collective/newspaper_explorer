@@ -2,16 +2,16 @@
 CLI commands for layout analysis.
 
 Provides commands to:
-- Detect layout elements (headlines, images, tables)
+- Detect layout elements (headlines, pictures, tables)
 - Visualize detections for debugging
-- Extract images with captions
+- Extract picture regions with captions
 - Match headlines to OCR text
 - Build articles from headlines and text blocks
 
 Usage:
     newspaper-explorer analyze layout detect --source der_tag --year 1902
     newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001
-    newspaper-explorer analyze layout extract-images --source der_tag --year 1902
+    newspaper-explorer analyze layout extract-pictures --source der_tag --year 1902
     newspaper-explorer analyze layout match-headlines --source der_tag --year 1902
     newspaper-explorer analyze layout build-articles --source der_tag --year 1902
 """
@@ -23,13 +23,40 @@ from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.loading.loader import DataLoader
-from newspaper_explorer.analysis.layout.detector import LayoutDetector
+from newspaper_explorer.analysis.layout.detection import LayoutDetector
 from newspaper_explorer.analysis.layout.headline_matcher import HeadlineMatcher
 from newspaper_explorer.analysis.layout.article_builder import ArticleBuilder
-from newspaper_explorer.analysis.layout.image_extractor import ImageExtractor
 from newspaper_explorer.analysis.layout.visualizer import LayoutVisualizer
 
 logger = logging.getLogger(__name__)
+
+
+def get_text_data_path(source: str, text_data: str | None = None) -> Path:
+    """
+    Get path to text data (raw or preprocessed).
+
+    Args:
+        source: Source name
+        text_data: Optional path or preset name. Options:
+            - None: Use raw data (default)
+            - "raw": Explicit raw data
+            - "preprocessed": Use default preprocessed data
+            - Path: Custom parquet file path
+
+    Returns:
+        Path to parquet file
+    """
+    config = get_config()
+
+    if text_data is None or text_data == "raw":
+        # Default: raw line-level data
+        return config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+    elif text_data == "preprocessed":
+        # Default preprocessed data
+        return config.data_dir / "processed" / source / "text" / "textblocks_processed.parquet"
+    else:
+        # Custom path
+        return Path(text_data)
 
 
 @click.group(name="layout")
@@ -53,13 +80,13 @@ def layout_group():
 @click.option(
     "--device",
     default="cuda:0",
-    help="Device for inference (default: cuda:0)",
+    help="Device for inference: 'cuda:0', 'cuda:1', etc., or 'cpu' (default: cuda:0)",
 )
 @click.option(
     "--batch-size",
     type=int,
-    default=8,
-    help="Batch size for inference (default: 8)",
+    default=32,
+    help="Batch size for inference (default: 32)",
 )
 @click.option(
     "--conf-threshold",
@@ -77,7 +104,12 @@ def layout_group():
     type=int,
     help="Limit number of pages to process",
 )
-def detect(source, model_size, device, batch_size, conf_threshold, year, limit):
+@click.option(
+    "--resume/--no-resume",
+    default=True,
+    help="Skip already processed pages (default: yes)",
+)
+def detect(source, model_size, device, batch_size, conf_threshold, year, limit, resume):
     """
     Detect layout elements in newspaper images.
 
@@ -123,8 +155,62 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit):
 
     click.echo(f"✓ Found {len(image_paths)} images")
 
+    # Check for existing results and implement resume
+    output_dir = config.results_dir / source / "layout"
+    output_file = output_dir / f"{source}_layout_detections.parquet"
+
+    processed_pages = set()
+    if resume and output_file.exists():
+        import polars as pl
+
+        existing_df = pl.read_parquet(output_file)
+        processed_pages = set(existing_df["page_id"].unique().to_list())
+        click.echo(f"✓ Resume mode: {len(processed_pages)} pages already processed")
+
+        # Filter out already processed images
+        from newspaper_explorer.analysis.layout.detection import LayoutDetector
+
+        temp_detector = LayoutDetector(
+            model_size=model_size, device="cpu"
+        )  # Lightweight for ID generation
+        original_count = len(image_paths)
+        image_paths = [
+            img
+            for img in image_paths
+            if temp_detector._generate_page_id(img) not in processed_pages
+        ]
+        skipped = original_count - len(image_paths)
+        if skipped > 0:
+            click.echo(f"✓ Skipping {skipped} already processed pages")
+
+        if not image_paths:
+            click.echo("✓ All pages already processed!", err=False)
+            return
+
+    # Check GPU availability
+    if device.startswith("cuda"):
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                click.echo(f"✓ Found {gpu_count} GPU(s) available")
+
+                if gpu_count > 1:
+                    click.echo(f"  Note: YOLO only uses single GPU (device {device})")
+                    click.echo(f"  Multi-GPU parallelism not supported by YOLO's predict() method")
+                    click.echo(f"  Recommendation: Use largest possible batch size on single GPU")
+            else:
+                click.echo("⚠ CUDA requested but no GPUs available, falling back to CPU", err=True)
+                device = "cpu"
+        except ImportError:
+            click.echo("⚠ PyTorch not found, cannot check GPU availability", err=True)
+
     # Initialize detector
     click.echo(f"\nInitializing YOLOv11 {model_size} model...")
+
+    from newspaper_explorer.analysis.layout.detection import LayoutDetector
+
     detector = LayoutDetector(
         model_size=model_size,
         device=device,
@@ -134,52 +220,98 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit):
 
     # Run detection
     click.echo("\nDetecting layout elements...")
-    page_ids = [p.stem for p in image_paths]
+    # Don't pass page_ids - let detector generate unique IDs from paths
 
-    with tqdm(total=len(image_paths), desc="Processing pages") as pbar:
-        # Update progress in batches
-        results = []
-        for i in range(0, len(image_paths), batch_size):
-            batch_paths = image_paths[i : i + batch_size]
-            batch_ids = page_ids[i : i + batch_size]
+    # Temporarily suppress detector's INFO logs to avoid interfering with tqdm
+    detector_logger = logging.getLogger("newspaper_explorer.analysis.layout.detection")
+    original_level = detector_logger.level
+    detector_logger.setLevel(logging.WARNING)
 
-            batch_results = detector.detect_batch(batch_paths, batch_ids)
-            results.extend(batch_results)
+    try:
+        with tqdm(total=len(image_paths), desc="Processing pages") as pbar:
+            # Update progress in batches
+            results = []
+            for i in range(0, len(image_paths), batch_size):
+                batch_paths = image_paths[i : i + batch_size]
 
-            pbar.update(len(batch_paths))
+                batch_results = detector.detect_batch(batch_paths, page_ids=None)
+                results.extend(batch_results)
 
-    # Save results
+                pbar.update(len(batch_paths))
+    finally:
+        # Restore original log level
+        detector_logger.setLevel(original_level)
+
+    # Save results to single Parquet file
     output_dir = config.results_dir / source / "layout"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    import json
+    import polars as pl
 
+    # Flatten all detections into rows
+    all_detections = []
     for page_layout in results:
-        output_file = output_dir / f"{page_layout.page_id}_layout.json"
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(
-                page_layout.model_dump(mode="json", exclude_none=True),
-                f,
-                indent=2,
-                ensure_ascii=False,
+        for det in page_layout.detections:
+            all_detections.append(
+                {
+                    "detection_id": det.detection_id,
+                    "page_id": det.page_id,
+                    "source_id": det.source_id,
+                    "issue_id": det.issue_id,
+                    "class_name": det.class_name,
+                    "confidence": det.confidence,
+                    "bbox_x1": det.bbox.x1,
+                    "bbox_y1": det.bbox.y1,
+                    "bbox_x2": det.bbox.x2,
+                    "bbox_y2": det.bbox.y2,
+                    "bbox_width": det.bbox.width,
+                    "bbox_height": det.bbox.height,
+                    "image_path": page_layout.image_path,
+                }
             )
+
+    # Save as Parquet (append if resume mode)
+    if all_detections:
+        df = pl.DataFrame(all_detections)
+
+        if resume and output_file.exists():
+            # Append to existing file
+            existing_df = pl.read_parquet(output_file)
+            df = pl.concat([existing_df, df])
+            click.echo(f"\nAppended {len(all_detections)} new detections to: {output_file}")
+        else:
+            click.echo(f"\nSaved {len(all_detections)} detections to: {output_file}")
+
+        df.write_parquet(output_file, compression="zstd")
+    else:
+        click.echo("\nNo detections to save", err=True)
 
     # Statistics
     total_detections = sum(len(r.detections) for r in results)
-    total_headlines = sum(len(r.headlines) for r in results)
-    total_images = sum(len(r.images) for r in results)
-    total_captions = sum(len(r.captions) for r in results)
 
-    click.echo(f"\n{'='*60}")
-    click.echo("Detection Complete!")
-    click.echo(f"{'='*60}")
-    click.echo(f"Pages processed: {len(results)}")
-    click.echo(f"Total detections: {total_detections}")
-    click.echo(f"  Headlines: {total_headlines}")
-    click.echo(f"  Images: {total_images}")
-    click.echo(f"  Captions: {total_captions}")
-    click.echo(f"\nResults saved to: {output_dir}")
-    click.echo(f"{'='*60}\n")
+    # Count by class type
+    if all_detections:
+        df = pl.DataFrame(all_detections)
+        class_counts = (
+            df.group_by("class_name").agg(pl.len().alias("count")).sort("count", descending=True)
+        )
+
+        click.echo(f"\n{'='*60}")
+        click.echo("Detection Complete!")
+        click.echo(f"{'='*60}")
+        click.echo(f"Pages processed: {len(results)}")
+        click.echo(f"Total detections: {total_detections}")
+        click.echo("\nDetections by class:")
+        for row in class_counts.iter_rows(named=True):
+            click.echo(f"  {row['class_name']}: {row['count']}")
+        click.echo(f"{'='*60}\n")
+    else:
+        click.echo(f"\n{'='*60}")
+        click.echo("Detection Complete!")
+        click.echo(f"{'='*60}")
+        click.echo(f"Pages processed: {len(results)}")
+        click.echo(f"Total detections: 0")
+        click.echo(f"{'='*60}\n")
 
 
 @layout_group.command()
@@ -198,15 +330,20 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit):
     default=True,
     help="Save cropped image files (default: yes)",
 )
-def extract_images(source, year, save_crops):
+@click.option(
+    "--resume/--no-resume",
+    default=True,
+    help="Skip already processed pages (default: yes)",
+)
+def extract_pictures(source, year, save_crops, resume):
     """
-    Extract images from newspaper pages (without caption matching).
+    Extract picture regions from newspaper pages (without caption matching).
 
-    Extracts detected images and saves crops. For caption matching,
+    Extracts detected picture regions and saves crops. For caption matching,
     use the 'match-captions' command after extraction.
 
     Example:
-        newspaper-explorer analyze layout extract-images --source der_tag --year 1902
+        newspaper-explorer analyze layout extract-pictures --source der_tag --year 1902
     """
     # Configure logging
     logging.basicConfig(
@@ -245,51 +382,84 @@ def extract_images(source, year, save_crops):
 
     click.echo(f"✓ Found {len(detection_files)} detection files")
 
-    # Initialize extractor (no caption matching)
-    extractor = ImageExtractor()
+    # Initialize extractor (crops any region type)
+    from newspaper_explorer.analysis.layout.region_extraction import RegionExtractor
+
+    extractor = RegionExtractor(padding=5)
 
     # Extract images
     output_dir = config.results_dir / source / "layout" / "images"
-    all_images = []
+    metadata_path = output_dir.parent / f"{source}_images_metadata.parquet"
+
+    # Check for existing metadata and determine processed pages
+    import polars as pl
+
+    processed_pages = set()
+    if resume and metadata_path.exists():
+        existing_df = pl.read_parquet(metadata_path)
+        processed_pages = set(existing_df["page_id"].unique().to_list())
+        click.echo(f"✓ Resume mode: {len(processed_pages)} pages already processed")
+
+    total_images = 0
+    skipped_pages = 0
 
     click.echo("\nExtracting images...")
-    for det_file in tqdm(detection_files, desc="Processing pages"):
+    for idx, det_file in enumerate(tqdm(detection_files, desc="Processing pages")):
         with open(det_file, "r", encoding="utf-8") as f:
             page_data = json.load(f)
 
+        page_id = page_data["page_id"]
+
+        # Skip if already processed (resume mode)
+        if resume and page_id in processed_pages:
+            skipped_pages += 1
+            continue
+
         # Reconstruct PageLayout (simplified)
-        # In production, you'd properly deserialize from JSON
         from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox
 
         page_layout = PageLayout(
-            page_id=page_data["page_id"],
+            page_id=page_id,
             image_path=page_data["image_path"],
             detections=[],
         )
 
-        # Add images only (no caption matching here)
+        # Collect images
+        images = []
         for img_data in page_data.get("images", []):
             det = Detection(
                 detection_id=img_data["detection_id"],
                 class_name=img_data["class_name"],
                 confidence=img_data["confidence"],
                 bbox=BoundingBox(**img_data["bbox"]),
-                page_id=page_data["page_id"],
+                page_id=page_id,
             )
-            page_layout.images.append(det)
+            images.append(det)
 
-        # Extract images (without caption matching)
-        images = extractor.extract_images(page_layout, output_dir, save_crops=save_crops)
-        all_images.extend(images)
+        # Extract and crop pictures
+        if images:
+            extracted = extractor.extract_regions(
+                detections=images,
+                page_layout=page_layout,
+                output_dir=output_dir,
+                region_type="picture",
+            )
 
-    # Save metadata
-    metadata_path = output_dir.parent / f"{source}_images_metadata.parquet"
-    extractor.save_image_metadata(all_images, metadata_path, format="parquet")
+            # Save metadata incrementally (always append in resume mode)
+            mode = (
+                "append"
+                if (resume and metadata_path.exists())
+                else "overwrite" if idx == 0 else "append"
+            )
+            extractor.save_region_metadata(extracted, metadata_path, mode=mode)
+            total_images += len(extracted)
 
     click.echo(f"\n{'='*60}")
     click.echo("Image Extraction Complete!")
     click.echo(f"{'='*60}")
-    click.echo(f"Total images: {len(all_images)}")
+    click.echo(f"Total images extracted: {total_images}")
+    if resume and skipped_pages > 0:
+        click.echo(f"Skipped pages (already processed): {skipped_pages}")
     if save_crops:
         click.echo(f"Crops saved to: {output_dir}")
     click.echo(f"Metadata saved to: {metadata_path}")
@@ -327,7 +497,11 @@ def extract_images(source, year, save_crops):
     default=0.3,
     help="IoU threshold for caption-text matching (default: 0.3)",
 )
-def match_captions(source, year, caption_position, search_radius, overlap_threshold):
+@click.option(
+    "--text-data",
+    help="Text data source: 'raw' (default), 'preprocessed', or path to parquet file",
+)
+def match_captions(source, year, caption_position, search_radius, overlap_threshold, text_data):
     """
     Match captions to extracted images.
 
@@ -375,28 +549,32 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
     click.echo(f"✓ Found {len(detection_files)} detection files")
 
     # Load parsed text for caption OCR extraction
-    lines_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+    lines_path = get_text_data_path(source, text_data)
     if not lines_path.exists():
-        click.echo(f"✗ Parsed text not found: {lines_path}", err=True)
-        click.echo("  Run 'newspaper-explorer data parse' first", err=True)
+        click.echo(f"✗ Text data not found: {lines_path}", err=True)
+        click.echo("  Run 'newspaper-explorer data parse' or 'preprocess' first", err=True)
         return
 
     import polars as pl
 
+    click.echo(f"Loading text data from: {lines_path}")
     lines_df = pl.read_parquet(lines_path)
     if year:
         lines_df = lines_df.filter(pl.col("year") == year)
 
     click.echo(f"✓ Loaded {len(lines_df)} text lines for caption extraction")
 
-    # Initialize caption matcher
-    from newspaper_explorer.analysis.layout.caption_matcher import CaptionMatcher
-    from newspaper_explorer.analysis.layout.alto_linker import ALTOLinker
+    # Initialize proximity matcher (handles text extraction + spatial matching)
+    from newspaper_explorer.analysis.layout.region_matching import ProximityMatcher
 
-    alto_linker = ALTOLinker(overlap_threshold=overlap_threshold)
-    caption_matcher = CaptionMatcher(
+    # Map old caption_position values to new relative_position
+    position_map = {"both": "any", "below": "below", "above": "above"}
+    relative_pos = position_map.get(caption_position, "below")
+
+    matcher = ProximityMatcher(
         search_radius=search_radius,
-        caption_position=caption_position,
+        relative_position=relative_pos,  # type: ignore
+        overlap_threshold=overlap_threshold,
     )
 
     # Match captions
@@ -407,51 +585,42 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
         with open(det_file, "r", encoding="utf-8") as f:
             page_data = json.load(f)
 
-        # Reconstruct PageLayout
-        page_layout = PageLayout(
-            page_id=page_data["page_id"],
-            image_path=page_data["image_path"],
-            detections=[],
-        )
+        page_id = page_data["page_id"]
 
-        # Add images
+        # Collect images and captions
+        images = []
         for img_data in page_data.get("images", []):
             det = Detection(
                 detection_id=img_data["detection_id"],
                 class_name=img_data["class_name"],
                 confidence=img_data["confidence"],
                 bbox=BoundingBox(**img_data["bbox"]),
-                page_id=page_data["page_id"],
+                page_id=page_id,
             )
-            page_layout.images.append(det)
+            images.append(det)
 
-        # Add captions
+        captions = []
         for cap_data in page_data.get("captions", []):
             det = Detection(
                 detection_id=cap_data["detection_id"],
                 class_name=cap_data["class_name"],
                 confidence=cap_data["confidence"],
                 bbox=BoundingBox(**cap_data["bbox"]),
-                page_id=page_data["page_id"],
+                page_id=page_id,
             )
-            page_layout.captions.append(det)
+            captions.append(det)
 
-        # Extract caption OCR text
-        if page_layout.captions:
-            page_layout.captions = alto_linker.link_detections_to_text(
-                detections=page_layout.captions,
+        # Match captions to images (handles text extraction + spatial matching)
+        if images:
+            matches = matcher.match_elements(
+                source_elements=images,
+                target_elements=captions,
                 lines_df=lines_df,
-                page_id=page_layout.page_id,
+                page_id=page_id,
+                extract_text=True,
             )
-
-        # Match captions to images
-        caption_matches = caption_matcher.match_captions_to_images(
-            images=page_layout.images,
-            captions=page_layout.captions,
-        )
-
-        images_with_captions = caption_matcher.apply_caption_matches(caption_matches)
-        all_matched.extend(images_with_captions)
+            images_with_captions = matcher.apply_matches(matches, target_attr="caption")
+            all_matched.extend(images_with_captions)
 
     # Save results
     output_dir = config.results_dir / source / "layout"
@@ -463,9 +632,8 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
                 "image_id": img.detection_id,
                 "page_id": img.page_id,
                 "caption_text": img.caption_text,
-                "caption_id": img.caption_id,
-                "caption_confidence": img.caption_confidence,
-                "caption_distance": img.caption_distance,
+                "caption_id": img.caption.detection_id if img.caption else None,
+                "caption_confidence": img.caption.confidence if img.caption else None,
             }
             for img in all_matched
         ]
@@ -500,7 +668,11 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
     default=0.3,
     help="Minimum IoU for matching (default: 0.3)",
 )
-def match_headlines(source, year, overlap_threshold):
+@click.option(
+    "--text-data",
+    help="Text data source: 'raw' (default), 'preprocessed', or path to parquet file",
+)
+def match_headlines(source, year, overlap_threshold, text_data):
     """
     Match detected headlines to OCR text from ALTO XML.
 
@@ -523,8 +695,8 @@ def match_headlines(source, year, overlap_threshold):
     config = get_config()
 
     # Load parsed lines
-    click.echo("Loading parsed text data...")
-    lines_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+    lines_path = get_text_data_path(source, text_data)
+    click.echo(f"Loading text data from: {lines_path}")
 
     if not lines_path.exists():
         click.echo(f"✗ Parsed text not found: {lines_path}", err=True)
@@ -575,6 +747,7 @@ def match_headlines(source, year, overlap_threshold):
             year=page_data.get("year", 0),
         )
 
+        headlines_list = []
         for hl_data in page_data.get("headlines", []):
             det = Detection(
                 detection_id=hl_data["detection_id"],
@@ -583,10 +756,12 @@ def match_headlines(source, year, overlap_threshold):
                 bbox=BoundingBox(**hl_data["bbox"]),
                 page_id=page_data["page_id"],
             )
-            page_layout.headlines.append(det)
+            headlines_list.append(det)
+
+        page_layout.detections.extend(headlines_list)
 
         # Match headlines (using DataFrame, not ALTO XML directly)
-        headlines = matcher.match_headlines(page_layout, None, lines_df)
+        headlines = matcher.match_headlines(page_layout, lines_df)
         all_headlines.extend(headlines)
 
     # Save matched headlines
@@ -642,16 +817,17 @@ def match_headlines(source, year, overlap_threshold):
     help="Create comparison view with separate panels for each element type",
 )
 @click.option(
-    "--show-text/--no-show-text",
-    default=True,
-    help="Show matched OCR text on visualizations (default: yes)",
+    "--show-linked-text",
+    is_flag=True,
+    default=False,
+    help="Show matched OCR text below detections (requires prior text matching via match-captions/match-headlines)",
 )
-def visualize(source, page_id, year, limit, element_types, comparison, show_text):
+def visualize(source, page_id, year, limit, element_types, comparison, show_linked_text):
     """
     Visualize detected layout elements for debugging.
     
     Creates annotated images showing detected regions with bounding boxes,
-    labels, confidence scores, and matched OCR text.
+    labels, and confidence scores.
     
     Examples:
         # Visualize specific page
@@ -663,6 +839,9 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_text
         # Show only headlines and images
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 \\
             --element-types title --element-types picture
+        
+        # Show with linked OCR text (after running match-captions/match-headlines)
+        newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 --show-linked-text
         
         # Create comparison view
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 --comparison
@@ -679,42 +858,44 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_text
 
     config = get_config()
 
-    # Load detection results
+    # Load detection results from Parquet
     detections_dir = config.results_dir / source / "layout"
-    if not detections_dir.exists():
-        click.echo(f"✗ No layout detections found in {detections_dir}", err=True)
+    detections_file = detections_dir / f"{source}_layout_detections.parquet"
+
+    if not detections_file.exists():
+        click.echo(f"✗ No layout detections found: {detections_file}", err=True)
         click.echo("  Run 'newspaper-explorer analyze layout detect' first", err=True)
         return
 
-    # Find detection files to visualize
-    import json
+    click.echo(f"Loading detections from {detections_file}")
+    import polars as pl
     from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox, PageLayout
 
+    detections_df = pl.read_parquet(detections_file)
+
+    # Filter by page_id or year
     if page_id:
-        # Visualize specific page
-        detection_files = list(detections_dir.glob(f"{page_id}_layout.json"))
-        if not detection_files:
-            detection_files = list(detections_dir.glob(f"**/{page_id}_layout.json"))
+        detections_df = detections_df.filter(pl.col("page_id") == page_id)
     elif year:
-        # Visualize pages from year
-        detection_files = []
-        for det_file in detections_dir.rglob("*_layout.json"):
-            if f"/{year}/" in str(det_file) or f"_{year}_" in det_file.stem:
-                detection_files.append(det_file)
-                if len(detection_files) >= limit:
-                    break
+        # Filter by year (assuming page_id contains year)
+        detections_df = detections_df.filter(pl.col("page_id").str.starts_with(str(year)))
+        # Limit pages
+        unique_pages = detections_df["page_id"].unique().to_list()[:limit]
+        detections_df = detections_df.filter(pl.col("page_id").is_in(unique_pages))
     else:
         click.echo("✗ Must specify either --page-id or --year", err=True)
         return
 
-    if not detection_files:
-        click.echo(f"✗ No detection files found", err=True)
+    if len(detections_df) == 0:
+        click.echo(f"✗ No detections found for the specified criteria", err=True)
         return
 
-    click.echo(f"✓ Found {len(detection_files)} detection file(s)")
+    # Group by page
+    pages_to_visualize = detections_df["page_id"].unique().to_list()
+    click.echo(f"✓ Found {len(pages_to_visualize)} page(s) to visualize")
 
     # Initialize visualizer
-    visualizer = LayoutVisualizer(show_text=show_text)
+    visualizer = LayoutVisualizer(show_text=show_linked_text)
 
     # Create output directory
     vis_output_dir = config.results_dir / source / "layout" / "visualizations"
@@ -725,41 +906,38 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_text
 
     # Visualize each page
     click.echo(f"\nCreating visualizations...")
-    for det_file in tqdm(detection_files, desc="Processing pages"):
-        with open(det_file, "r", encoding="utf-8") as f:
-            page_data = json.load(f)
+    for page_id_to_viz in tqdm(pages_to_visualize, desc="Processing pages"):
+        # Get all detections for this page
+        page_detections = detections_df.filter(pl.col("page_id") == page_id_to_viz)
 
-        # Reconstruct PageLayout
+        if len(page_detections) == 0:
+            continue
+
+        # Get image path (should be same for all detections on page)
+        image_path = page_detections["image_path"][0]
+
+        # Reconstruct PageLayout with all detections
+        detections = []
+        for row in page_detections.iter_rows(named=True):
+            det = Detection(
+                detection_id=row["detection_id"],
+                class_name=row["class_name"],
+                confidence=row["confidence"],
+                bbox=BoundingBox(
+                    x1=row["bbox_x1"],
+                    y1=row["bbox_y1"],
+                    x2=row["bbox_x2"],
+                    y2=row["bbox_y2"],
+                ),
+                page_id=row["page_id"],
+            )
+            detections.append(det)
+
         page_layout = PageLayout(
-            page_id=page_data["page_id"],
-            image_path=page_data["image_path"],
-            detections=[],
+            page_id=page_id_to_viz,
+            image_path=image_path,
+            detections=detections,
         )
-
-        # Add all detections
-        for det_type in ["headlines", "images", "captions", "tables", "text_blocks"]:
-            for det_data in page_data.get(det_type, []):
-                det = Detection(
-                    detection_id=det_data["detection_id"],
-                    class_name=det_data["class_name"],
-                    confidence=det_data["confidence"],
-                    bbox=BoundingBox(**det_data["bbox"]),
-                    page_id=page_data["page_id"],
-                    text_content=det_data.get("text_content"),
-                )
-                page_layout.detections.append(det)
-
-                # Organize by type for comparison view
-                if "title" in det.class_name.lower() or "header" in det.class_name.lower():
-                    page_layout.headlines.append(det)
-                elif "picture" in det.class_name.lower():
-                    page_layout.images.append(det)
-                elif "caption" in det.class_name.lower():
-                    page_layout.captions.append(det)
-                elif "table" in det.class_name.lower():
-                    page_layout.tables.append(det)
-                elif "text" in det.class_name.lower():
-                    page_layout.text_blocks.append(det)
 
         # Create visualization
         output_name = f"{page_layout.page_id}_{'comparison' if comparison else 'annotated'}.jpg"
@@ -788,7 +966,11 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_text
     type=int,
     help="Process only specific year",
 )
-def build_articles(source, year):
+@click.option(
+    "--text-data",
+    help="Text data source: 'raw' (default), 'preprocessed', or path to parquet file",
+)
+def build_articles(source, year, text_data):
     """
     Reconstruct articles from headlines and text blocks.
 
@@ -829,7 +1011,8 @@ def build_articles(source, year):
     click.echo(f"✓ Loaded {len(headlines_df)} matched headlines")
 
     # Load text lines
-    lines_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+    lines_path = get_text_data_path(source, text_data)
+    click.echo(f"Loading text data from: {lines_path}")
     lines_df = pl.read_parquet(lines_path)
 
     if year:

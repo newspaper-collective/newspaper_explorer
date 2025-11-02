@@ -58,8 +58,7 @@ Each row = one text line from ALTO XML:
     "x": 100,           # Line position
     "y": 200,
     "width": 500,
-    "height": 20,
-    "newspaper_id": "3074409X"
+    "height": 20
 }
 ```
 

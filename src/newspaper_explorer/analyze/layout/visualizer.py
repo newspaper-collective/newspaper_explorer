@@ -23,12 +23,12 @@ COLORS = {
     "Picture": (0, 255, 0),  # Green
     "Caption": (0, 200, 200),  # Yellow
     "Table": (0, 0, 255),  # Red
-    "Text": (200, 200, 200),  # Light gray
+    "Text": (0, 255, 255),  # Bright yellow (was light gray)
     "Formula": (255, 0, 255),  # Magenta
     "List-item": (150, 150, 255),  # Light purple
-    "Page-header": (100, 100, 100),  # Dark gray
-    "Page-footer": (100, 100, 100),  # Dark gray
-    "Footnote": (150, 150, 150),  # Gray
+    "Page-header": (255, 165, 0),  # Orange (was dark gray)
+    "Page-footer": (255, 165, 0),  # Orange (was dark gray)
+    "Footnote": (200, 200, 0),  # Cyan
 }
 
 
@@ -154,33 +154,33 @@ class LayoutVisualizer:
         views = []
         view_labels = []
 
-        # Headlines view
-        if page_layout.headlines:
-            headlines_img = self._create_filtered_view(
-                image.copy(), page_layout.headlines, "Headlines"
-            )
+        # Headlines view (Title, Section-header)
+        headlines = page_layout.filter_by_class(["Title", "Section-header"])
+        if headlines:
+            headlines_img = self._create_filtered_view(image.copy(), headlines, "Headlines")
             views.append(headlines_img)
-            view_labels.append(f"Headlines ({len(page_layout.headlines)})")
+            view_labels.append(f"Headlines ({len(headlines)})")
 
         # Images view
-        if page_layout.images:
-            images_img = self._create_filtered_view(image.copy(), page_layout.images, "Pictures")
+        images = page_layout.filter_by_class("Picture")
+        if images:
+            images_img = self._create_filtered_view(image.copy(), images, "Pictures")
             views.append(images_img)
-            view_labels.append(f"Images ({len(page_layout.images)})")
+            view_labels.append(f"Images ({len(images)})")
 
         # Captions view
-        if page_layout.captions:
-            captions_img = self._create_filtered_view(
-                image.copy(), page_layout.captions, "Captions"
-            )
+        captions = page_layout.filter_by_class("Caption")
+        if captions:
+            captions_img = self._create_filtered_view(image.copy(), captions, "Captions")
             views.append(captions_img)
-            view_labels.append(f"Captions ({len(page_layout.captions)})")
+            view_labels.append(f"Captions ({len(captions)})")
 
         # Tables view
-        if page_layout.tables:
-            tables_img = self._create_filtered_view(image.copy(), page_layout.tables, "Tables")
+        tables = page_layout.filter_by_class("Table")
+        if tables:
+            tables_img = self._create_filtered_view(image.copy(), tables, "Tables")
             views.append(tables_img)
-            view_labels.append(f"Tables ({len(page_layout.tables)})")
+            view_labels.append(f"Tables ({len(tables)})")
 
         if not views:
             logger.warning("No elements to visualize")

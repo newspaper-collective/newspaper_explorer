@@ -45,12 +45,26 @@ logger = logging.getLogger(__name__)
 
 class TextPreprocessor:
     """
-    Simple preprocessing pipeline for German newspaper text.
+    Chains together multiple text preprocessing steps in sequence.
 
-    This class only exists for backward compatibility with existing code.
-    It provides a pipeline() method to chain preprocessing steps.
+    This class provides a convenient pipeline() method that applies preprocessing
+    steps (like normalization, cleaning, lemmatization) one after another to a text
+    column in a Polars DataFrame.
 
-    For new code, consider using preprocessing functions directly from their modules.
+    Example:
+        >>> preprocessor = TextPreprocessor(text_column="text")
+        >>> df = preprocessor.pipeline(
+        ...     df,
+        ...     steps=["normalize", "lowercase", "remove-stopwords"],
+        ...     output_column="text_processed"
+        ... )
+
+    Note:
+        All original DataFrame columns (including IDs and metadata) are preserved
+        in the output, so you can still trace processed text back to its source.
+
+        For more control, you can import and use preprocessing functions directly:
+        from newspaper_explorer.data.preprocessing.cleaning import lowercase
     """
 
     def __init__(self, text_column: str = "text"):
@@ -89,12 +103,19 @@ class TextPreprocessor:
         - clean-ocr: Remove OCR artifacts and invalid characters
 
         Args:
-            df: Input DataFrame
+            df: Input DataFrame (must contain text_column)
             steps: List of step names to apply in order
             output_column: Name for final output column
 
         Returns:
-            DataFrame with processed text
+            DataFrame with processed text and all original columns preserved.
+            Foreign keys (source_id, issue_id, page_id, text_block_id, line_id)
+            are automatically preserved for traceability.
+
+        Note:
+            All columns from the input DataFrame are preserved in the output,
+            ensuring that foreign keys and metadata remain available after
+            preprocessing for linking back to source data.
         """
         logger.info(f"Starting preprocessing pipeline with {len(steps)} steps")
         logger.info(f"Steps: {', '.join(steps)}")

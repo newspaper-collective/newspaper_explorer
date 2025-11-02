@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mets:mets xmlns:mets="http://www.loc.gov/METS/"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://www.loc.gov/METS/ http://www.loc.gov/standards/mets/version19/mets.xsd http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-7.xsd"
+   OBJID="" TYPE="newspaper">
+
+   <mets:metsHdr xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns="https://www.w3.org/TR/xhtml1/DTD/xhtml1-strict"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/"
+      CREATEDATE="2025-07-25T20:40:27" LASTMODDATE="2025-07-25T20:40:27">
+      <mets:agent ROLE="CREATOR" TYPE="ORGANIZATION">
+         <mets:name>Staatsbiliothek zu Berlin - Zeitungsinformationssystem (ZEFYS)</mets:name>
+      </mets:agent>
+      <mets:agent ROLE="CREATOR" TYPE="OTHER" OTHERTYPE="SOFTWARE">
+         <mets:name>SBB ZEFYS Indexer</mets:name>
+      </mets:agent>
+   </mets:metsHdr>
+   <mets:dmdSec xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/" ID="dmd">
+      <mets:mdWrap MDTYPE="MODS">
+         <mets:xmlData>
+            <mods:mods xmlns:mods="http://www.loc.gov/mods/v3" ID="dmd_issue" version="3.7"
+               xsi:schemaLocation="http://www.loc.gov/mods/v3 http://www.loc.gov/standards/mods/v3/mods-3-7.xsd">
+               <mods:typeOfResource valueURI="http://ddb-vocnet-org/medientyp/mt003">text</mods:typeOfResource>
+               <mods:part order="1920030301">
+                  <mods:detail type="volume">
+                     <mods:number>Jahrgang 1920</mods:number>
+                  </mods:detail>
+                  <mods:detail type="issue">
+                     <mods:number>Nr. 53, 03. März 1920</mods:number>  </mods:detail>
+               </mods:part>
+               <mods:originInfo eventType="publication">
+                  <mods:dateIssued encoding="iso8601">1920-03-03</mods:dateIssued>
+               </mods:originInfo>
+               <mods:originInfo eventType="digitization">
+                  <mods:dateCaptured encoding="iso8601">2021</mods:dateCaptured>
+                  <mods:publisher>Staatsbibliothek zu Berlin - Preußischer Kulturbesitz</mods:publisher>
+                  <mods:edition>[Electronic ed.]</mods:edition>
+               </mods:originInfo>
+               <mods:language>
+                  <mods:languageTerm type="code" authority="iso639-2b">ger</mods:languageTerm>
+ </mods:language>
+               <mods:physicalDescription>
+                  <mods:extent>4 Seiten</mods:extent>
+                  <mods:digitalOrigin>digitized microfilm</mods:digitalOrigin>
+               </mods:physicalDescription>
+               <mods:relatedItem type="host">
+                  <mods:recordInfo>
+                     <mods:recordIdentifier source="gbv-ppn">PPN176124776X</mods:recordIdentifier>
+                  </mods:recordInfo>
+                  <mods:identifier type="zdb">3074409-X</mods:identifier>
+                  <mods:relatedItem type="original">
+                     <mods:identifier type="zdb">717057-9</mods:identifier>
+                  </mods:relatedItem>
+                  <mods:titleInfo>
+                     <mods:title>Der Tag</mods:title>
+ <mods:subTitle>moderne illustrierte Zeitung</mods:subTitle> 
+<mods:partNumber>Ausgabe A</mods:partNumber> 
+                  </mods:titleInfo>
+                  <mods:genre authority="marcgt">newspaper</mods:genre>
+               </mods:relatedItem>
+               <mods:identifier type="purl">https://resolver.staatsbibliothek-berlin.de/SNP3074409X-19200303-0-0-0-0</mods:identifier>
+               <mods:location>
+                  <mods:physicalLocation  valueURI="http://ld.zdb-services.de/resource/organisations/DE-1"
+                  >Staatsbibliothek zu Berlin - Preußischer Kulturbesitz, Berlin, Germany</mods:physicalLocation>
+               </mods:location>
+               <mods:accessCondition type="use and reproduction"
+                  xlink:href="https://creativecommons.org/publicdomain/mark/1.0/">Public Domain Mark
+                  1.0</mods:accessCondition>
+               <mods:accessCondition type="restriction on access"
+                  xlink:href="http://purl.org/coar/access_right/c_abf2" displayLabel="Access Status"
+                  >open access</mods:accessCondition>
+               <mods:recordInfo>
+                  <mods:recordIdentifier source="gbv-ppn">PPN176124776X-1920030301</mods:recordIdentifier>
+               </mods:recordInfo>
+            </mods:mods>
+         </mets:xmlData>
+      </mets:mdWrap>
+   </mets:dmdSec>
+   <mets:amdSec xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/" ID="amd">
+      <mets:rightsMD ID="rights8208980">
+         <mets:mdWrap MIMETYPE="text/xml" MDTYPE="OTHER" OTHERMDTYPE="DVRIGHTS">
+            <mets:xmlData>
+               <dv:rights>
+                  <dv:owner>Staatsbibliothek zu Berlin</dv:owner>
+                  <dv:ownerLogo>http://resolver.staatsbibliothek-berlin.de/SBB0000000100000000</dv:ownerLogo>
+                  <dv:ownerSiteURL>https://staatsbibliothek-berlin.de</dv:ownerSiteURL>
+               </dv:rights>
+            </mets:xmlData>
+         </mets:mdWrap>
+      </mets:rightsMD>
+      <mets:digiprovMD ID="digiprov8208980">
+         <mets:mdWrap MIMETYPE="text/xml" MDTYPE="OTHER" OTHERMDTYPE="DVLINKS">
+            <mets:xmlData>
+               <dv:links>
+                  <dv:reference>https://ld.zdb-services.de/resource/3074409-X</dv:reference>
+                  <dv:presentation>https://zefys.staatsbibliothek-berlin.de/list/title/zdb/3074409X</dv:presentation>
+               </dv:links>
+            </mets:xmlData>
+         </mets:mdWrap>
+      </mets:digiprovMD>
+   </mets:amdSec>
+   <mets:fileSec xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/">
+      <mets:fileGrp USE="DEFAULT">  <mets:file
+            MIMETYPE="image/jpg" ID="default_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="default_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="default_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="default_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  </mets:fileGrp>
+      <mets:fileGrp USE="MAX">  <mets:file MIMETYPE="image/jpg"
+            ID="max_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="max_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="max_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="max_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  </mets:fileGrp>
+      <mets:fileGrp USE="MIN">  <mets:file MIMETYPE="image/jpg"
+            ID="min_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0/full/800,/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="min_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0/full/800,/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="min_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0/full/800,/0/default.jpg"
+            />
+         </mets:file>  <mets:file MIMETYPE="image/jpg"
+            ID="min_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0/full/800,/0/default.jpg"
+            />
+         </mets:file>  </mets:fileGrp>
+      <mets:fileGrp USE="THUMBS">  <mets:file
+            MIMETYPE="image/jpg" ID="thumb_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0/full/,250/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="thumb_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0/full/,250/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="thumb_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0/full/,250/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="thumb_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0/full/,250/0/default.jpg"
+            />
+         </mets:file>  </mets:fileGrp>
+      <mets:fileGrp USE="PRESENTATION">  <mets:file
+            MIMETYPE="image/jpg" ID="present_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="present_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="present_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  <mets:file
+            MIMETYPE="image/jpg" ID="present_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0/full/full/0/default.jpg"
+            />
+         </mets:file>  </mets:fileGrp>
+      <mets:fileGrp USE="DOWNLOAD">
+         <mets:file MIMETYPE="application/pdf" ID="download_0">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-0-0-0.pdf"/>
+         </mets:file>  <mets:file MIMETYPE="application/pdf"
+            ID="download_1">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0.pdf"/>
+         </mets:file>  <mets:file MIMETYPE="application/pdf"
+            ID="download_2">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0.pdf"/>
+         </mets:file>  <mets:file MIMETYPE="application/pdf"
+            ID="download_3">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0.pdf"/>
+         </mets:file>  <mets:file MIMETYPE="application/pdf"
+            ID="download_4">
+            <mets:FLocat LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0.pdf"/>
+         </mets:file>  </mets:fileGrp>  <mets:fileGrp USE="FULLTEXT">
+ <mets:file MIMETYPE="text/xml"
+            ID="fulltext_1">
+            <mets:FLocat xmlns:xlink="http://www.w3.org/1999/xlink" LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-1-0-0.alto.xml"/>
+         </mets:file>  <mets:file MIMETYPE="text/xml"
+            ID="fulltext_2">
+            <mets:FLocat xmlns:xlink="http://www.w3.org/1999/xlink" LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-2-0-0.alto.xml"/>
+         </mets:file>  <mets:file MIMETYPE="text/xml"
+            ID="fulltext_3">
+            <mets:FLocat xmlns:xlink="http://www.w3.org/1999/xlink" LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-3-0-0.alto.xml"/>
+         </mets:file>  <mets:file MIMETYPE="text/xml"
+            ID="fulltext_4">
+            <mets:FLocat xmlns:xlink="http://www.w3.org/1999/xlink" LOCTYPE="URL"
+               xlink:href="https://content.staatsbibliothek-berlin.de/zefys/SNP3074409X-19200303-0-4-0-0.alto.xml"/>
+         </mets:file>  </mets:fileGrp>  </mets:fileSec>
+   <mets:structMap xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/" ID="psmp"
+      TYPE="PHYSICAL">
+      <mets:div ID="phys" CONTENTIDS="NULL" TYPE="physSequence">  <mets:div TYPE="page" ID="phys_1" CONTENTIDS="NULL" ORDER="1"
+            ORDERLABEL="1">
+            <mets:fptr FILEID="default_1"/>
+            <mets:fptr FILEID="max_1"/>
+            <mets:fptr FILEID="min_1"/>
+            <mets:fptr FILEID="thumb_1"/>
+            <mets:fptr FILEID="present_1"/>
+            <mets:fptr FILEID="download_1"/>  <mets:fptr
+               FILEID="fulltext_1"/>  </mets:div>  <mets:div TYPE="page" ID="phys_2" CONTENTIDS="NULL" ORDER="2"
+            ORDERLABEL="2">
+            <mets:fptr FILEID="default_2"/>
+            <mets:fptr FILEID="max_2"/>
+            <mets:fptr FILEID="min_2"/>
+            <mets:fptr FILEID="thumb_2"/>
+            <mets:fptr FILEID="present_2"/>
+            <mets:fptr FILEID="download_2"/>  <mets:fptr
+               FILEID="fulltext_2"/>  </mets:div>  <mets:div TYPE="page" ID="phys_3" CONTENTIDS="NULL" ORDER="3"
+            ORDERLABEL="3">
+            <mets:fptr FILEID="default_3"/>
+            <mets:fptr FILEID="max_3"/>
+            <mets:fptr FILEID="min_3"/>
+            <mets:fptr FILEID="thumb_3"/>
+            <mets:fptr FILEID="present_3"/>
+            <mets:fptr FILEID="download_3"/>  <mets:fptr
+               FILEID="fulltext_3"/>  </mets:div>  <mets:div TYPE="page" ID="phys_4" CONTENTIDS="NULL" ORDER="4"
+            ORDERLABEL="4">
+            <mets:fptr FILEID="default_4"/>
+            <mets:fptr FILEID="max_4"/>
+            <mets:fptr FILEID="min_4"/>
+            <mets:fptr FILEID="thumb_4"/>
+            <mets:fptr FILEID="present_4"/>
+            <mets:fptr FILEID="download_4"/>  <mets:fptr
+               FILEID="fulltext_4"/>  </mets:div>  </mets:div>
+   </mets:structMap>
+   <mets:structMap xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:dv="http://dfg-viewer.de/"
+      ID="lsmp" TYPE="LOGICAL">
+      <mets:div TYPE="issue" ID="log" DMDID="dmd" ADMID="amd"
+         LABEL="03. März 1920" ORDER="1">
+         <mets:fptr FILEID="download_0"/>
+      </mets:div>
+   </mets:structMap>
+   <mets:structLink xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:dv="http://dfg-viewer.de/">  <mets:smLink xlink:from="log" xlink:to="phys_1"/>  <mets:smLink xlink:from="log" xlink:to="phys_2"/>  <mets:smLink xlink:from="log" xlink:to="phys_3"/>  <mets:smLink xlink:from="log" xlink:to="phys_4"/>  </mets:structLink>
+</mets:mets>

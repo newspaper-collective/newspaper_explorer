@@ -9,7 +9,8 @@
         "language": "de",
         "years_available": "1900-1920",
         "location": "Berlin, Germany",
-        "format": "ALTO XML"
+        "format": "ALTO XML",
+        "zdb_source_id": "3074409-X"
     },
     "loading": {
         "pattern": "**/fulltext/*.xml",
