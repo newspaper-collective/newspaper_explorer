@@ -205,7 +205,7 @@ df = loader.load_source()
 df_1901 = df.filter(pl.col("year") == 1901)
 
 # Query with SQL (DuckDB)
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyze.query.engine import QueryEngine
 
 engine = QueryEngine(source_name="der_tag")
 result = engine.query("""

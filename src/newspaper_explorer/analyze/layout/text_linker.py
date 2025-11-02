@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple
 
 import polars as pl
 
-from newspaper_explorer.analysis.layout.schemas import BoundingBox, Detection
+from newspaper_explorer.analyze.layout.schemas import BoundingBox, Detection
 
 logger = logging.getLogger(__name__)
 

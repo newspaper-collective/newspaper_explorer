@@ -23,10 +23,10 @@ from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.loading.loader import DataLoader
-from newspaper_explorer.analysis.layout.detection import LayoutDetector
-from newspaper_explorer.analysis.layout.headline_matcher import HeadlineMatcher
-from newspaper_explorer.analysis.layout.article_builder import ArticleBuilder
-from newspaper_explorer.analysis.layout.visualizer import LayoutVisualizer
+from newspaper_explorer.analyze.layout.detection import LayoutDetector
+from newspaper_explorer.analyze.layout.headline_matcher import HeadlineMatcher
+from newspaper_explorer.analyze.layout.article_builder import ArticleBuilder
+from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
         click.echo(f"✓ Resume mode: {len(processed_pages)} pages already processed")
 
         # Filter out already processed images
-        from newspaper_explorer.analysis.layout.detection import LayoutDetector
+        from newspaper_explorer.analyze.layout.detection import LayoutDetector
 
         temp_detector = LayoutDetector(
             model_size=model_size, device="cpu"
@@ -209,7 +209,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
     # Initialize detector
     click.echo(f"\nInitializing YOLOv11 {model_size} model...")
 
-    from newspaper_explorer.analysis.layout.detection import LayoutDetector
+    from newspaper_explorer.analyze.layout.detection import LayoutDetector
 
     detector = LayoutDetector(
         model_size=model_size,
@@ -223,7 +223,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
     # Don't pass page_ids - let detector generate unique IDs from paths
 
     # Temporarily suppress detector's INFO logs to avoid interfering with tqdm
-    detector_logger = logging.getLogger("newspaper_explorer.analysis.layout.detection")
+    detector_logger = logging.getLogger("newspaper_explorer.analyze.layout.detection")
     original_level = detector_logger.level
     detector_logger.setLevel(logging.WARNING)
 
@@ -368,7 +368,7 @@ def extract_pictures(source, year, save_crops, resume):
 
     # Find detection files
     import json
-    from newspaper_explorer.analysis.layout.schemas import PageLayout
+    from newspaper_explorer.analyze.layout.schemas import PageLayout
 
     detection_files = list(detections_dir.glob("*_layout.json"))
     if year:
@@ -383,7 +383,7 @@ def extract_pictures(source, year, save_crops, resume):
     click.echo(f"✓ Found {len(detection_files)} detection files")
 
     # Initialize extractor (crops any region type)
-    from newspaper_explorer.analysis.layout.region_extraction import RegionExtractor
+    from newspaper_explorer.analyze.layout.region_extraction import RegionExtractor
 
     extractor = RegionExtractor(padding=5)
 
@@ -416,7 +416,7 @@ def extract_pictures(source, year, save_crops, resume):
             continue
 
         # Reconstruct PageLayout (simplified)
-        from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox
+        from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox
 
         page_layout = PageLayout(
             page_id=page_id,
@@ -534,7 +534,7 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
 
     # Find detection files
     import json
-    from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox, PageLayout
+    from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
 
     detection_files = list(detections_dir.glob("*_layout.json"))
     if year:
@@ -565,7 +565,7 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
     click.echo(f"✓ Loaded {len(lines_df)} text lines for caption extraction")
 
     # Initialize proximity matcher (handles text extraction + spatial matching)
-    from newspaper_explorer.analysis.layout.region_matching import ProximityMatcher
+    from newspaper_explorer.analyze.layout.region_matching import ProximityMatcher
 
     # Map old caption_position values to new relative_position
     position_map = {"both": "any", "below": "below", "above": "above"}
@@ -738,7 +738,7 @@ def match_headlines(source, year, overlap_threshold, text_data):
             page_data = json.load(f)
 
         # Reconstruct PageLayout (simplified - headlines only)
-        from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox, PageLayout
+        from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
 
         page_layout = PageLayout(
             page_id=page_data["page_id"],
@@ -869,7 +869,7 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
 
     click.echo(f"Loading detections from {detections_file}")
     import polars as pl
-    from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox, PageLayout
+    from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
 
     detections_df = pl.read_parquet(detections_file)
 

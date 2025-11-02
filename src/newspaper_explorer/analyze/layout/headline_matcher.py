@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import List, Optional
 import polars as pl
 
-from newspaper_explorer.analysis.layout.schemas import (
+from newspaper_explorer.analyze.layout.schemas import (
     Detection,
     Headline,
     PageLayout,
 )
-from newspaper_explorer.analysis.layout.text_linker import TextLinker
+from newspaper_explorer.analyze.layout.text_linker import TextLinker
 
 logger = logging.getLogger(__name__)
 

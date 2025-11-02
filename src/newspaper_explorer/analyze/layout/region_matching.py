@@ -15,8 +15,8 @@ import numpy as np
 from typing import List, Optional, Tuple, Literal
 import polars as pl
 
-from newspaper_explorer.analysis.layout.schemas import Detection, BoundingBox
-from newspaper_explorer.analysis.layout.text_linker import TextLinker
+from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox
+from newspaper_explorer.analyze.layout.text_linker import TextLinker
 
 logger = logging.getLogger(__name__)
 

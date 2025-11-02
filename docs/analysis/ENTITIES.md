@@ -34,7 +34,7 @@ Extract named entities (persons, organizations, locations) from historical newsp
 ### LLM-based Extraction (High Quality)
 
 ```python
-from newspaper_explorer.analysis.entities.llm_extraction import extract_entities_llm
+from newspaper_explorer.analyze.entities.llm_extraction import extract_entities_llm
 
 # Test with first 100 lines
 results = extract_entities_llm(
@@ -55,7 +55,7 @@ print(f"Method ID: {results['metadata']['analysis_id']}")
 ### GLiNER-based Extraction (Fast & Local)
 
 ```python
-from newspaper_explorer.analysis.entities.gliner_extraction import extract_entities_gliner
+from newspaper_explorer.analyzeentities.gliner_extraction import extract_entities_gliner
 
 # Test with first 100 lines
 results = extract_entities_gliner(
@@ -76,7 +76,7 @@ print(f"Method ID: {results['metadata']['analysis_id']}")
 ### Compare Both Methods
 
 ```python
-from newspaper_explorer.analysis.entities.method_comparison import run_both_methods, compare_entities
+from newspaper_explorer.analyze.entities.method_comparison import run_both_methods, compare_entities
 
 # Run both on same data
 results = run_both_methods(source_name="der_tag", limit=100)
@@ -109,7 +109,7 @@ LLM_MAX_TOKENS=1000
 ### Python API
 
 ```python
-from newspaper_explorer.analysis.entities.llm_extraction import LLMEntityExtractor
+from newspaper_explorer.analyze.entities.llm_extraction import LLMEntityExtractor
 
 # Initialize with custom settings
 extractor = LLMEntityExtractor(
@@ -165,7 +165,7 @@ No API required - runs completely offline.
 ### Python API
 
 ```python
-from newspaper_explorer.analysis.entities.gliner_extraction import GLiNEREntityExtractor
+from newspaper_explorer.analyzeentities.gliner_extraction import GLiNEREntityExtractor
 
 # Initialize extractor
 extractor = GLiNEREntityExtractor(
@@ -237,7 +237,7 @@ extractor = GLiNEREntityExtractor(
 Both methods output compatible formats queryable with `QueryEngine`:
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeuery.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Find all mentions of "Berlin"
@@ -265,7 +265,7 @@ with QueryEngine(source="der_tag") as qe:
 Use the comparison utility to evaluate both methods:
 
 ```python
-from newspaper_explorer.analysis.entities.method_comparison import (
+from newspaper_explorer.analyzetities.method_comparison import (
     run_both_methods,
     compare_entities,
     print_comparison_report
@@ -450,7 +450,7 @@ See dedicated example files:
 ### Find Entity Mentions
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeengine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Find all mentions of "Berlin"
@@ -490,7 +490,7 @@ with QueryEngine(source="der_tag") as qe:
 
 ```python
 import polars as pl
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeengine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     # Entities by year

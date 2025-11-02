@@ -27,7 +27,7 @@ class QueryEngine:
 
     Example:
         ```python
-        from newspaper_explorer.analysis.query.engine import QueryEngine
+        from newspaper_explorer.analyze.query.engine import QueryEngine
 
         with QueryEngine() as qe:
             # Find all mentions of an entity

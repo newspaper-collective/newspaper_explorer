@@ -52,7 +52,7 @@ print(lines_df.select([
 Use SQL to query Parquet files efficiently without loading into memory:
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyze.query.engine import QueryEngine
 
 # Initialize query engine
 engine = QueryEngine(source_name="der_tag")
@@ -184,7 +184,7 @@ See **[Normalization Guide](preprocessing/NORMALIZATION.md)** for details on his
 Extract named entities using GLiNER:
 
 ```python
-from newspaper_explorer.analysis.entities.extraction import EntityExtractor
+from newspaper_explorer.analyze.entities.extraction import EntityExtractor
 
 # Initialize extractor
 extractor = EntityExtractor(
@@ -231,7 +231,7 @@ See **[Entity Extraction Guide](analysis/ENTITIES.md)** for detailed documentati
 ### Find mentions with context
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyze.query.engine import QueryEngine
 
 engine = QueryEngine(source_name="der_tag")
 

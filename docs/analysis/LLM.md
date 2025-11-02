@@ -291,7 +291,7 @@ prompt = PromptTemplate(
 Metadata is automatically extracted from DataFrame columns:
 
 ```python
-from newspaper_explorer.analysis.entities.llm_extraction import LLMEntityExtractor
+from newspaper_explorer.analyzentities.llm_extraction import LLMEntityExtractor
 
 # DataFrame has: line_id, text, source, newspaper_title, date, page_number
 extractor = LLMEntityExtractor(source_name="der_tag")

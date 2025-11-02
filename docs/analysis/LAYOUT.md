@@ -36,7 +36,7 @@ cli/layout.py           # Layout analysis CLI commands
 **Solution**: Created `TextLinker` class that works with pre-parsed DataFrames for FAST batch processing:
 
 ```python
-from newspaper_explorer.analysis.layout.text_linker import TextLinker
+from newspaper_explorer.analyze.layout.text_linker import TextLinker
 from newspaper_explorer.data.loading.loader import DataLoader
 
 # Load parquet ONCE (contains ALL pages)
@@ -67,7 +67,7 @@ for page_id in page_ids:
 **Solution**: Created `LayoutVisualizer` class with multiple visualization modes:
 
 ```python
-from newspaper_explorer.analysis.layout.visualizer import LayoutVisualizer
+from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
 
 visualizer = LayoutVisualizer(show_text=True, show_confidence=True)
 
@@ -78,7 +78,7 @@ visualizer.visualize_page(page_layout, "output.jpg")
 visualizer.visualize_comparison(page_layout, "comparison.jpg")
 
 # Quick visualization
-from newspaper_explorer.analysis.layout.visualizer import quick_visualize
+from newspaper_explorer.analyzelayout.visualizer import quick_visualize
 quick_visualize(page_layout, "debug.jpg", element_types=["Title", "Picture"])
 ```
 

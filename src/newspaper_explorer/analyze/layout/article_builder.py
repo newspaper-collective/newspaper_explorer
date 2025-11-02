@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Set
 import polars as pl
 from datetime import datetime
 
-from newspaper_explorer.analysis.layout.schemas import (
+from newspaper_explorer.analyze.layout.schemas import (
     Article,
     Headline,
     Detection,

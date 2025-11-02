@@ -20,7 +20,7 @@ from tqdm import tqdm
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.loading.loader import DataLoader
 from newspaper_explorer.data.utils.text import normalize_german_text
-from newspaper_explorer.analysis.query.engine import create_result_metadata
+from newspaper_explorer.analyzequery.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +329,7 @@ def extract_entities_gliner(
 
     Example:
         ```python
-        from newspaper_explorer.analysis.entities.gliner_extraction import extract_entities_gliner
+        from newspaper_explorer.analyzetities.gliner_extraction import extract_entities_gliner
 
         # Extract from first 100 lines (testing)
         results = extract_entities_gliner(

@@ -18,7 +18,7 @@ The layout analysis modules have been generalized from image-specific operations
 
 **Usage**:
 ```python
-from newspaper_explorer.analysis.layout.image_extractor import RegionExtractor
+from newspaper_explorer.analyze.layout.image_extractor import RegionExtractor
 
 extractor = RegionExtractor(padding=5)
 
@@ -68,7 +68,7 @@ all_regions = extractor.extract_regions(
 
 **Usage**:
 ```python
-from newspaper_explorer.analysis.layout.caption_matching import ProximityMatcher
+from newspaper_explorer.analyze.layout.caption_matching import ProximityMatcher
 
 # Match captions to images (classic use case)
 matcher = ProximityMatcher(
@@ -133,7 +133,7 @@ Following the project's **"No Legacy Support"** policy:
 
 ### Old Code (ImageExtractor)
 ```python
-from newspaper_explorer.analysis.layout.image_extractor import ImageExtractor
+from newspaper_explorer.analyze.layout.image_extractor import ImageExtractor
 
 extractor = ImageExtractor(padding=5)
 images = extractor.extract_images(images, page_layout, output_dir)
@@ -142,7 +142,7 @@ extractor.save_image_metadata(images, output_path)
 
 ### New Code (RegionExtractor)
 ```python
-from newspaper_explorer.analysis.layout.image_extractor import RegionExtractor
+from newspaper_explorer.analyze.layout.image_extractor import RegionExtractor
 
 extractor = RegionExtractor(padding=5)
 images = extractor.extract_regions(images, page_layout, output_dir, region_type="image")
@@ -151,7 +151,7 @@ extractor.save_region_metadata(images, output_path)
 
 ### Old Code (CaptionMatcher)
 ```python
-from newspaper_explorer.analysis.layout.caption_matching import CaptionMatcher
+from newspaper_explorer.analyze.layout.caption_matching import CaptionMatcher
 
 matcher = CaptionMatcher(
     search_radius=150,
@@ -162,7 +162,7 @@ images_with_captions = matcher.match_captions_for_page(page_layout, lines_df)
 
 ### New Code (ProximityMatcher)
 ```python
-from newspaper_explorer.analysis.layout.caption_matching import ProximityMatcher
+from newspaper_explorer.analyze.layout.caption_matching import ProximityMatcher
 
 matcher = ProximityMatcher(
     search_radius=150,

@@ -21,7 +21,7 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.llm.client import LLMClient, LLMRetryError, LLMValidationError
 from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
 from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
-from newspaper_explorer.analysis.query.engine import create_result_metadata
+from newspaper_explorer.analyzeery.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +328,7 @@ def extract_entities_llm(
 
     Example:
         ```python
-        from newspaper_explorer.analysis.entities.llm_extraction import extract_entities_llm
+        from newspaper_explorer.analyzeities.llm_extraction import extract_entities_llm
 
         # Extract from first 100 lines (testing)
         results = extract_entities_llm(

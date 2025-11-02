@@ -6,11 +6,11 @@ Demonstrates the new extraction pipeline following the data architecture pattern
 
 import logging
 
-from newspaper_explorer.analysis.entities.llm_extraction import (
+from newspaper_explorer.analyzeentities.llm_extraction import (
     LLMEntityExtractor,
     extract_entities_llm,
 )
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeery.engine import QueryEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

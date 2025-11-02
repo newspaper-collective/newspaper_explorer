@@ -5,7 +5,7 @@ Demonstrates DuckDB-based queries for exploring analysis results
 without loading multi-GB Parquet files into memory.
 """
 
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyze.query.engine import QueryEngine
 
 
 def example_search_text():

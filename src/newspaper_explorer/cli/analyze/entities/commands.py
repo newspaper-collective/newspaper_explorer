@@ -139,7 +139,7 @@ def extract(
       - entities_raw.parquet: All extracted entities with IDs
       - entities_grouped.json: Entities grouped by ID and label
     """
-    from newspaper_explorer.analysis.entities.extraction import EntityExtractor
+    from newspaper_explorer.analyze.entities.extraction import EntityExtractor
 
     # Configure logging
     config = get_config()

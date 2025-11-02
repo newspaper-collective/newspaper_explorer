@@ -11,10 +11,10 @@ from typing import Dict, Any
 
 import polars as pl
 
-from newspaper_explorer.analysis.entities.llm_extraction import extract_entities_llm
-from newspaper_explorer.analysis.entities.gliner_extraction import extract_entities_gliner
+from newspaper_explorer.analyze.entities.llm_extraction import extract_entities_llm
+from newspaper_explorer.analyze.entities.gliner_extraction import extract_entities_gliner
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyze.query.engine import QueryEngine
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

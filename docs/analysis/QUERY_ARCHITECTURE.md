@@ -109,7 +109,7 @@ Every result row has `line_id` foreign key back to source:
 ### Find All Entity Mentions
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeuery.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     mentions = qe.find_entity_mentions(
@@ -170,7 +170,7 @@ with QueryEngine() as qe:
 
 ```python
 from fastapi import FastAPI
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeuery.engine import QueryEngine
 
 app = FastAPI()
 qe = QueryEngine(source="der_tag", in_memory=False)
@@ -190,7 +190,7 @@ def get_line(line_id: str):
 
 ```python
 import streamlit as st
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzeuery.engine import QueryEngine
 
 st.title("Newspaper Explorer")
 
@@ -255,7 +255,7 @@ pip install duckdb
 Import and query:
 
 ```python
-from newspaper_explorer.analysis.query.engine import QueryEngine
+from newspaper_explorer.analyzery.engine import QueryEngine
 
 with QueryEngine(source="der_tag") as qe:
     results = qe.find_entity_mentions("Berlin")
