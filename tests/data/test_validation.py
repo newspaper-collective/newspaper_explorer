@@ -120,7 +120,7 @@ class TestImageValidation:
     def test_validation_result_to_dict(self, valid_image):
         """Test conversion of validation result to dictionary."""
         result = validate_image_file(valid_image)
-        result_dict = result.to_dict()
+        result_dict = result.model_dump()
 
         assert isinstance(result_dict, dict)
         assert "is_valid" in result_dict

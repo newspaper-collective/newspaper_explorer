@@ -96,18 +96,35 @@ src/newspaper_explorer/
 │   ├── utils/         # Data utilities
 │   │   ├── fixes.py  # DataFixer for corrections
 │   │   └── text.py   # Text utilities
-│   ├── loading.py    # DataLoader (main parsing)
-│   └── preprocessing.py # Text normalization
+│   ├── loading/      # Data loading (modular)
+│   │   ├── loader.py        # Main DataLoader class
+│   │   ├── workers.py       # Parallel processing workers
+│   │   └── aggregation.py   # Text aggregation utilities
+│   ├── preprocessing/       # Text preprocessing (modular)
+│   │   ├── pipeline.py      # Main preprocessing pipeline
+│   │   ├── normalization.py # Historical text normalization
+│   │   ├── cleaning.py      # Text cleaning functions
+│   │   ├── filtering.py     # Filtering functions
+│   │   └── linguistic.py    # Lemmatization, dehyphenation
+│   └── utils/        # Data utilities
+│       ├── fixes.py  # DataFixer for corrections
+│       ├── text.py   # Text utilities
+│       └── validation.py # Data quality validation
 ├── cli/               # Command-line interface
 │   ├── data/         # Data management commands (modular)
-│   │   ├── commands.py    # Main group registration
-│   │   ├── download.py    # download, unpack, verify
-│   │   ├── images.py      # download-images
-│   │   ├── info.py        # info, list-sources
-│   │   ├── loading.py     # parse, aggregate, find-empty
+│   │   ├── commands.py      # Main group registration
+│   │   ├── download.py      # download, unpack, verify
+│   │   ├── images.py        # download-images
+│   │   ├── info.py          # info, list-sources
+│   │   ├── loading.py       # parse, aggregate, find-empty
 │   │   ├── preprocessing.py # preprocess
-│   │   └── common.py      # Shared constants
-│   ├── analyze.py     # Analysis commands
+│   │   └── validation.py    # validate-alto-mets
+│   ├── analyze/       # Analysis commands (nested structure)
+│   │   ├── commands.py      # Main analyze group
+│   │   ├── entities/        # Entity extraction commands
+│   │   │   └── commands.py  # entities group
+│   │   └── layout/          # Layout analysis commands
+│   │       └── commands.py  # layout group
 │   └── main.py        # CLI entry point
 ├── analysis/          # Analysis modules
 │   ├── concepts/     # Concept extraction
@@ -324,18 +341,26 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 - `data/download/images.py` - Image download (ImageDownloader)
 - `data/parser/alto.py` - ALTO XML parsing with dataclasses
 - `data/parser/mets.py` - METS metadata extraction
-- `data/preprocessing.py` - Text normalization pipeline
+- `data/preprocessing/pipeline.py` - Main preprocessing pipeline
+- `data/preprocessing/normalization.py` - Historical German text normalization
+- `data/preprocessing/cleaning.py` - Text cleaning functions
+- `data/preprocessing/filtering.py` - Filtering functions
+- `data/preprocessing/linguistic.py` - Lemmatization, dehyphenation
 - `data/utils/fixes.py` - DataFixer for automatic error correction
 - `data/utils/validation.py` - Data quality validation utilities
 
 ### CLI
+- `cli/main.py` - Main CLI entry point
 - `cli/data/commands.py` - Main data command group registration
 - `cli/data/download.py` - Download & unpack commands
 - `cli/data/images.py` - Image download command
 - `cli/data/loading.py` - Parse, aggregate, find-empty commands
 - `cli/data/info.py` - Info & list-sources commands (with image status)
 - `cli/data/preprocessing.py` - Preprocess command
-- `cli/data/common.py` - Shared CLI constants
+- `cli/data/validation.py` - Validate ALTO-METS command
+- `cli/analyze/commands.py` - Main analyze group
+- `cli/analyze/entities/commands.py` - Entity extraction commands
+- `cli/analyze/layout/commands.py` - Layout analysis commands
 
 ### Analysis
 - `analysis/query/engine.py` - DuckDB query engine for analysis results
@@ -343,8 +368,9 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 
 ### Documentation
 - `docs/DATA_LOADER.md` - Detailed loading architecture
-- `docs/CLI_REFACTORING.md` - CLI modular structure
-- `docs/OUTPUT_STANDARDS.md` - Output handling guidelines
+- `docs/CLI.md` - Complete CLI reference
 - `docs/IMAGES.md` - Image download documentation
 - `docs/QUERY_ARCHITECTURE.md` - Query engine documentation
 - `docs/LLM.md` - Complete LLM utilities guide (client, prompts, schemas, metadata)
+- `docs/NORMALIZATION.md` - Historical text normalization guide
+- `docs/ENTITIES.md` - Entity extraction documentation

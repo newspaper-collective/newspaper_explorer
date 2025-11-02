@@ -44,7 +44,7 @@ class TestTextLine:
             filename="test.xml",
         )
 
-        d = line.to_dict()
+        d = line.model_dump()
         assert isinstance(d, dict)
         assert d["line_id"] == "test_line_1"
         assert d["text"] == "Sample text"
@@ -197,9 +197,12 @@ def test_dataloader_save_parquet():
 
     loader = DataLoader(max_workers=1)
 
-    # Create a temporary file for output
+    # Create a temporary file path (but don't create the file yet)
     with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
         tmp_path = Path(tmp.name)
+
+    # Delete the empty file created by NamedTemporaryFile
+    tmp_path.unlink()
 
     try:
         # Load and save

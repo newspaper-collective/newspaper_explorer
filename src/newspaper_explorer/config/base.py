@@ -3,37 +3,77 @@ Base configuration class for newspaper explorer.
 Centralized access to paths, settings, and environment variables.
 """
 
-import os
+from pathlib import Path
+from typing import Optional
 
-from newspaper_explorer.config.environment import get_env_path, get_project_root
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Config:
-    """Configuration class for newspaper explorer."""
+def get_project_root() -> Path:
+    """
+    Get the project root directory.
 
-    def __init__(self):
-        """Initialize configuration from environment variables."""
-        # Determine project root
-        self.project_root = get_project_root()
+    Navigates from config/base.py -> config -> newspaper_explorer -> src -> project_root
+    """
+    return Path(__file__).parent.parent.parent.parent
 
-        # Data directories
-        self.data_dir = get_env_path("DATA_DIR", self.project_root / "data")
-        self.download_dir = get_env_path("DOWNLOAD_DIR", self.data_dir / "downloads")
-        self.extracted_dir = get_env_path("EXTRACTED_DIR", self.data_dir / "extracted")
-        self.sources_dir = get_env_path("SOURCES_DIR", self.data_dir / "sources")
 
-        # Results directory
-        self.results_dir = get_env_path("RESULTS_DIR", self.project_root / "results")
+class Config(BaseSettings):
+    """
+    Configuration for newspaper explorer.
 
-        # Logging
-        self.log_level = os.getenv("LOG_LEVEL", "INFO")
+    Automatically loads from environment variables and .env file.
+    All paths support both absolute and relative (to project root) paths.
+    """
 
-        # LLM settings
-        self.llm_base_url = os.getenv("LLM_BASE_URL", "")
-        self.llm_api_key = os.getenv("LLM_API_KEY", "")
-        self.llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
-        self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
-        self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "2000"))
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    # Project root (computed, not from env)
+    project_root: Path = Field(default_factory=get_project_root, exclude=True)
+
+    # Data directories
+    data_dir: Path = Field(default=Path("data"), description="Main data directory")
+    download_dir: Path = Field(default=Path("data/downloads"), description="Download directory")
+    extracted_dir: Path = Field(default=Path("data/extracted"), description="Extraction directory")
+    sources_dir: Path = Field(default=Path("data/sources"), description="Sources config directory")
+
+    # Results directory
+    results_dir: Path = Field(default=Path("results"), description="Results output directory")
+
+    # Logging
+    log_level: str = Field(
+        default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)"
+    )
+    cli_log_format: str = Field(default="%(message)s", description="Log format for CLI output")
+
+    # LLM settings
+    llm_base_url: str = Field(default="", description="LLM API base URL")
+    llm_api_key: str = Field(default="", description="LLM API key")
+    llm_model: str = Field(default="gpt-4o-mini", description="LLM model name")
+    llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="LLM temperature")
+    llm_max_tokens: int = Field(default=2000, gt=0, description="LLM max tokens")
+
+    # Validation settings
+    min_image_size_bytes: int = Field(
+        default=1024, gt=0, description="Minimum valid image file size in bytes"
+    )
+    default_alto_pattern: str = Field(
+        default="**/fulltext/*.xml", description="Default glob pattern for ALTO XML files"
+    )
+
+    @field_validator("data_dir", "download_dir", "extracted_dir", "sources_dir", "results_dir")
+    @classmethod
+    def resolve_path(cls, v: Path) -> Path:
+        """Convert relative paths to absolute (relative to project root)."""
+        if not v.is_absolute():
+            project_root = get_project_root()
+            return project_root / v
+        return v
 
     def get(self, key: str, default: str = "") -> str:
         """
@@ -48,7 +88,7 @@ class Config:
         """
         return getattr(self, key, default)
 
-    def ensure_directories(self):
+    def ensure_directories(self) -> None:
         """Create necessary directories if they don't exist."""
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.extracted_dir.mkdir(parents=True, exist_ok=True)

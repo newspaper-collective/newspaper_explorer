@@ -5,7 +5,8 @@ from pathlib import Path
 
 import click
 
-from .common import CLI_LOG_FORMAT
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
 
 def register_preprocessing_commands(data_group):
@@ -94,7 +95,8 @@ def register_preprocessing_commands(data_group):
         from newspaper_explorer.utils.sources import get_source_paths, load_source_config
 
         # Setup logging
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         try:
             # Parse steps
@@ -109,7 +111,7 @@ def register_preprocessing_commands(data_group):
             else:
                 # Auto-detect from source
                 config_data = load_source_config(source)
-                source_name = config_data.get("dataset_name", source)
+                source_name = config_data.dataset_name
                 input_path = (
                     Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
                 )
@@ -127,7 +129,7 @@ def register_preprocessing_commands(data_group):
             else:
                 # Auto-generate based on steps
                 config_data = load_source_config(source)
-                source_name = config_data.get("dataset_name", source)
+                source_name = config_data.dataset_name
 
                 # Create descriptive suffix
                 if len(step_list) <= 2:

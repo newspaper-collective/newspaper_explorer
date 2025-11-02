@@ -35,20 +35,19 @@ def register_info_commands(data_group):
         try:
             # Load config
             config = load_source_config(source)
-            source_name = config.get("dataset_name", source)
+            source_name = config.dataset_name
 
             click.echo(f"\n{'='*80}")
             click.echo(f"SOURCE INFORMATION: {source_name}")
             click.echo(f"{'='*80}")
 
             # Show metadata
-            metadata = config.get("metadata", {})
-            if metadata:
-                click.echo(f"\nNewspaper: {metadata.get('newspaper_title', 'N/A')}")
-                click.echo(f"Years: {metadata.get('years_available', 'N/A')}")
-                click.echo(f"Language: {metadata.get('language', 'N/A')}")
-                if metadata.get("location"):
-                    click.echo(f"Location: {metadata.get('location')}")
+            if config.metadata:
+                click.echo(f"\nNewspaper: {config.metadata.newspaper_title or 'N/A'}")
+                click.echo(f"Years: {config.metadata.years_available or 'N/A'}")
+                click.echo(f"Language: {config.metadata.language or 'N/A'}")
+                if config.metadata.location:
+                    click.echo(f"Location: {config.metadata.location}")
 
             # Get paths
             paths = get_source_paths(config)
@@ -62,7 +61,7 @@ def register_info_commands(data_group):
 
             # Simple check: if raw_dir exists and has XML files, data is extracted
             if raw_dir.exists():
-                xml_pattern = config.get("loading", {}).get("pattern", "**/fulltext/*.xml")
+                xml_pattern = config.loading.pattern if config.loading else "**/fulltext/*.xml"
                 xml_files = natsorted(raw_dir.glob(xml_pattern))
 
                 if len(xml_files) > 0:
@@ -87,7 +86,7 @@ def register_info_commands(data_group):
             click.echo(f"{'='*80}")
 
             raw_dir = paths["raw_dir"]
-            xml_pattern = config.get("loading", {}).get("pattern", "**/fulltext/*.xml")
+            xml_pattern = config.loading.pattern if config.loading else "**/fulltext/*.xml"
 
             click.echo(f"Directory: {raw_dir}")
             click.echo(f"Pattern: {xml_pattern}")
@@ -258,31 +257,24 @@ def register_info_commands(data_group):
 
         for source_name in sources:
             config = load_source_config(source_name)
-            dataset_name = config.get("dataset_name", source_name)
-            data_type = config.get("data_type", "unknown")
-            metadata = config.get("metadata", {})
+            dataset_name = config.dataset_name
+            data_type = config.data_type
+            metadata = config.metadata
 
-            # Calculate total size
-            parts = config.get("parts", [])
-            total_bytes = sum(part.get("bytes", 0) for part in parts)
-            total_gb = total_bytes / (1024**3)
-            total_mb = total_bytes / (1024**2)
-
-            if total_gb >= 1:
-                size_str = f"~{total_gb:.1f} GB (compressed)"
-            else:
-                size_str = f"~{total_mb:.0f} MB (compressed)"
+            # Get human-readable sizes from parts
+            sizes = [part.size for part in config.parts if part.size]
+            size_str = ", ".join(sizes) if sizes else "unknown"
 
             click.echo(f"{dataset_name}")
             click.echo(
-                f"  Description: {metadata.get('newspaper_title', 'N/A')} newspaper collection from Zenodo ({data_type} data)"
+                f"  Description: {metadata.newspaper_title} newspaper collection from Zenodo ({data_type} data)"
             )
-            click.echo(f"  Newspaper: {metadata.get('newspaper_title', 'N/A')}")
-            click.echo(f"  Years: {metadata.get('years_available', 'N/A')}")
-            click.echo(f"  Language: {metadata.get('language', 'N/A')}")
-            if metadata.get("location"):
-                click.echo(f"  Location: {metadata.get('location')}")
-            click.echo(f"  Parts: {len(parts)} (total size: {size_str})")
+            click.echo(f"  Newspaper: {metadata.newspaper_title}")
+            click.echo(f"  Years: {metadata.years_available}")
+            click.echo(f"  Language: {metadata.language}")
+            if metadata.location:
+                click.echo(f"  Location: {metadata.location}")
+            click.echo(f"  Parts: {len(config.parts)} (sizes: {size_str})")
             click.echo()
 
         click.echo("=" * 90)

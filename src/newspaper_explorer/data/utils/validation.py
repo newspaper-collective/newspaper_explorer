@@ -6,28 +6,22 @@ and validating data completeness, including image validation.
 """
 
 import logging
-from dataclasses import dataclass
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import polars as pl
 from natsort import natsorted
 from PIL import Image
+from pydantic import BaseModel
 
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.utils.sources import get_source_paths, load_source_config
 
 logger = logging.getLogger(__name__)
 
-# Default glob pattern for finding ALTO XML files
-DEFAULT_ALTO_PATTERN = "**/fulltext/*.xml"
 
-# Minimum expected file size for images (in bytes)
-# Files smaller than this are likely corrupted or incomplete
-MIN_IMAGE_SIZE_BYTES = 1024  # 1 KB
-
-
-@dataclass
-class ImageValidationResult:
+class ImageValidationResult(BaseModel):
     """Result of image validation check."""
 
     is_valid: bool
@@ -37,18 +31,6 @@ class ImageValidationResult:
     height: Optional[int] = None
     format: Optional[str] = None
     error: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "is_valid": self.is_valid,
-            "file_path": str(self.file_path),
-            "file_size": self.file_size,
-            "width": self.width,
-            "height": self.height,
-            "format": self.format,
-            "error": self.error,
-        }
 
 
 def find_empty_xml_files(source_name: str) -> Dict[str, Any]:
@@ -80,8 +62,8 @@ def find_empty_xml_files(source_name: str) -> Dict[str, Any]:
     output_file = paths["output_file"]
 
     # Get loading config
-    loading_config = config.get("loading", {})
-    pattern = loading_config.get("pattern", DEFAULT_ALTO_PATTERN)
+    base_config = get_config()
+    pattern = config.loading.pattern if config.loading else base_config.default_alto_pattern
 
     logger.info(f"Scanning for XML files in {raw_dir}")
     all_files = natsorted([str(f.relative_to(raw_dir)) for f in raw_dir.glob(pattern)])
@@ -116,7 +98,7 @@ def find_empty_xml_files(source_name: str) -> Dict[str, Any]:
 
 
 def validate_image_file(
-    image_path: Path, min_size_bytes: int = MIN_IMAGE_SIZE_BYTES
+    image_path: Path, min_size_bytes: Optional[int] = None
 ) -> ImageValidationResult:
     """
     Validate a downloaded image file.
@@ -128,7 +110,7 @@ def validate_image_file(
 
     Args:
         image_path: Path to image file
-        min_size_bytes: Minimum expected file size (default: 1KB)
+        min_size_bytes: Minimum expected file size (default: from config)
 
     Returns:
         ImageValidationResult with validation details
@@ -138,6 +120,8 @@ def validate_image_file(
         >>> if not result.is_valid:
         ...     print(f"Invalid: {result.error}")
     """
+    if min_size_bytes is None:
+        min_size_bytes = get_config().min_image_size_bytes
     # Check file exists
     if not image_path.exists():
         return ImageValidationResult(
@@ -192,13 +176,13 @@ def validate_image_file(
         )
 
 
-def check_image_size(image_path: Path, min_size_bytes: int = MIN_IMAGE_SIZE_BYTES) -> bool:
+def check_image_size(image_path: Path, min_size_bytes: Optional[int] = None) -> bool:
     """
     Quick check if image file meets minimum size requirement.
 
     Args:
         image_path: Path to image file
-        min_size_bytes: Minimum expected file size (default: 1KB)
+        min_size_bytes: Minimum expected file size (default: from config)
 
     Returns:
         True if file exists and meets size requirement
@@ -207,6 +191,9 @@ def check_image_size(image_path: Path, min_size_bytes: int = MIN_IMAGE_SIZE_BYTE
         >>> if not check_image_size(Path("image.jpg"), min_size_bytes=5000):
         ...     print("Image too small or missing")
     """
+    if min_size_bytes is None:
+        min_size_bytes = get_config().min_image_size_bytes
+
     if not image_path.exists():
         return False
 
@@ -214,6 +201,139 @@ def check_image_size(image_path: Path, min_size_bytes: int = MIN_IMAGE_SIZE_BYTE
         return image_path.stat().st_size >= min_size_bytes
     except Exception:
         return False
+
+
+def validate_alto_mets_relationship(source_name: str) -> Dict[str, Any]:
+    """
+    Validate that each ALTO file has a parent METS file and is listed in it.
+
+    Checks that:
+    1. Each ALTO file can find its parent METS file
+    2. The ALTO file is actually referenced in that METS file
+
+    Args:
+        source_name: Name of the source to check (e.g., 'der_tag')
+
+    Returns:
+        Dictionary with validation statistics:
+        - total_alto_files: Total number of ALTO files found
+        - alto_with_mets: Number of ALTO files with parent METS
+        - alto_without_mets: Number of ALTO files without parent METS
+        - alto_not_in_mets: Number of ALTO files not listed in their parent METS
+        - orphaned_alto_list: List of ALTO files without parent METS
+        - unlisted_alto_list: List of ALTO files not referenced in METS
+
+    Example:
+        >>> result = validate_alto_mets_relationship("der_tag")
+        >>> print(f"Found {result['alto_without_mets']} orphaned ALTO files")
+    """
+    from lxml import etree
+    from newspaper_explorer.data.parser.mets import METSParser
+
+    # Load source configuration
+    config = load_source_config(source_name)
+    paths = get_source_paths(config)
+    raw_dir = paths["raw_dir"]
+
+    # Get loading config for pattern
+    base_config = get_config()
+    pattern = config.loading.pattern if config.loading else base_config.default_alto_pattern
+
+    logger.info(f"Validating ALTO-METS relationships for source: {source_name}")
+    logger.info(f"Scanning for ALTO files in {raw_dir}")
+
+    # Find all ALTO files
+    alto_files = natsorted(list(raw_dir.glob(pattern)))
+    logger.info(f"Found {len(alto_files)} ALTO files")
+
+    parser = METSParser()
+    NAMESPACES = {
+        "mets": "http://www.loc.gov/METS/",
+        "xlink": "http://www.w3.org/1999/xlink",
+    }
+
+    total_alto = len(alto_files)
+    alto_with_mets = 0
+    alto_without_mets = 0
+    alto_not_in_mets = 0
+    orphaned_alto_list = []
+    unlisted_alto_list = []
+
+    for alto_file in alto_files:
+        # Find parent METS file
+        mets_file = parser.find_mets_for_alto(alto_file)
+
+        if mets_file is None or not mets_file.exists():
+            alto_without_mets += 1
+            orphaned_alto_list.append(str(alto_file.relative_to(raw_dir)))
+            logger.debug(f"No METS found for ALTO: {alto_file.name}")
+            continue
+
+        # Check if ALTO is referenced in the METS file
+        try:
+            tree = etree.parse(str(mets_file))
+            root = tree.getroot()
+
+            # Get expected page number from ALTO filename
+            # Pattern: {base}_{page}.xml -> extract page number
+            alto_stem = alto_file.stem
+            page_match = re.search(r"_(\d{3})$", alto_stem)
+
+            if page_match:
+                page_num = int(page_match.group(1))
+
+                # Look for corresponding fulltext file reference
+                fulltext_grp = root.find('.//mets:fileGrp[@USE="FULLTEXT"]', NAMESPACES)
+                if fulltext_grp is not None:
+                    # Check if this page is referenced
+                    found_reference = False
+                    for file_elem in fulltext_grp.findall(".//mets:file", NAMESPACES):
+                        file_id = file_elem.get("ID", "")
+                        # File ID format: "fulltext_N" where N is page number
+                        if file_id == f"fulltext_{page_num}":
+                            found_reference = True
+                            break
+
+                    if found_reference:
+                        alto_with_mets += 1
+                    else:
+                        alto_not_in_mets += 1
+                        unlisted_alto_list.append(str(alto_file.relative_to(raw_dir)))
+                        logger.debug(
+                            f"ALTO not referenced in METS: {alto_file.name} (page {page_num})"
+                        )
+                else:
+                    # No FULLTEXT group in METS
+                    alto_not_in_mets += 1
+                    unlisted_alto_list.append(str(alto_file.relative_to(raw_dir)))
+            else:
+                # Couldn't extract page number
+                logger.warning(f"Could not extract page number from ALTO: {alto_file.name}")
+                alto_not_in_mets += 1
+                unlisted_alto_list.append(str(alto_file.relative_to(raw_dir)))
+
+        except Exception as e:
+            logger.error(f"Error checking METS reference for {alto_file.name}: {e}")
+            alto_not_in_mets += 1
+            unlisted_alto_list.append(str(alto_file.relative_to(raw_dir)))
+
+    logger.info("=" * 60)
+    logger.info("ALTO-METS Relationship Validation Results")
+    logger.info("=" * 60)
+    logger.info(f"Total ALTO files:              {total_alto}")
+    logger.info(f"ALTO with valid METS:          {alto_with_mets}")
+    logger.info(f"ALTO without parent METS:      {alto_without_mets}")
+    logger.info(f"ALTO not listed in METS:       {alto_not_in_mets}")
+    logger.info("=" * 60)
+
+    return {
+        "total_alto_files": total_alto,
+        "alto_with_mets": alto_with_mets,
+        "alto_without_mets": alto_without_mets,
+        "alto_not_in_mets": alto_not_in_mets,
+        "orphaned_alto_list": orphaned_alto_list,
+        "unlisted_alto_list": unlisted_alto_list,
+    }
 
 
 def verify_mets_completeness(source_name: str) -> Dict[str, Any]:
@@ -250,13 +370,13 @@ def verify_mets_completeness(source_name: str) -> Dict[str, Any]:
     raw_dir = paths["raw_dir"]
 
     # Get paths
-    dataset_name = config["dataset_name"]
+    dataset_name = config.dataset_name
     from newspaper_explorer.config.base import get_config
 
     base_config = get_config()
     data_dir = Path(base_config.data_dir)
     images_dir = data_dir / "raw" / dataset_name / "images"
-    xml_dir = data_dir / "raw" / dataset_name / config["data_type"]
+    xml_dir = data_dir / "raw" / dataset_name / config.data_type
 
     logger.info(f"Checking completeness for source: {source_name}")
     logger.info(f"XML directory: {xml_dir}")

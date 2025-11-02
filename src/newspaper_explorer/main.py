@@ -17,7 +17,7 @@ Usage:
 
 import click
 
-from newspaper_explorer.cli.analyze import analyze
+from newspaper_explorer.cli.analyze.commands import analyze
 from newspaper_explorer.cli.data.commands import data
 
 
@@ -37,6 +37,10 @@ def cli() -> None:
     \b
     Analysis:
         newspaper-explorer analyze <command> [options]
+        newspaper-explorer analyze layout detect --source <name>
+        newspaper-explorer analyze layout extract-images --source <name>
+        newspaper-explorer analyze layout match-headlines --source <name>
+        newspaper-explorer analyze layout build-articles --source <name>
 
     For detailed help on any command group, use:
         newspaper-explorer data --help
@@ -47,7 +51,7 @@ def cli() -> None:
 
 # Register command groups
 cli.add_command(data)
-cli.add_command(analyze)
+cli.add_command(analyze)  # layout is now under analyze
 
 
 if __name__ == "__main__":

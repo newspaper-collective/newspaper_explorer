@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 from natsort import natsorted
 
-from .common import CLI_LOG_FORMAT
+from newspaper_explorer.config.base import get_config
 
 
 def register_loading_commands(data_group):
@@ -50,7 +50,8 @@ def register_loading_commands(data_group):
         from newspaper_explorer.data.loading.loader import DataLoader
 
         # Setup logging with simple format
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         try:
             click.echo(f"\nParsing source: {source}")
@@ -74,7 +75,7 @@ def register_loading_commands(data_group):
 
             config = load_source_config(source)
             paths = get_source_paths(config)
-            source_name = config.get("dataset_name", source)
+            source_name = config.dataset_name
             output_path = paths["text_dir"] / f"{source_name}_lines.parquet"
             click.echo(f"Output: {output_path}")
 
@@ -144,7 +145,7 @@ def register_loading_commands(data_group):
         try:
             # Load config
             config = load_source_config(source)
-            source_name = config.get("dataset_name", source)
+            source_name = config.dataset_name
 
             # Get paths
             paths = get_source_paths(config)
@@ -204,10 +205,13 @@ def register_loading_commands(data_group):
 
             # Show sample
             click.echo("\nSample data:")
-            click.echo(df.select(["text_block_id", "text", "date"]).head(3))
+            click.echo(df.select(["text_block_id", "text", "year", "month", "day"]).head(3))
 
             click.echo("\n" + "=" * 60)
 
+        except click.Abort:
+            # Clean exit from expected conditions (file exists, etc.)
+            raise
         except FileNotFoundError as e:
             click.echo(f"\nError: {e}", err=True)
             raise click.Abort()

@@ -5,18 +5,17 @@ Extracts rich metadata from METS files that describe complete issues.
 
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from lxml import etree
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class IssueMetadata:
+class IssueMetadata(BaseModel):
     """Metadata for a complete newspaper issue from METS file"""
 
     filename: str
@@ -31,21 +30,6 @@ class IssueMetadata:
     newspaper_id: Optional[str] = None  # ZDB ID
     publisher: Optional[str] = None
     language: Optional[str] = None
-
-    def to_dict(self) -> Dict:
-        """Convert to dictionary"""
-        return {
-            "filename": self.filename,
-            "date": self.date,
-            "issue_number": self.issue_number,
-            "issue_string": self.issue_string,
-            "edition": self.edition,
-            "year_volume": self.year_volume,
-            "page_count": self.page_count,
-            "newspaper_title": self.newspaper_title,
-            "newspaper_id": self.newspaper_id,
-            "language": self.language,
-        }
 
 
 class METSParser:
@@ -120,13 +104,10 @@ class METSParser:
                 root, ".//mods:relatedItem[@type='host']//mods:title"
             )
 
-
             # Extract ZDB ID
             metadata.newspaper_id = self._get_text(
                 root, ".//mods:relatedItem[@type='host']/mods:identifier[@type='zdb']"
             )
-
-
 
             # Extract language
             metadata.language = self._get_text(root, ".//mods:languageTerm[@type='code']")

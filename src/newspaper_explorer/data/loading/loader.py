@@ -16,9 +16,10 @@ import polars as pl
 from natsort import natsorted
 from tqdm import tqdm
 
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.loading.workers import parse_file_worker, parse_mets_worker
 from newspaper_explorer.data.parser.mets import METSParser
-from newspaper_explorer.utils.sources import get_source_paths, load_source_config
+from newspaper_explorer.utils.sources import SourceConfig, get_source_paths, load_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,6 @@ class DataLoader:
         >>> df = loader.load_source()
     """
 
-    # Default glob pattern for finding ALTO XML files
-    DEFAULT_ALTO_PATTERN = "**/fulltext/*.xml"
-
     def __init__(self, source_name: Optional[str] = None, max_workers: Optional[int] = None):
         """
         Initialize DataLoader.
@@ -57,7 +55,7 @@ class DataLoader:
 
         # Load configuration if source specified
         self.source_name = source_name
-        self.config_data: Optional[Dict[str, Any]] = None
+        self.config_data: Optional[SourceConfig] = None
 
         if source_name:
             self.config_data = load_source_config(source_name)
@@ -88,8 +86,11 @@ class DataLoader:
         output_file = paths["output_file"]
 
         # Get loading config
-        loading_config = self.config_data.get("loading", {})
-        pattern = loading_config.get("pattern", self.DEFAULT_ALTO_PATTERN)
+        pattern = (
+            self.config_data.loading.pattern
+            if self.config_data.loading
+            else get_config().default_alto_pattern
+        )
 
         status: Dict[str, Any] = {
             "source_name": self.source_name,
@@ -159,8 +160,11 @@ class DataLoader:
         output_file = paths["output_file"]
 
         # Get loading config
-        loading_config = self.config_data.get("loading", {})
-        pattern = loading_config.get("pattern", self.DEFAULT_ALTO_PATTERN)
+        pattern = (
+            self.config_data.loading.pattern
+            if self.config_data.loading
+            else get_config().default_alto_pattern
+        )
 
         logger.debug(f"Loading source: {self.source_name}")
         logger.debug(f"Raw directory: {raw_dir}")
@@ -189,7 +193,7 @@ class DataLoader:
 
         Args:
             directory: Directory containing ALTO XML files (e.g., data/raw/der_tag/xml_ocr)
-            pattern: Glob pattern for finding files (default: DEFAULT_ALTO_PATTERN)
+            pattern: Glob pattern for finding files (default: from config)
             max_files: Maximum number of files to process (for testing)
             output_parquet: If provided, save result to this specific path
             auto_save: If True, automatically save to data/raw/{source}/text/{source}_lines.parquet
@@ -200,7 +204,7 @@ class DataLoader:
             (includes existing + new data if skip_processed=True)
         """
         if pattern is None:
-            pattern = self.DEFAULT_ALTO_PATTERN
+            pattern = get_config().default_alto_pattern
 
         logger.info(f"📂 Scanning for ALTO XML files in {directory}")
 

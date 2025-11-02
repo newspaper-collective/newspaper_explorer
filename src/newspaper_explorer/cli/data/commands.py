@@ -11,6 +11,7 @@ from .images import register_image_commands
 from .info import register_info_commands
 from .loading import register_loading_commands
 from .preprocessing import register_preprocessing_commands
+from .validation import register_validation_commands
 
 
 @click.group()
@@ -35,3 +36,4 @@ register_download_commands(data)
 register_image_commands(data)
 register_loading_commands(data)
 register_preprocessing_commands(data)
+register_validation_commands(data)

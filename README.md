@@ -5,33 +5,33 @@ A comprehensive toolkit for downloading, processing, and analyzing historical ne
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## ✨ Key Features
+## Key Features
 
-- **📥 Smart Data Pipeline**: Configuration-driven download → extract → parse → analyze workflow
-- **🚀 High Performance**: Parallel processing with Polars DataFrames and DuckDB queries
-- **🤖 LLM Integration**: Structured prompts for entity extraction, topic analysis, emotion detection, and more
-- **📊 Query Engine**: DuckDB-based analysis layer for efficient multi-GB data queries
-- **🔄 Resume Support**: Automatic tracking of processed files to avoid reprocessing
-- **🖼️ Image Support**: Download high-resolution newspaper page scans from METS references
-- **🔧 Modular CLI**: Clean command structure for all operations
+- **Smart Data Pipeline**: Configuration-driven download → extract → parse → analyze workflow
+- **High Performance**: Parallel processing with Polars DataFrames and DuckDB queries
+- **LLM Integration**: Structured prompts for entity extraction, topic analysis, emotion detection, and more
+- **Query Engine**: DuckDB-based analysis layer for efficient multi-GB data queries
+- **Resume Support**: Automatic tracking of processed files to avoid reprocessing
+- **Image Support**: Download high-resolution newspaper page scans from METS references
+- **Modular CLI**: Clean command structure for all operations
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
 - [CLI Commands Overview](#cli-commands-overview)
 - [Python API Examples](#python-api-examples)
-- [Documentation](#-documentation)
+- [Documentation](#documentation)
 - [Data Schemas](#data-schemas)
-- [Project Structure](#️-project-structure)
-- [Features](#-features)
-- [Usage Examples](#-usage-examples)
-- [Available Datasets](#-available-datasets)
-- [Development](#️-development)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Project Structure](#project-structure)
+- [Features](#features)
+- [Usage Examples](#usage-examples)
+- [Available Datasets](#available-datasets)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
-## 📦 Installation
+## Installation
 
 ### Quick Start (Recommended: uv)
 
@@ -83,7 +83,7 @@ pip install transformers torch
 
 See [INSTALL.md](docs/INSTALL.md) for detailed installation instructions.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Complete Workflow Example
 
@@ -353,7 +353,7 @@ print(f"Total images: {status['total_images']}")
 print(f"Downloaded: {status['downloaded_count']}")
 ```
 
-## 📚 Documentation
+## Documentation
 
 ### Guides
 - **[Installation Guide](docs/INSTALL.md)** - Setup for pip and uv
@@ -428,7 +428,7 @@ print(f"Downloaded: {status['downloaded_count']}")
 | `confidence`  | float | Confidence score 0-1               |
 | `method`      | str   | Extraction method/model used       |
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 newspaper_explorer/
@@ -445,8 +445,14 @@ newspaper_explorer/
 │   │   │   ├── info.py              # info, list-sources
 │   │   │   ├── loading.py           # parse, aggregate, find-empty
 │   │   │   ├── preprocessing.py     # preprocess
-│   │   │   └── common.py            # Shared constants
-│   │   └── analyze.py               # Analysis commands
+│   │   │   └── validation.py        # validate-alto-mets
+│   │   ├── analyze/                 # Analysis commands (nested)
+│   │   │   ├── commands.py          # Main analyze group
+│   │   │   ├── entities/            # Entity extraction commands
+│   │   │   │   └── commands.py      # entities group
+│   │   │   └── layout/              # Layout analysis commands
+│   │   │       └── commands.py      # layout group
+│   │   └── main.py                  # CLI entry point
 │   ├── data/                        # Data acquisition & processing
 │   │   ├── download/
 │   │   │   ├── text.py              # ZenodoDownloader
@@ -458,8 +464,16 @@ newspaper_explorer/
 │   │   │   ├── loader.py            # Main DataLoader class
 │   │   │   ├── workers.py           # Parallel processing
 │   │   │   └── aggregation.py       # Text aggregation
-│   │   ├── preprocessing/           # Text preprocessing
+│   │   ├── preprocessing/           # Text preprocessing (modular)
+│   │   │   ├── pipeline.py          # Main preprocessing pipeline
+│   │   │   ├── normalization.py     # Historical text normalization
+│   │   │   ├── cleaning.py          # Text cleaning functions
+│   │   │   ├── filtering.py         # Filtering functions
+│   │   │   └── linguistic.py        # Lemmatization, dehyphenation
 │   │   └── utils/                   # Data utilities
+│   │       ├── fixes.py             # DataFixer for corrections
+│   │       ├── text.py              # Text utilities
+│   │       └── validation.py        # Data quality validation
 │   ├── llm/                         # LLM integration (first-class)
 │   │   ├── client.py                # LLM client with retry
 │   │   ├── prompts/                 # Prompt templates (direct import)
@@ -518,9 +532,9 @@ newspaper_explorer/
 - **Foreign keys** - All analysis results have `line_id` FK to source data
 - See `.github/copilot-instructions.md` for complete coding guidelines
 
-## 🎯 Features
+## Features
 
-### ✅ Data Pipeline
+### Data Pipeline
 
 **Download & Extract:**
 - Configuration-driven Zenodo downloads from `data/sources/{source}.json`
@@ -544,7 +558,7 @@ newspaper_explorer/
 - Skip existing files, resume support
 - Progress tracking and statistics
 
-### ✅ Text Processing
+### Text Processing
 
 **Preprocessing Pipeline:**
 - Historical German text normalization (19th/20th century models)
@@ -558,7 +572,7 @@ newspaper_explorer/
 - Text cleaning and normalization
 - Custom preprocessing functions
 
-### ✅ Analysis & LLM Integration
+### Analysis & LLM Integration
 
 **Query Engine (DuckDB):**
 - SQL queries on multi-GB Parquet files without memory loading
@@ -588,7 +602,7 @@ newspaper_explorer/
 - Batch processing
 - Output to Parquet and JSON
 
-### ✅ CLI Commands
+### CLI Commands
 
 **Data Management:**
 - `list-sources` - Show configured sources
@@ -607,7 +621,7 @@ newspaper_explorer/
 **Analysis:**
 - `extract-entities` - Entity extraction with GLiNER
 
-### 📝 Roadmap
+### Roadmap
 
 - Topic modeling with LLMs and traditional methods
 - Emotion/sentiment analysis
@@ -616,7 +630,7 @@ newspaper_explorer/
 - Web UI (Streamlit or FastAPI)
 - More analysis types
 
-## 💡 Usage Examples
+## Usage Examples
 
 ### Text Preprocessing
 
@@ -745,11 +759,11 @@ result = engine.query("""
 """)
 ```
 
-## 📊 Available Datasets
+## Available Datasets
 
 ### Der Tag (1900-1920)
 
-Historical Austrian newspaper "Der Tag" - ALTO XML with METS metadata.
+Historical newspaper "Der Tag" - ALTO XML with METS metadata.
 
 **Collection**: [Der Tag on Zenodo](https://zenodo.org/records/17232177)
 
@@ -789,7 +803,7 @@ Create `data/sources/{source_name}.json`:
 
 The system will automatically discover and use your new source configuration.
 
-## 🛠️ Development
+## Development
 
 ### Setup Development Environment
 
@@ -855,7 +869,7 @@ See `.github/copilot-instructions.md` for comprehensive coding guidelines.
 4. Include `metadata.json` with method info
 5. Add CLI command for user access
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! This project prioritizes:
 
@@ -866,17 +880,17 @@ Contributions are welcome! This project prioritizes:
 
 Please feel free to submit Pull Requests or open issues for bugs and feature requests.
 
-## � License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## �📧 Contact & Support
+## Contact & Support
 
 - **Issues**: [GitHub Issues](https://github.com/newspaper-collective/newspaper_explorer/issues)
 - **Documentation**: See `docs/` directory for comprehensive guides
 - **Examples**: Check `notebooks/` for Jupyter notebook examples
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **ALTO XML Format**: [ALTO XML Schema](https://www.loc.gov/standards/alto/)
 - **METS Format**: [METS Schema](http://www.loc.gov/standards/mets/)

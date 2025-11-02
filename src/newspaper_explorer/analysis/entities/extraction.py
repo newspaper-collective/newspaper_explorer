@@ -64,7 +64,7 @@ class EntityExtractor:
         # Load source configuration
         self.config = load_source_config(source_name)
         config = get_config()
-        self.dataset_name = self.config["dataset_name"]
+        self.dataset_name = self.config.dataset_name
 
         # Setup paths: results/{source}/entities/
         self.output_dir = config.results_dir / self.dataset_name / "entities"

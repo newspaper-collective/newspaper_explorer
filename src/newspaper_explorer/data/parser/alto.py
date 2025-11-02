@@ -6,19 +6,18 @@ Integrates with METS metadata for rich issue-level information.
 
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from lxml import etree
 from lxml.etree import _Element
+from pydantic import BaseModel, computed_field
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class TextLine:
+class TextLine(BaseModel):
     """
     Represents a single text line from ALTO XML with enriched metadata.
 
@@ -55,6 +54,7 @@ class TextLine:
     newspaper_subtitle: Optional[str] = None
 
     @property
+    @computed_field
     def page_id(self) -> Optional[str]:
         """
         Construct unique page identifier from date, issue, and page number.
@@ -70,45 +70,22 @@ class TextLine:
         return None
 
     @property
+    @computed_field
     def year(self) -> Optional[int]:
         """Extract year from date"""
         return self.date.year if self.date else None
 
     @property
+    @computed_field
     def month(self) -> Optional[int]:
         """Extract month from date"""
         return self.date.month if self.date else None
 
     @property
+    @computed_field  
     def day(self) -> Optional[int]:
         """Extract day from date"""
         return self.date.day if self.date else None
-
-    def to_dict(self) -> Dict:
-        """Convert to dictionary for DataFrame construction"""
-        return {
-            "line_id": self.line_id,
-            "text": self.text,
-            "text_block_id": self.text_block_id,
-            "page_id": self.page_id,
-            "filename": self.filename,
-            "date": self.date,
-            "year": self.year,
-            "month": self.month,
-            "day": self.day,
-            "x": self.x,
-            "y": self.y,
-            "width": self.width,
-            "height": self.height,
-            "newspaper_id": self.newspaper_id,
-            "issue_number": self.issue_number,
-            "daily_issue_number": self.daily_issue_number,
-            "page_number": self.page_number,
-            "year_volume": self.year_volume,
-            "page_count": self.page_count,
-            "newspaper_title": self.newspaper_title,
-            "newspaper_subtitle": self.newspaper_subtitle,
-        }
 
 
 class ALTOParser:

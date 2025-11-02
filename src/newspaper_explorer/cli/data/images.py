@@ -4,7 +4,7 @@ CLI commands for downloading images.
 
 import click
 
-from .common import CLI_LOG_FORMAT
+from newspaper_explorer.config.base import get_config
 
 
 def register_image_commands(data_group):
@@ -69,7 +69,8 @@ def register_image_commands(data_group):
         from newspaper_explorer.data.download.images import ImageDownloader
 
         # Configure logging so user sees download progress
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         try:
             click.echo(f"Downloading images for source: {source}")
@@ -150,7 +151,8 @@ def register_image_commands(data_group):
         from newspaper_explorer.data.download.images import ImageDownloader
 
         # Configure logging
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         try:
             click.echo(f"Validating images for source: {source}")

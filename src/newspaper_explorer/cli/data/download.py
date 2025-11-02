@@ -7,9 +7,8 @@ import io
 
 import click
 
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.download.text import ZenodoDownloader
-
-from .common import CLI_LOG_FORMAT
 
 
 def register_download_commands(data_group):
@@ -50,7 +49,8 @@ def register_download_commands(data_group):
         import logging
 
         # Configure logging so user sees download progress
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         downloader = ZenodoDownloader()
 
@@ -126,12 +126,13 @@ def register_download_commands(data_group):
         from newspaper_explorer.utils.sources import load_source_config
 
         # Configure logging so user sees extraction progress
-        logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+        cfg = get_config()
+        logging.basicConfig(level=logging.INFO, format=cfg.cli_log_format)
 
         try:
             # Load source config
             config = load_source_config(source)
-            source_name = config.get("dataset_name", source)
+            source_name = config.dataset_name
 
             # Combine single part and multiple parts
             part_names = []
@@ -145,11 +146,10 @@ def register_download_commands(data_group):
 
             # If no specific parts, unpack all parts from source
             if not part_names:
-                all_parts = config.get("parts", [])
-                part_names = [p.get("name") for p in all_parts if p.get("name")]
+                part_names = [p.name for p in config.parts]
                 click.echo(f"Unpacking all {len(part_names)} parts for {source_name}...")
 
-            downloader = ZenodoDownloader(source_name)
+            downloader = ZenodoDownloader()
 
             for part_name in part_names:
                 click.echo(f"Unpacking {part_name}...")

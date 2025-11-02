@@ -1,21 +1,22 @@
 """
-CLI commands for analysis tasks.
-Handles entity extraction, topic modeling, and other analysis operations.
+CLI commands for entity extraction.
+
+Provides commands for extracting named entities from newspaper text using GLiNER.
 """
 
+import logging
 import click
 
-# Logging format for CLI - simple messages without timestamps
-CLI_LOG_FORMAT = "%(message)s"
+from newspaper_explorer.config.base import get_config
 
 
-@click.group()
-def analyze():
-    """Run analysis on newspaper data (entities, topics, etc.)."""
+@click.group(name="entities")
+def entities_group():
+    """Entity extraction commands."""
     pass
 
 
-@analyze.command()
+@entities_group.command()
 @click.option(
     "--source",
     type=str,
@@ -97,7 +98,7 @@ def analyze():
     help="Output format",
     show_default=True,
 )
-def extract_entities(
+def extract(
     source,
     input_path,
     text_column,
@@ -120,12 +121,12 @@ def extract_entities(
     \b
     Examples:
       # Extract entities from text blocks
-      newspaper-explorer analyze extract-entities \\
+      newspaper-explorer analyze entities extract \\
           --source der_tag \\
           --input data/processed/der_tag/text/textblocks.parquet
 
       # Extract from sentences with custom settings
-      newspaper-explorer analyze extract-entities \\
+      newspaper-explorer analyze entities extract \\
           --source der_tag \\
           --input data/processed/der_tag/text/sentences.parquet \\
           --text-column sentence \\
@@ -138,12 +139,11 @@ def extract_entities(
       - entities_raw.parquet: All extracted entities with IDs
       - entities_grouped.json: Entities grouped by ID and label
     """
-    import logging
-
     from newspaper_explorer.analysis.entities.extraction import EntityExtractor
 
     # Configure logging
-    logging.basicConfig(level=logging.INFO, format=CLI_LOG_FORMAT)
+    config = get_config()
+    logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
     try:
         # Parse labels if provided

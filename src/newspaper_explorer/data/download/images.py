@@ -6,7 +6,6 @@ Downloads high-resolution images from METS XML references with validation.
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -14,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 from lxml import etree
 from natsort import natsorted
+from pydantic import BaseModel
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
@@ -23,8 +23,7 @@ from newspaper_explorer.utils.sources import load_source_config
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ImageReference:
+class ImageReference(BaseModel):
     """Reference to an image in METS XML."""
 
     file_id: str
@@ -73,8 +72,8 @@ class ImageDownloader:
         data_dir = Path(config.data_dir)
 
         # Setup paths following data/raw/{source}/images structure
-        self.dataset_name = str(self.config["dataset_name"])
-        self.data_type = str(self.config["data_type"])
+        self.dataset_name = self.config.dataset_name
+        self.data_type = self.config.data_type
         self.xml_dir: Path = data_dir / "raw" / self.dataset_name / self.data_type
         self.images_dir: Path = data_dir / "raw" / self.dataset_name / "images"
 

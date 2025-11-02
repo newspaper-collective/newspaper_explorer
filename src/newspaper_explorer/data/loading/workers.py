@@ -63,7 +63,7 @@ def parse_file_worker(
         alto_parser = ALTOParser()
         lines = alto_parser.parse_file(filepath_obj, mets_metadata=mets_metadata)
 
-        return [line.to_dict() for line in lines], True
+        return [line.model_dump() for line in lines], True
 
     except Exception as e:
         logger.error(f"Error in worker for {filepath}: {e}")

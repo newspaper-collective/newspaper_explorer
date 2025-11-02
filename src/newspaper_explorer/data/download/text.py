@@ -47,11 +47,11 @@ class ZenodoDownloader:
 
         # Load Zenodo links configuration from sources directory
         # TODO: Make this configurable instead of hardcoded to 'der_tag'
-        self.config: dict[str, Any] = load_source_config("der_tag")
+        self.config = load_source_config("der_tag")
 
         # Get dataset metadata
-        self.dataset_name: str = str(self.config.get("dataset_name", "unknown"))
-        self.data_type: str = str(self.config.get("data_type", "data"))
+        self.dataset_name: str = self.config.dataset_name
+        self.data_type: str = self.config.data_type
 
     def list_available_parts(self) -> List[dict]:
         """
@@ -60,7 +60,7 @@ class ZenodoDownloader:
         Returns:
             List of dictionaries containing part information.
         """
-        return cast(List[dict[str, Any]], self.config["parts"])
+        return [part.model_dump() for part in self.config.parts]
 
     def _calculate_md5(self, filepath: Path) -> str:
         """
@@ -118,16 +118,16 @@ class ZenodoDownloader:
         """
         # Find the part in configuration
         part_info = None
-        for part in self.config["parts"]:
-            if part["name"] == part_name:
+        for part in self.config.parts:
+            if part.name == part_name:
                 part_info = part
                 break
 
         if part_info is None:
-            available = [p["name"] for p in self.config["parts"]]
+            available = [p.name for p in self.config.parts]
             raise ValueError(f"Part '{part_name}' not found. Available parts: {available}")
 
-        url = part_info["url"]
+        url = part_info.url
         filename = f"{part_name}.tar.gz"
 
         # Create dataset-specific download directory
@@ -139,8 +139,8 @@ class ZenodoDownloader:
         if filepath.exists() and not force_redownload:
             logger.info(f"File {filename} already exists")
             # Verify checksum if available
-            if "md5" in part_info:
-                if self._verify_checksum(filepath, part_info["md5"]):
+            if part_info.md5:
+                if self._verify_checksum(filepath, part_info.md5):
                     logger.info("Skipping download - file verified")
                     return filepath
                 else:
@@ -152,7 +152,7 @@ class ZenodoDownloader:
         logger.info(f"Downloading {part_name}...")
 
         # Download with progress bar
-        response = requests.get(url, stream=True)
+        response = requests.get(str(url), stream=True)
         response.raise_for_status()
 
         total_size = int(response.headers.get("content-length", 0))
@@ -174,8 +174,8 @@ class ZenodoDownloader:
         logger.info(f"Downloaded {filename}")
 
         # Verify checksum if available
-        if "md5" in part_info:
-            if not self._verify_checksum(filepath, part_info["md5"]):
+        if part_info.md5:
+            if not self._verify_checksum(filepath, part_info.md5):
                 logger.warning("Downloaded file checksum does not match!")
                 logger.warning("File may be corrupted. Consider re-downloading.")
 
@@ -427,7 +427,7 @@ class ZenodoDownloader:
             List of paths to extracted directories
         """
         if part_names is None:
-            part_names = [part["name"] for part in self.config["parts"]]
+            part_names = [part.name for part in self.config.parts]
 
         extracted_paths = []
 
@@ -488,13 +488,13 @@ class ZenodoDownloader:
         config = get_config()
         raw_dir = config.data_dir / "raw" / self.dataset_name / self.data_type
 
-        for part in self.config["parts"]:
-            part_name = part["name"]
+        for part in self.config.parts:
+            part_name = part.name
             download_file = dataset_download_dir / f"{part_name}.tar.gz"
 
             # Check if years from this part are extracted
             # Years are stored directly under raw/dataset_name/data_type/
-            years = part.get("years", "").split("-")
+            years = part.years.split("-") if part.years else []
             extracted = False
             extracted_years = []
 
@@ -514,9 +514,9 @@ class ZenodoDownloader:
                     pass
 
             status[part_name] = {
-                "years": part["years"],
-                "size": part.get("size", "unknown"),
-                "md5": part.get("md5", None),
+                "years": part.years or "unknown",
+                "size": part.size or "unknown",
+                "md5": part.md5,
                 "downloaded": download_file.exists(),
                 "extracted": extracted,
                 "download_path": str(download_file) if download_file.exists() else None,
