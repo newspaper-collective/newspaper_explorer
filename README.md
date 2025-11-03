@@ -3,67 +3,107 @@
 > **Initially created at [culture.explore(data)](https://lab.sbb.berlin/culture-explore-data/) Hackathon**  
 > *7-8 October 2025, Staatsbibliothek zu Berlin*
 
-A toolkit for exploring historical newspapers through computational analysis. Built during a two-day hackathon as an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** that combines traditional data analysis with modern AI approaches. This project serves as a showcase for different computational methods, from statistical analysis and named entity recognition to topic modeling, layout detection, and LLM-powered insights, demonstrating how diverse approaches can work together on cultural heritage data. It provides researchers with a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated.
+A toolkit for exploring historical newspapers through computational analysis. Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing, yet standardized tools connecting raw data to statistical, NLP, computer vision, and LLM workflows remain scarce. 
 
-**The Challenge**: Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing—with no standardized tools connecting the raw data to various analysis methods (statistics, NLP, computer vision, LLMs).
+Built during a two-day hackathon, this project provides an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data. The toolkit gives researchers a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
 
-**The Solution**: Newspaper Explorer provides a complete pipeline from raw digitized newspapers to actionable insights:
-- **Unified data interface**: Query millions of text lines with SQL, Python, or CLI commands
-- **Multiple analysis approaches**: Combine statistical analysis, entity extraction, topic modeling, layout detection, and LLM-powered insights
-- **Reproducible workflows**: Configuration-driven architecture ensures consistent processing across datasets
-- **Automatic error correction**: Fixes known dataset issues (mislabeled dates, incorrect file locations) during processing
-- **Extensible design**: Add new analysis methods without rewriting data loading code
+During the hackathon, we extensively experimented with various data analysis approaches, testing GLiNER for named entity extraction, Google Gemini for knowledge graph generation, YOLOv11 for layout detection, LLM-based topic modeling via OpenRouter, and a custom emotion classification model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 high-resolution page images**, totaling over **10 GB of compressed XML archives** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
 
-Built with open cultural data from the Stiftung Preußischer Kulturbesitz and the University of Oxford, this project unlocks stories hidden in digitized newspaper archives by bridging the gap between historical sources and computational methods.
+Built with open cultural data from the Stiftung Preußischer Kulturbesitz, this project unlocks stories hidden in digitized newspaper archives by bridging the gap between historical sources and computational methods.
 
-**What you can do:**
-- Download and process millions of OCR text lines from historical newspaper archives
-- Extract named entities, analyze topics, and detect emotions in 19th/20th century texts
-- Query multi-gigabyte datasets with SQL without loading them into memory
-- Leverage LLMs for structured information extraction with type-safe outputs
-- Detect layout components with computer vision (YOLOv11)
-- Track complete data lineage from raw ALTO XML to analysis results
-- Combine multiple analysis methods seamlessly through unified foreign keys
+
+**Our Vision**: Newspaper Explorer aims to provide a complete, scalable pipeline from raw digitized newspapers to actionable insights:
+- **Unified data interface**: Load and query millions of text lines using Polars DataFrames and DuckDB SQL
+- **Multiple analysis approaches**: Framework for combining statistical analysis, entity extraction, topic modeling, layout detection, and LLM-powered insights
+- **Reproducible workflows**: Configuration-driven architecture with source definitions in JSON for consistent processing
+- **Automatic error correction**: Built-in fixes for known dataset issues (mislabeled dates, incorrect file locations)
+- **Extensible design**: Modular structure allows adding new analysis methods independently of data loading
+
+
+**What's currently implemented:**
+- Download and parse ALTO/METS XML archives into structured Parquet files
+- Load and query multi-gigabyte datasets with Polars DataFrames and DuckDB SQL
+- Preprocess historical German text with normalization, cleaning, and lemmatization
+- Use LLM client with structured prompts and Pydantic schemas for type-safe outputs
+- Track complete data lineage through unified ID system (source → issue → page → text block → line)
+- Download high-resolution page images from METS references
+- Validate data quality with ALTO-METS consistency checks
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## Screenshots from the Hackathon
+## Hackathon Demo: Streamlit UI
 
-<!-- TODO: Add hackathon screenshots -->
+During the two-day hackathon, we built a Streamlit-based web interface to showcase the first results of our various analysis approaches on the "Der Tag" dataset. These screenshots demonstrate the exploratory analysis capabilities we tested, it helped us identify computational challenges and informed the development of the current CLI-based architecture.
 
 <details>
-<summary>📸 Click to view screenshots from culture.explore(data) hackathon (October 2025)</summary>
-
-### Data Processing Pipeline
-<!-- ![Data Pipeline](docs/images/hackathon/01-pipeline.png) -->
-*Screenshot: Real-time processing of 134,867 ALTO XML files from "Der Tag" newspaper*
+<summary>📸 View screenshots from the Streamlit demo (October 2025)</summary>
 
 ### Entity Extraction Dashboard
-<!-- ![Entity Extraction](docs/images/hackathon/02-entities.png) -->
-*Screenshot: Named entity recognition extracting persons, organizations, and locations*
+![Entity Extraction](docs/hackathon/screenshots/01_entities.png)
+*Screenshot: Named entity recognition extracting persons, organizations, locations, events with GLiNER*
 
-### Query Interface
-<!-- ![Query Interface](docs/images/hackathon/03-query.png) -->
-*Screenshot: DuckDB SQL queries on multi-gigabyte Parquet files*
+### Concept Extraction
+![Concept Extraction](docs/hackathon/screenshots/02_concepts.png)
+*Screenshot: Knowledge Graph created with automated concept extraction from newspaper text using Google Gemini*
 
 ### Layout Analysis
-<!-- ![Layout Analysis](docs/images/hackathon/04-layout.png) -->
+![Layout Analysis](docs/hackathon/screenshots/03_layout.png)
 *Screenshot: YOLOv11-based layout detection identifying headlines, text blocks, and images*
 
-### Text Normalization
-<!-- ![Text Normalization](docs/images/hackathon/05-normalization.png) -->
-*Screenshot: Historical German text normalization (19th/20th century orthography)*
+### Layout Pictures Gallery
+![Layout Pictures Gallery](docs/hackathon/screenshots/04_layout_pictures_gallery.png)
+*Screenshot: Gallery view of detected image regions from newspaper pages*
 
-### LLM Integration
-<!-- ![LLM Analysis](docs/images/hackathon/06-llm.png) -->
-*Screenshot: Structured entity extraction with LLM prompts and Pydantic schemas*
+### Layout Pictures with Captions
+![Layout Pictures Detail](docs/hackathon/screenshots/05_layout_pictures_with_captions_detail.png)
+*Screenshot: Detailed view of extracted images with their captions*
 
-### Timeline Visualization
-<!-- ![Timeline](docs/images/hackathon/07-timeline.png) -->
-*Screenshot: Entity mentions over time across newspaper issues*
+### Search and Word Cloud
+![Search and Word Cloud](docs/hackathon/screenshots/06_search_and_word_cloud.png)
+*Screenshot: Caption search interface with word cloud visualization settings*
+
+### Entities Word Cloud
+![Entities Word Cloud](docs/hackathon/screenshots/07_entities_word_cloud.png)
+*Screenshot: Word cloud visualization of extracted named entities*
+
+### Topic Modeling
+![Topics Overview](docs/hackathon/screenshots/08_topics_01.png)
+*Screenshot: Topic modeling analysis showing thematic clusters, topics where extracted using LLMs via OpenRouter*
+
+### Topic Modeling
+![Topics Temporal](docs/hackathon/screenshots/09_topics_02.png)
+*Screenshot: Topic evolution over time across newspaper issues*
+
+### Topic Modeling
+![Topics Details](docs/hackathon/screenshots/10_topics_03.png)
+*Screenshot: Detailed view of individual topics with representative texts*
+
+### Emotion Analysis
+![Emotions Overview](docs/hackathon/screenshots/11_emotions_01.png)
+*Screenshot: Emotion detection across newspaper articles, a custom classification model developed at Universität Würzburg was used*
+
+### Emotion Analysis
+![Emotions Distribution](docs/hackathon/screenshots/12_emotions_02.png)
+*Screenshot: Distribution of emotional content in the corpus*
+
+### Emotion Analysis
+![Emotions Timeline](docs/hackathon/screenshots/13_emotions_03.png)
+*Screenshot: Emotional patterns over time*
+
+### Emotion Analysis
+![Emotions Details](docs/hackathon/screenshots/14_emotions_04.png)
+*Screenshot: Detailed emotion analysis with text examples*
+
+### Emotion Analysis
+![Emotions Intensity](docs/hackathon/screenshots/15_emotions_05.png)
+*Screenshot: Emotion intensity visualization*
+
+### Emotion Analysis
+![Emotions Context](docs/hackathon/screenshots/16_emotions_06.png)
+*Screenshot: Emotional context in historical newspaper articles*
 
 </details>
 

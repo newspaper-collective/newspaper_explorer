@@ -82,6 +82,10 @@ class TextPreprocessor:
         df: pl.DataFrame,
         steps: List[str],
         output_column: str = "text_processed",
+        batch_size: int = 32,
+        num_beams: int = 4,
+        num_gpus: int = 1,
+        use_cache: bool = True,
     ) -> pl.DataFrame:
         """
         Apply a pipeline of preprocessing steps.
@@ -106,6 +110,9 @@ class TextPreprocessor:
             df: Input DataFrame (must contain text_column)
             steps: List of step names to apply in order
             output_column: Name for final output column
+            batch_size: Batch size for transnormer inference (default: 32)
+            num_beams: Number of beams for transnormer generation (default: 4)
+            num_gpus: Number of GPUs for parallel transnormer processing (default: 1)
 
         Returns:
             DataFrame with processed text and all original columns preserved.
@@ -152,6 +159,10 @@ class TextPreprocessor:
                     text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
+                    batch_size=batch_size,
+                    num_beams=num_beams,
+                    num_gpus=num_gpus,
+                    use_cache=use_cache,
                 )
             elif step == "normalize-dtacab":
                 df = dta_cab(

@@ -6,10 +6,17 @@ Provides advanced linguistic processing methods:
 - Lemmatization (spaCy and GermaLemma)
 """
 
+import os
 import logging
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
+
+# Set spaCy data directory to avoid filling up home directory
+# Use project's .cache directory for model downloads
+_project_root = Path(__file__).parent.parent.parent.parent
+os.environ["SPACY_DATA"] = str(_project_root / ".cache" / "spacy")
 
 logger = logging.getLogger(__name__)
 

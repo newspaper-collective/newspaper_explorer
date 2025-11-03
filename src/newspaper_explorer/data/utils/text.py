@@ -3,10 +3,78 @@ Text processing utilities for newspaper data.
 """
 
 import logging
+from typing import Optional
 
 import polars as pl
 
 logger = logging.getLogger(__name__)
+
+
+def chunk_text(
+    text: str,
+    max_length: int = 512,
+    split_symbols: Optional[list[str]] = None,
+    split_margin: int = 50,
+) -> list[str]:
+    """
+    Split text into chunks at safe boundaries (spaces, punctuation).
+
+    Prevents splitting mid-word by looking for split symbols within a margin
+    before max_length. This is useful for processing long texts with models
+    that have maximum input length constraints.
+
+    Args:
+        text: Text to chunk
+        max_length: Maximum chunk length in characters (default: 512)
+        split_symbols: Symbols to split at (default: [" ", ",", ".", ";", ":", "!", "?"])
+        split_margin: Look for split points within this margin before max_length
+
+    Returns:
+        List of text chunks. If text is shorter than max_length, returns single-item list.
+
+    Example:
+        >>> text = "Very long text that needs to be split..."
+        >>> chunks = chunk_text(text, max_length=512, split_margin=50)
+        >>> print(f"Split into {len(chunks)} chunks")
+    """
+    if split_symbols is None:
+        split_symbols = [" ", ",", ".", ";", ":", "!", "?"]
+
+    text_length = len(text)
+    if text_length <= max_length:
+        return [text]
+
+    chunks = []
+    prev_index = 0
+    start = max_length - split_margin
+    end = max_length
+
+    while start < text_length:
+        sym_index = -1
+
+        # Find last occurrence of any split symbol in range
+        for sym in split_symbols:
+            idx = text.rfind(sym, start, min(end, text_length))
+            if idx != -1 and (sym_index == -1 or idx > sym_index):
+                sym_index = idx
+
+        # No split symbol found, force split at max_length
+        if sym_index == -1:
+            sym_index = min(end, text_length) - 1
+
+        # Add chunk
+        chunks.append(text[prev_index : sym_index + 1])
+
+        # Move to next chunk
+        prev_index = sym_index + 1
+        start = prev_index + max_length - split_margin
+        end = prev_index + max_length
+
+    # Add remaining text
+    if prev_index < text_length:
+        chunks.append(text[prev_index:])
+
+    return chunks
 
 
 def split_into_sentences(

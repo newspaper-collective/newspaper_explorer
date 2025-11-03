@@ -1,18 +1,17 @@
 """
-Compare LLM and GLiNER entity extraction methods.
+Compare entity extraction methods.
 
-This module demonstrates how to run both methods and compare their results
-using the QueryEngine for side-by-side analysis.
+This module provides utilities for comparing entity extraction results
+from different methods (GLiNER, LLM, etc.) using the QueryEngine.
 """
 
+import json
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, List, cast
 
 import polars as pl
 
-from newspaper_explorer.analyze.entities.llm_extraction import extract_entities_llm
-from newspaper_explorer.analyze.entities.gliner_extraction import extract_entities_gliner
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.analyze.query.engine import QueryEngine
 
@@ -21,78 +20,159 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def run_both_methods(source_name: str = "der_tag", limit: int = 100) -> Dict[str, Dict[str, Any]]:
+def list_entity_results(source_name: str) -> List[Dict[str, Any]]:
     """
-    Run both LLM and GLiNER extraction on the same data.
+    List all available entity extraction results for a source.
 
     Args:
         source_name: Name of the newspaper source
-        limit: Number of lines to process (for testing)
 
     Returns:
-        Dict with 'llm' and 'gliner' keys containing results
+        List of dicts with method_id, method_type, model, timestamp, entity_count
     """
-    logger.info(f"Running both extraction methods on {limit} lines from {source_name}")
+    config = get_config()
+    entities_dir = Path(config.results_dir) / source_name / "entities"
 
-    # Run LLM extraction
-    logger.info("Starting LLM extraction...")
-    llm_results = extract_entities_llm(source_name=source_name, limit=limit)
+    if not entities_dir.exists():
+        return []
 
-    # Run GLiNER extraction
-    logger.info("Starting GLiNER extraction...")
-    gliner_results = extract_entities_gliner(source_name=source_name, limit=limit)
+    results = []
+    for method_dir in sorted(entities_dir.iterdir()):
+        if not method_dir.is_dir():
+            continue
 
-    return {"llm": llm_results, "gliner": gliner_results}
+        metadata_path = method_dir / "metadata.json"
+        entities_path = method_dir / "entities.parquet"
+
+        if not metadata_path.exists() or not entities_path.exists():
+            continue
+
+        # Load metadata
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+        # Count entities
+        df = pl.read_parquet(entities_path)
+        entity_count = len(df)
+
+        results.append(
+            {
+                "method_id": method_dir.name,
+                "method_type": metadata.get("method_type", "unknown"),
+                "model": metadata.get("parameters", {}).get("model", "unknown"),
+                "timestamp": metadata.get("timestamp", "unknown"),
+                "entity_count": entity_count,
+                "line_count": metadata.get("line_count", 0),
+                "duration": metadata.get("duration_seconds", 0),
+            }
+        )
+
+    return results
 
 
-def compare_coverage(source_name: str, llm_method_id: str, gliner_method_id: str) -> pl.DataFrame:
+def load_result_metadata(source_name: str, method_id: str) -> Dict[str, Any]:
+    """
+    Load metadata for a specific entity extraction result.
+
+    Args:
+        source_name: Name of the newspaper source
+        method_id: Method ID to load
+
+    Returns:
+        Metadata dictionary
+    """
+    config = get_config()
+    metadata_path = (
+        Path(config.results_dir) / source_name / "entities" / method_id / "metadata.json"
+    )
+
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Metadata not found: {metadata_path}")
+
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        return cast(Dict[str, Any], json.load(f))
+
+def compare_existing_results(
+    source_name: str, method_id_1: str, method_id_2: str
+) -> Dict[str, Any]:
+    """
+    Compare two existing entity extraction results without re-running.
+
+    Args:
+        source_name: Name of the newspaper source
+        method_id_1: First method ID to compare
+        method_id_2: Second method ID to compare
+
+    Returns:
+        Dict with metadata and comparison results
+    """
+    # Load metadata for both methods
+    metadata_1 = load_result_metadata(source_name, method_id_1)
+    metadata_2 = load_result_metadata(source_name, method_id_2)
+
+    # Create results dict matching run_both_methods format
+    config = get_config()
+    results = {
+        "method_1": {
+            "metadata": metadata_1,
+            "output_dir": Path(config.results_dir) / source_name / "entities" / method_id_1,
+        },
+        "method_2": {
+            "metadata": metadata_2,
+            "output_dir": Path(config.results_dir) / source_name / "entities" / method_id_2,
+        },
+    }
+
+    # Run comparison
+    comparisons = compare_entities(source_name, method_id_1, method_id_2)
+
+    return {"results": results, "comparisons": comparisons}
+
+
+def compare_coverage(source_name: str, method_id_1: str, method_id_2: str) -> pl.DataFrame:
     """
     Compare which lines each method extracted entities from.
 
     Args:
         source_name: Name of the newspaper source
-        llm_method_id: Method ID for LLM results
-        gliner_method_id: Method ID for GLiNER results
+        method_id_1: First method ID
+        method_id_2: Second method ID
 
     Returns:
         DataFrame comparing coverage
     """
     config = get_config()
-    llm_path = (
-        Path(config.results_dir) / source_name / "entities" / llm_method_id / "entities.parquet"
-    )
-    gliner_path = (
-        Path(config.results_dir) / source_name / "entities" / gliner_method_id / "entities.parquet"
-    )
+    path_1 = Path(config.results_dir) / source_name / "entities" / method_id_1 / "entities.parquet"
+    path_2 = Path(config.results_dir) / source_name / "entities" / method_id_2 / "entities.parquet"
 
     with QueryEngine(source=source_name) as qe:
         comparison = qe.query(
             f"""
-            WITH llm_lines AS (
-                SELECT DISTINCT line_id 
-                FROM '{llm_path}'
+            WITH method1_lines AS (
+                SELECT DISTINCT source_id 
+                FROM '{path_1}'
             ),
-            gliner_lines AS (
-                SELECT DISTINCT line_id
-                FROM '{gliner_path}'
+            method2_lines AS (
+                SELECT DISTINCT source_id
+                FROM '{path_2}'
             ),
             source_lines AS (
-                SELECT DISTINCT line_id
+                SELECT DISTINCT source_id
                 FROM lines
             )
             SELECT
-                COUNT(DISTINCT s.line_id) as total_lines,
-                COUNT(DISTINCT l.line_id) as llm_coverage,
-                COUNT(DISTINCT g.line_id) as gliner_coverage,
-                COUNT(DISTINCT CASE WHEN l.line_id IS NOT NULL AND g.line_id IS NOT NULL 
-                      THEN s.line_id END) as both_methods,
-                COUNT(DISTINCT CASE WHEN l.line_id IS NOT NULL AND g.line_id IS NULL 
-                      THEN s.line_id END) as llm_only,
-                COUNT(DISTINCT CASE WHEN l.line_id IS NULL AND g.line_id IS NOT NULL 
-                      THEN s.line_id END) as gliner_only
+                COUNT(DISTINCT s.source_id) as total_lines,
+                COUNT(DISTINCT m1.source_id) as method1_coverage,
+                COUNT(DISTINCT m2.source_id) as method2_coverage,
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NOT NULL 
+                      THEN s.source_id END) as both_methods,
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NULL 
+                      THEN s.source_id END) as method1_only,
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NULL AND m2.source_id IS NOT NULL 
+                      THEN s.source_id END) as method2_only
             FROM source_lines s
-            LEFT JOIN llm_lines l ON s.line_id = l.line_id
-            LEFT JOIN gliner_lines g ON s.line_id = g.line_id
+            LEFT JOIN method1_lines m1 ON s.source_id = m1.source_id
+            LEFT JOIN method2_lines m2 ON s.source_id = m2.source_id
         """
         )
 
@@ -100,197 +180,197 @@ def compare_coverage(source_name: str, llm_method_id: str, gliner_method_id: str
 
 
 def compare_entities(
-    source_name: str, llm_method_id: str, gliner_method_id: str
+    source_name: str, method_id_1: str, method_id_2: str
 ) -> Dict[str, pl.DataFrame]:
     """
-    Compare entities found by each method.
+    Compare entities found by two methods.
 
     Args:
         source_name: Name of the newspaper source
-        llm_method_id: Method ID for LLM results
-        gliner_method_id: Method ID for GLiNER results
+        method_id_1: First method ID
+        method_id_2: Second method ID
 
     Returns:
         Dict with comparison DataFrames
     """
     config = get_config()
-    llm_path = (
-        Path(config.results_dir) / source_name / "entities" / llm_method_id / "entities.parquet"
-    )
-    gliner_path = (
-        Path(config.results_dir) / source_name / "entities" / gliner_method_id / "entities.parquet"
-    )
+    path_1 = Path(config.results_dir) / source_name / "entities" / method_id_1 / "entities.parquet"
+    path_2 = Path(config.results_dir) / source_name / "entities" / method_id_2 / "entities.parquet"
 
     with QueryEngine(source=source_name) as qe:
         # Overall statistics
         stats = qe.query(
             f"""
             SELECT
-                'LLM' as method,
+                'Method 1' as method,
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT entity_text) as unique_entities,
-                COUNT(DISTINCT line_id) as lines_with_entities
-            FROM '{llm_path}'
+                COUNT(DISTINCT source_id) as lines_with_entities
+            FROM '{path_1}'
             UNION ALL
             SELECT
-                'GLiNER' as method,
+                'Method 2' as method,
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT entity_text) as unique_entities,
-                COUNT(DISTINCT line_id) as lines_with_entities
-            FROM '{gliner_path}'
+                COUNT(DISTINCT source_id) as lines_with_entities
+            FROM '{path_2}'
         """
         )
 
         # Entity type distribution
-        types = qe.query(
+        type_dist = qe.query(
             f"""
+            WITH combined AS (
+                SELECT 'Method 1' as method, entity_type, source_id
+                FROM '{path_1}'
+                UNION ALL
+                SELECT 'Method 2' as method, entity_type, source_id
+                FROM '{path_2}'
+            )
             SELECT
-                'LLM' as method,
+                method,
                 entity_type,
-                COUNT(*) as count
-            FROM '{llm_path}'
-            GROUP BY entity_type
-            UNION ALL
-            SELECT
-                'GLiNER' as method,
-                entity_type,
-                COUNT(*) as count
-            FROM '{gliner_path}'
-            GROUP BY entity_type
-            ORDER BY method, entity_type
+                COUNT(*) as count,
+                COUNT(DISTINCT source_id) as unique_lines
+            FROM combined
+            GROUP BY method, entity_type
+            ORDER BY method, count DESC
         """
         )
 
         # Entities found by both methods (normalized comparison)
         both = qe.query(
             f"""
-            WITH llm_entities AS (
+            WITH method1_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
-                    entity_text as llm_text
-                FROM '{llm_path}'
+                    entity_text as method1_text
+                FROM '{path_1}'
             ),
-            gliner_entities AS (
+            method2_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
-                    entity_text as gliner_text
-                FROM '{gliner_path}'
+                    entity_text as method2_text
+                FROM '{path_2}'
             )
             SELECT
-                l.llm_text,
-                g.gliner_text,
-                l.entity_type,
+                m1.method1_text,
+                m2.method2_text,
+                m1.entity_type,
                 COUNT(*) as agreement_count
-            FROM llm_entities l
-            INNER JOIN gliner_entities g 
-                ON l.entity_lower = g.entity_lower 
-                AND l.entity_type = g.entity_type
-            GROUP BY l.llm_text, g.gliner_text, l.entity_type
+            FROM method1_entities m1
+            INNER JOIN method2_entities m2
+                ON m1.entity_lower = m2.entity_lower 
+                AND m1.entity_type = m2.entity_type
+            GROUP BY m1.method1_text, m2.method2_text, m1.entity_type
             ORDER BY agreement_count DESC
             LIMIT 50
         """
         )
 
         # Entities unique to each method
-        llm_only = qe.query(
+        method1_only = qe.query(
             f"""
-            WITH llm_entities AS (
+            WITH method1_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text
-                FROM '{llm_path}'
+                FROM '{path_1}'
             ),
-            gliner_entities AS (
+            method2_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type
-                FROM '{gliner_path}'
+                FROM '{path_2}'
             )
             SELECT
-                l.entity_text,
-                l.entity_type,
-                COUNT(*) as llm_mentions
-            FROM llm_entities l
-            LEFT JOIN gliner_entities g 
-                ON l.entity_lower = g.entity_lower 
-                AND l.entity_type = g.entity_type
-            WHERE g.entity_lower IS NULL
-            GROUP BY l.entity_text, l.entity_type
-            ORDER BY llm_mentions DESC
+                m1.entity_text,
+                m1.entity_type,
+                COUNT(*) as mentions
+            FROM method1_entities m1
+            LEFT JOIN method2_entities m2
+                ON m1.entity_lower = m2.entity_lower 
+                AND m1.entity_type = m2.entity_type
+            WHERE m2.entity_lower IS NULL
+            GROUP BY m1.entity_text, m1.entity_type
+            ORDER BY mentions DESC
             LIMIT 25
         """
         )
 
-        gliner_only = qe.query(
+        method2_only = qe.query(
             f"""
-            WITH llm_entities AS (
+            WITH method1_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type
-                FROM '{llm_path}'
+                FROM '{path_1}'
             ),
-            gliner_entities AS (
+            method2_entities AS (
                 SELECT DISTINCT 
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text
-                FROM '{gliner_path}'
+                FROM '{path_2}'
             )
             SELECT
-                g.entity_text,
-                g.entity_type,
-                COUNT(*) as gliner_mentions
-            FROM gliner_entities g
-            LEFT JOIN llm_entities l 
-                ON g.entity_lower = l.entity_lower 
-                AND g.entity_type = l.entity_type
-            WHERE l.entity_lower IS NULL
-            GROUP BY g.entity_text, g.entity_type
-            ORDER BY gliner_mentions DESC
+                m2.entity_text,
+                m2.entity_type,
+                COUNT(*) as mentions
+            FROM method2_entities m2
+            LEFT JOIN method1_entities m1
+                ON m2.entity_lower = m1.entity_lower 
+                AND m2.entity_type = m1.entity_type
+            WHERE m1.entity_lower IS NULL
+            GROUP BY m2.entity_text, m2.entity_type
+            ORDER BY mentions DESC
             LIMIT 25
         """
         )
 
     return {
         "statistics": stats,
-        "type_distribution": types,
+        "type_distribution": type_dist,
         "agreement": both,
-        "llm_only": llm_only,
-        "gliner_only": gliner_only,
+        "method1_only": method1_only,
+        "method2_only": method2_only,
     }
 
 
-def print_comparison_report(
-    results: Dict[str, Dict[str, Any]], comparisons: Dict[str, pl.DataFrame]
-):
+def print_comparison_report(comparison_data: Dict[str, Any]):
     """
-    Print a formatted comparison report.
+    Print a formatted comparison report for any two methods.
 
     Args:
-        results: Results from run_both_methods()
-        comparisons: Comparison DataFrames from compare_entities()
+        comparison_data: Output from compare_existing_results()
     """
-    llm = results["llm"]
-    gliner = results["gliner"]
+    results = comparison_data["results"]
+    comparisons = comparison_data["comparisons"]
+
+    method_1 = results["method_1"]["metadata"]
+    method_2 = results["method_2"]["metadata"]
 
     print("\n" + "=" * 80)
     print("ENTITY EXTRACTION METHOD COMPARISON")
     print("=" * 80)
 
     # Execution metadata
-    print("\n### Execution Metadata ###\n")
-    print(f"LLM Method ID:    {llm['metadata']['analysis_id']}")
-    print(f"LLM Model:        {llm['metadata']['parameters']['model_name']}")
-    print(f"LLM Duration:     {llm['metadata']['duration_seconds']:.1f}s")
-    print(f"LLM Temperature:  {llm['metadata']['parameters']['temperature']}")
-    print()
-    print(f"GLiNER Method ID: {gliner['metadata']['analysis_id']}")
-    print(f"GLiNER Model:     {gliner['metadata']['parameters']['model_name']}")
-    print(f"GLiNER Duration:  {gliner['metadata']['duration_seconds']:.1f}s")
-    print(f"GLiNER Threshold: {gliner['metadata']['parameters']['threshold']}")
+    print("\n### Method 1 ###\n")
+    print(f"Method ID:    {method_1['analysis_id']}")
+    print(f"Method Type:  {method_1.get('method_type', 'unknown')}")
+    print(f"Model:        {method_1.get('parameters', {}).get('model', 'unknown')}")
+    print(f"Duration:     {method_1.get('duration_seconds', 0):.1f}s")
+    print(f"Line Count:   {method_1.get('line_count', 0)}")
+
+    print("\n### Method 2 ###\n")
+    print(f"Method ID:    {method_2['analysis_id']}")
+    print(f"Method Type:  {method_2.get('method_type', 'unknown')}")
+    print(f"Model:        {method_2.get('parameters', {}).get('model', 'unknown')}")
+    print(f"Duration:     {method_2.get('duration_seconds', 0):.1f}s")
+    print(f"Line Count:   {method_2.get('line_count', 0)}")
 
     # Overall statistics
     print("\n### Overall Statistics ###\n")
@@ -305,52 +385,10 @@ def print_comparison_report(
     print(comparisons["agreement"].head(10))
 
     # Method-specific entities
-    print("\n### Entities Found ONLY by LLM ###\n")
-    print(comparisons["llm_only"].head(10))
+    print("\n### Entities Unique to Method 1 ###\n")
+    print(comparisons["method1_only"].head(10))
 
-    print("\n### Entities Found ONLY by GLiNER ###\n")
-    print(comparisons["gliner_only"].head(10))
+    print("\n### Entities Unique to Method 2 ###\n")
+    print(comparisons["method2_only"].head(10))
 
     print("\n" + "=" * 80)
-
-
-def main():
-    """Run complete comparison pipeline."""
-    # Configuration
-    SOURCE = "der_tag"
-    LIMIT = 50  # Small sample for testing
-
-    print("Running entity extraction comparison...")
-    print(f"Source: {SOURCE}")
-    print(f"Sample size: {LIMIT} lines\n")
-
-    # Step 1: Run both methods
-    results = run_both_methods(source_name=SOURCE, limit=LIMIT)
-
-    # Step 2: Compare results
-    comparisons = compare_entities(
-        source_name=SOURCE,
-        llm_method_id=results["llm"]["metadata"]["analysis_id"],
-        gliner_method_id=results["gliner"]["metadata"]["analysis_id"],
-    )
-
-    # Step 3: Print report
-    print_comparison_report(results, comparisons)
-
-    # Step 4: Coverage comparison
-    coverage = compare_coverage(
-        source_name=SOURCE,
-        llm_method_id=results["llm"]["metadata"]["analysis_id"],
-        gliner_method_id=results["gliner"]["metadata"]["analysis_id"],
-    )
-
-    print("\n### Line Coverage Comparison ###\n")
-    print(coverage)
-
-    print(
-        f"\nResults saved to:\nLLM:    {results['llm']['output_dir']}\nGLiNER: {results['gliner']['output_dir']}"
-    )
-
-
-if __name__ == "__main__":
-    main()

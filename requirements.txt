@@ -19,6 +19,7 @@ pyphen>=0.14.0
 transformers>=4.30.0
 torch>=1.12.0
 gliner>=0.1.0
+gliner2>=0.1.0
 bertopic>=0.15.0
 sentence-transformers>=2.2.0
 scikit-learn>=1.3.0

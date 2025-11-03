@@ -1,11 +1,13 @@
 ## Current Priorities
-- update pyproject.toml
 - update requirements.txt and requirements-dev.txt
 - unify ids, generation and usage, more linability
 - remove emojis from cli
 - unifiy output styling
 
-- remove newspaper subtitle
+- add source_name to aggregated blocks
+- spacy models?
+- yolo, spacy, hf cache dir move to .env
+- unify sample/limit cmd
 
 ### Data Issues
 - Images need fixing too

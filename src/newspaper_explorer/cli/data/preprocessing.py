@@ -55,7 +55,42 @@ def register_preprocessing_commands(data_group):
         type=int,
         help="Process only first N rows (for testing)",
     )
-    def preprocess(source, input, output, steps, text_column, output_column, sample):
+    @click.option(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for transnormer inference (default: 32, try 64/128 for faster processing)",
+    )
+    @click.option(
+        "--num-beams",
+        type=int,
+        default=4,
+        help="Number of beams for transnormer (default: 4, try 1-2 for faster processing)",
+    )
+    @click.option(
+        "--num-gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to use for transnormer (default: 1, multi-GPU uses parallel processing)",
+    )
+    @click.option(
+        "--no-cache",
+        is_flag=True,
+        help="Disable caching for transnormer (default: caching enabled for resume capability)",
+    )
+    def preprocess(
+        source,
+        input,
+        output,
+        steps,
+        text_column,
+        output_column,
+        sample,
+        batch_size,
+        num_beams,
+        num_gpus,
+        no_cache,
+    ):
         """
         Preprocess text data with configurable pipeline.
 
@@ -88,6 +123,14 @@ def register_preprocessing_commands(data_group):
           # Test on sample
           newspaper-explorer data preprocess --source der_tag \\
               --steps normalize,lowercase --sample 1000
+
+          # Transnormer with custom batch size for speed
+          newspaper-explorer data preprocess --source der_tag \\
+              --steps normalize-transnormer --batch-size 128 --num-beams 2
+          
+          # Use all 4 GPUs for maximum speed
+          newspaper-explorer data preprocess --source der_tag \\
+              --steps normalize-transnormer --num-gpus 4 --batch-size 128
         """
         import polars as pl
 
@@ -172,6 +215,10 @@ def register_preprocessing_commands(data_group):
                 df,
                 steps=step_list,
                 output_column=output_column,
+                batch_size=batch_size,
+                num_beams=num_beams,
+                num_gpus=num_gpus,
+                use_cache=not no_cache,
             )
 
             # Show sample output

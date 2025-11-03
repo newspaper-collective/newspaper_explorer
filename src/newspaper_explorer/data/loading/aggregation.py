@@ -96,29 +96,48 @@ def load_and_aggregate_textblocks(
     # Sort by reading order within each block
     df = df.sort(group_by + sort_by)
 
+    # Determine which metadata columns to preserve
+    metadata_columns = [
+        "filename",
+        "newspaper_title",
+        "year",
+        "month",
+        "day",
+        "date",  # datetime column
+        "year_volume",
+        "page_count",
+        "source_id",
+        "issue_id",
+        "page_id",
+        "page_number",
+        "issue_number",
+        "daily_issue_number",
+    ]
+
+    # Only include columns that actually exist in the DataFrame
+    available_metadata = [col for col in metadata_columns if col in df.columns]
+
     # Aggregate text blocks
-    aggregated = df.group_by(group_by, maintain_order=True).agg(
-        [
-            # Concatenate text with space separator
-            pl.col("text").str.concat(" ").alias("text"),
-            # Count lines in block
-            pl.count().alias("line_count"),
-            # Average coordinates
-            pl.col("x").mean().alias("avg_x"),
-            pl.col("y").mean().alias("avg_y"),
-            # Bounding box
-            pl.col("x").min().alias("min_x"),
-            pl.col("y").min().alias("min_y"),
-            pl.col("x").max().alias("max_x"),
-            pl.col("y").max().alias("max_y"),
-            # Keep other metadata (take first value from group)
-            pl.col("filename").first().alias("filename"),
-            pl.col("newspaper_title").first().alias("newspaper_title"),
-            pl.col("year").first().alias("year"),
-            pl.col("month").first().alias("month"),
-            pl.col("day").first().alias("day"),
-        ]
-    )
+    agg_exprs = [
+        # Concatenate text with space separator
+        pl.col("text").str.concat(" ").alias("text"),
+        # Count lines in block
+        pl.count().alias("line_count"),
+        # Average coordinates
+        pl.col("x").mean().alias("avg_x"),
+        pl.col("y").mean().alias("avg_y"),
+        # Bounding box
+        pl.col("x").min().alias("min_x"),
+        pl.col("y").min().alias("min_y"),
+        pl.col("x").max().alias("max_x"),
+        pl.col("y").max().alias("max_y"),
+    ]
+
+    # Add metadata columns (take first value from group since they're the same within a block)
+    for col in available_metadata:
+        agg_exprs.append(pl.col(col).first().alias(col))
+
+    aggregated = df.group_by(group_by, maintain_order=True).agg(agg_exprs)
 
     logger.info(f"Aggregated into {len(aggregated)} text blocks")
 

@@ -116,5 +116,5 @@ module = "newspaper_explorer.*"
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["pyphen", "germalemma", "cv2"]
+module = ["pyphen", "germalemma", "cv2", "gliner", "gliner2"]
 ignore_missing_imports = true

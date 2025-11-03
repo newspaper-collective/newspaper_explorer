@@ -17,11 +17,12 @@ import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.utils.text import chunk_text
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.llm.client import LLMClient, LLMRetryError, LLMValidationError
 from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
 from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
-from newspaper_explorer.analyzeery.engine import create_result_metadata
+from newspaper_explorer.analyze.query.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,11 @@ class LLMEntityExtractor:
     Extract named entities using LLM with structured validation.
 
     Uses the new data architecture:
-    - Saves results as Parquet with line_id foreign keys
+    - Saves results as Parquet with source_id foreign keys
     - Creates metadata.json for reproducibility
     - Follows results/{source}/entities/{method_id}/ structure
+
+    Note: source_id column contains IDs from input (line_id, text_block_id, etc.)
     """
 
     def __init__(
@@ -44,6 +47,8 @@ class LLMEntityExtractor:
         max_tokens: int = 2000,
         max_retries: int = 3,
         batch_size: int = 10,
+        min_text_length: int = 100,
+        max_text_length: int = 8000,
     ):
         """
         Initialize LLM entity extractor.
@@ -55,6 +60,8 @@ class LLMEntityExtractor:
             max_tokens: Maximum tokens per response.
             max_retries: Number of retry attempts on failure.
             batch_size: Process N lines before saving checkpoint.
+            min_text_length: Minimum text length to process (chars).
+            max_text_length: Maximum text length before chunking (chars).
         """
         self.source_name = source_name
         self.model_name = model_name
@@ -62,6 +69,8 @@ class LLMEntityExtractor:
         self.max_tokens = max_tokens
         self.max_retries = max_retries
         self.batch_size = batch_size
+        self.min_text_length = min_text_length
+        self.max_text_length = max_text_length
 
         # Setup paths following new architecture
         config = get_config()
@@ -72,12 +81,35 @@ class LLMEntityExtractor:
 
         logger.info(f"Initialized LLMEntityExtractor for '{source_name}'")
         logger.info(f"Model: {model_name}, Temperature: {temperature}")
+        logger.info(f"Text length: min={min_text_length}, max={max_text_length} chars")
+
+    def _prepare_text(self, text: str) -> List[str]:
+        """
+        Prepare text for extraction by chunking if needed.
+
+        Args:
+            text: Input text to process.
+
+        Returns:
+            List of text chunks (single item if no chunking needed).
+        """
+        if len(text) <= self.max_text_length:
+            return [text]
+
+        # Chunk text at sentence boundaries
+        chunks = chunk_text(
+            text,
+            max_length=self.max_text_length,
+            split_margin=200,  # 200 char overlap for context
+        )
+
+        return chunks
 
     def extract_from_text(
         self, text: str, line_id: str, metadata: Optional[Dict] = None
-    ) -> Optional[Dict]:
+    ) -> Optional[List[Dict]]:
         """
-        Extract entities from a single text.
+        Extract entities from a single text (with chunking if needed).
 
         Args:
             text: Text content to analyze.
@@ -85,60 +117,83 @@ class LLMEntityExtractor:
             metadata: Optional metadata dict (source, date, newspaper_title, etc.)
 
         Returns:
-            Dictionary with line_id and extracted entities, or None on failure.
+            List of entity dictionaries with line_id, or None on failure.
         """
-        # Format prompt with optional metadata
-        prompts = self.prompt_template.format(text=text, metadata=metadata)
+        # Chunk text if needed
+        chunks = self._prepare_text(text)
 
-        # Make LLM request with validation
-        with LLMClient(
-            model_name=self.model_name,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            max_retries=self.max_retries,
-        ) as client:
-            try:
-                response = client.complete(
-                    prompt=prompts["user"],
-                    system_prompt=prompts["system"],
-                    response_schema=EntityResponse,
-                )
+        all_records = []
 
-                # Convert to flat records (one row per entity)
-                records = []
+        # Process each chunk
+        for chunk in chunks:
+            # Format prompt with optional metadata
+            prompts = self.prompt_template.format(text=chunk, metadata=metadata)
 
-                for person in response.persons:
-                    records.append(
-                        {
-                            "line_id": line_id,
-                            "entity_text": person,
-                            "entity_type": "person",
-                        }
+            # Make LLM request with validation
+            with LLMClient(
+                model_name=self.model_name,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                max_retries=self.max_retries,
+            ) as client:
+                try:
+                    response = client.complete(
+                        prompt=prompts["user"],
+                        system_prompt=prompts["system"],
+                        response_schema=EntityResponse,
                     )
 
-                for location in response.locations:
-                    records.append(
-                        {
-                            "line_id": line_id,
-                            "entity_text": location,
-                            "entity_type": "location",
-                        }
-                    )
+                    # Ensure response is EntityResponse object (handle string response)
+                    if isinstance(response, str):
+                        response = EntityResponse.model_validate_json(response)
 
-                for org in response.organizations:
-                    records.append(
-                        {
-                            "line_id": line_id,
-                            "entity_text": org,
-                            "entity_type": "organization",
-                        }
-                    )
+                    # Convert to flat records (one row per entity)
+                    for person in response.persons:
+                        all_records.append(
+                            {
+                                "source_id": line_id,
+                                "entity_text": person,
+                                "entity_type": "person",
+                            }
+                        )
 
-                return records
+                    for location in response.locations:
+                        all_records.append(
+                            {
+                                "source_id": line_id,
+                                "entity_text": location,
+                                "entity_type": "location",
+                            }
+                        )
 
-            except (LLMRetryError, LLMValidationError) as e:
-                logger.warning(f"Failed to extract entities for {line_id}: {e}")
-                return None
+                    for org in response.organizations:
+                        all_records.append(
+                            {
+                                "source_id": line_id,
+                                "entity_text": org,
+                                "entity_type": "organization",
+                            }
+                        )
+
+                except (LLMRetryError, LLMValidationError) as e:
+                    logger.warning(f"Failed to extract entities for {line_id} (chunk): {e}")
+                    # Continue with next chunk instead of returning None
+                    continue
+
+        # Deduplicate entities found across chunks (keep all instances since LLM has no confidence)
+        if all_records:
+            # Use set to deduplicate based on (source_id, entity_text, entity_type)
+            seen = set()
+            unique_records = []
+            for record in all_records:
+                key = (record["source_id"], record["entity_text"], record["entity_type"])
+                if key not in seen:
+                    seen.add(key)
+                    unique_records.append(record)
+
+            return unique_records if unique_records else None
+
+        return None
 
     def extract_from_dataframe(
         self,
@@ -157,26 +212,40 @@ class LLMEntityExtractor:
             limit: Optional limit on number of rows to process.
 
         Returns:
-            DataFrame with extracted entities (line_id, entity_text, entity_type).
+            DataFrame with extracted entities (source_id, entity_text, entity_type).
         """
         logger.info(f"Extracting entities from {len(df)} rows")
 
+        # Filter by minimum text length
+        df_filtered = df.filter(pl.col(text_column).str.len_chars() >= self.min_text_length)
+        logger.info(f"Filtered to {len(df_filtered)} texts (min length: {self.min_text_length})")
+
         if limit:
-            df = df.head(limit)
+            df_filtered = df_filtered.head(limit)
             logger.info(f"Limited to {limit} rows")
+
+        # Prepare texts and check for chunking
+        logger.info("Preparing texts and chunking long texts...")
+        chunks_needed = 0
+        for row in df_filtered.iter_rows(named=True):
+            text = row[text_column]
+            if len(text) > self.max_text_length:
+                chunks_needed += 1
+
+        total_texts = len(df_filtered)
+        logger.info(f"Prepared {total_texts} texts")
+        logger.info(f"  - {chunks_needed} texts will be split into chunks")
 
         all_records = []
         processed = 0
         failed = 0
 
         # Process each row
-        for row in tqdm(df.iter_rows(named=True), total=len(df), desc="Extracting entities"):
+        for row in tqdm(
+            df_filtered.iter_rows(named=True), total=len(df_filtered), desc="Extracting entities"
+        ):
             text = row[text_column]
             line_id = row[id_column]
-
-            # Skip empty or very short texts
-            if not text or len(text.strip()) < 50:
-                continue
 
             # Build metadata from row if available
             metadata = {}
@@ -184,7 +253,7 @@ class LLMEntityExtractor:
                 if field in row and row[field]:
                     metadata[field] = row[field]
 
-            # Extract entities with metadata
+            # Extract entities with metadata (handles chunking internally)
             records = self.extract_from_text(text, line_id, metadata=metadata if metadata else None)
 
             if records:
@@ -206,7 +275,7 @@ class LLMEntityExtractor:
             # Empty DataFrame with correct schema
             results_df = pl.DataFrame(
                 schema={
-                    "line_id": pl.Utf8,
+                    "source_id": pl.Utf8,
                     "entity_text": pl.Utf8,
                     "entity_type": pl.Utf8,
                 }
@@ -265,9 +334,14 @@ class LLMEntityExtractor:
             model_name=self.model_name,
             source=self.source_name,
             parameters={
+                "model": self.model_name,  # Full model name
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
+                "min_text_length": self.min_text_length,
+                "max_text_length": self.max_text_length,
                 "prompt_template": "entity_extraction",
+                "text_column": text_column,
+                "source_id_column": id_column,  # Track what source_id references
             },
             line_count=limit if limit else len(df),
             duration_seconds=duration,
