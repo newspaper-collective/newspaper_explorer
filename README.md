@@ -82,12 +82,8 @@ During the two-day hackathon, we built a Streamlit-based web interface to showca
 *Screenshot: Detailed view of individual topics with representative texts*
 
 ### Emotion Analysis
-![Emotions Overview](docs/hackathon/screenshots/11_emotions_01.png)
-*Screenshot: Emotion detection across newspaper articles, a custom classification model developed at Universität Würzburg was used*
-
-### Emotion Analysis
 ![Emotions Distribution](docs/hackathon/screenshots/12_emotions_02.png)
-*Screenshot: Distribution of emotional content in the corpus*
+*Screenshot: Distribution of emotional content in the corpus, a classification model developed at Universität Würzburg was used (https://github.com/LeKonArD/Gattungen_und_Emotionen_dhd2023/tree/main)*
 
 ### Emotion Analysis
 ![Emotions Timeline](docs/hackathon/screenshots/13_emotions_03.png)
@@ -96,14 +92,6 @@ During the two-day hackathon, we built a Streamlit-based web interface to showca
 ### Emotion Analysis
 ![Emotions Details](docs/hackathon/screenshots/14_emotions_04.png)
 *Screenshot: Detailed emotion analysis with text examples*
-
-### Emotion Analysis
-![Emotions Intensity](docs/hackathon/screenshots/15_emotions_05.png)
-*Screenshot: Emotion intensity visualization*
-
-### Emotion Analysis
-![Emotions Context](docs/hackathon/screenshots/16_emotions_06.png)
-*Screenshot: Emotional context in historical newspaper articles*
 
 </details>
 
