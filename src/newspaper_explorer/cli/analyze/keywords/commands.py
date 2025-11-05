@@ -1,11 +1,13 @@
 """
 CLI commands for keyword extraction.
 
-Provides commands for extracting keywords using TF-IDF.
+Provides commands for extracting keywords using TF-IDF, RAKE, YAKE, and KeyBERT.
+For topic modeling, see analyze.topics commands.
 """
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -14,7 +16,7 @@ from newspaper_explorer.config.base import get_config
 
 @click.group(name="keywords")
 def keywords_group():
-    """Extract keywords from newspaper text using TF-IDF."""
+    """Extract keywords using TF-IDF, RAKE, YAKE, or KeyBERT."""
     pass
 
 
@@ -316,5 +318,445 @@ def tfidf(
         return
     except Exception as e:
         click.echo(f"\nError during keyword extraction: {e}", err=True)
+        logging.exception("Full error details:")
+        return
+
+
+@keywords_group.command(name="rake")
+@click.option(
+    "--source",
+    type=str,
+    required=True,
+    help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--group-by",
+    type=str,
+    multiple=True,
+    default=None,
+    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=10,
+    help="Number of top keyphrases to extract per document",
+)
+@click.option(
+    "--min-length",
+    type=int,
+    default=1,
+    help="Minimum number of words in a keyphrase",
+)
+@click.option(
+    "--max-length",
+    type=int,
+    default=4,
+    help="Maximum number of words in a keyphrase",
+)
+@click.option(
+    "--use-stopwords/--no-stopwords",
+    default=True,
+    help="Use German stopwords (recommended)",
+)
+@click.option(
+    "--output-name",
+    type=str,
+    default="rake_keywords",
+    help="Output filename (without extension)",
+)
+def rake(
+    source: str,
+    group_by: Optional[tuple[str, ...]],
+    top_k: int,
+    min_length: int,
+    max_length: int,
+    use_stopwords: bool,
+    output_name: str,
+):
+    """
+    Extract multi-word keyphrases using RAKE (Rapid Automatic Keyword Extraction).
+
+    RAKE uses word co-occurrence and linguistic patterns to extract meaningful
+    multi-word phrases from text. It identifies keyphrases by analyzing word
+    frequency and co-occurrence within the text.
+
+    Features:
+    - Extracts multi-word phrases (not just single words)
+    - No training required (rule-based)
+    - Fast and language-agnostic
+    - Good for extracting domain-specific terminology
+
+    Best for: Extracting technical terms, named entities, multi-word concepts
+
+    Examples:
+
+    \b
+    Extract keyphrases per page (recommended):
+        newspaper-explorer analyze keywords rake --source der_tag
+
+    \b
+    Extract longer keyphrases (up to 5 words):
+        newspaper-explorer analyze keywords rake --source der_tag \\
+            --max-length 5 --top-k 15
+
+    \b
+    Extract per date with custom grouping:
+        newspaper-explorer analyze keywords rake --source der_tag \\
+            --group-by date --top-k 20
+
+    \b
+    Output:
+        Saves to: results/{source}/keywords/{output_name}.parquet
+        Columns: grouping columns, keywords (list), scores (list)
+    """
+    from newspaper_explorer.analyze.keywords.rake import RAKEExtractor
+
+    config = get_config()
+
+    click.echo("\n=== RAKE Keyphrase Extraction ===")
+    click.echo(f"Source: {source}")
+    click.echo(f"Group by: {group_by or '(page - default)'}")
+    click.echo(f"Top keyphrases: {top_k}")
+    click.echo(f"Phrase length: {min_length}-{max_length} words")
+    click.echo(f"Use stopwords: {use_stopwords}")
+
+    try:
+        # Initialize extractor
+        extractor = RAKEExtractor(
+            source_name=source,
+            min_phrase_length=min_length,
+            max_phrase_length=max_length,
+            use_stopwords=use_stopwords,
+        )
+
+        # Prepare grouping
+        group_by_list = list(group_by) if group_by else None
+
+        # Extract keyphrases
+        click.echo("\nExtracting keyphrases...")
+        df_keywords = extractor.extract_keyphrases(top_k=top_k, group_by=group_by_list)
+
+        # Save results
+        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df_keywords.write_parquet(output_path)
+
+        click.echo(f"\n✓ Saved keyphrases to: {output_path}")
+        click.echo(f"  Total groups: {len(df_keywords)}")
+        click.echo(f"  Columns: {df_keywords.columns}")
+
+    except FileNotFoundError as e:
+        click.echo(f"\nError: {e}", err=True)
+        click.echo(
+            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
+        )
+        return
+    except Exception as e:
+        click.echo(f"\nError during RAKE extraction: {e}", err=True)
+        logging.exception("Full error details:")
+        return
+
+
+@keywords_group.command(name="yake")
+@click.option(
+    "--source",
+    type=str,
+    required=True,
+    help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--group-by",
+    type=str,
+    multiple=True,
+    default=None,
+    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=10,
+    help="Number of top keywords to extract per document",
+)
+@click.option(
+    "--language",
+    type=str,
+    default="de",
+    help="Language code (e.g., 'de' for German, 'en' for English)",
+)
+@click.option(
+    "--max-ngram-size",
+    type=int,
+    default=3,
+    help="Maximum n-gram size (1=words, 2=bigrams, 3=trigrams)",
+)
+@click.option(
+    "--deduplication-threshold",
+    type=float,
+    default=0.9,
+    help="Threshold for removing similar keywords (0-1, higher=less deduplication)",
+)
+@click.option(
+    "--output-name",
+    type=str,
+    default="yake_keywords",
+    help="Output filename (without extension)",
+)
+def yake(
+    source: str,
+    group_by: Optional[tuple[str, ...]],
+    top_k: int,
+    language: str,
+    max_ngram_size: int,
+    deduplication_threshold: float,
+    output_name: str,
+):
+    """
+    Extract keywords using YAKE (Yet Another Keyword Extractor).
+
+    YAKE uses statistical text features to extract keywords without requiring
+    training data or external corpora. It analyzes word frequency, casing,
+    position, and context to identify important keywords.
+
+    Features:
+    - Unsupervised (no training needed)
+    - Language-independent (specify language for better results)
+    - Extracts single words and multi-word expressions
+    - Fast extraction
+
+    Best for: General-purpose keyword extraction, balanced results
+
+    Note: YAKE assigns lower scores to more important keywords (inverted scoring)
+
+    Examples:
+
+    \b
+    Extract keywords per page (recommended):
+        newspaper-explorer analyze keywords yake --source der_tag
+
+    \b
+    Extract only single words (unigrams):
+        newspaper-explorer analyze keywords yake --source der_tag \\
+            --max-ngram-size 1 --top-k 15
+
+    \b
+    Extract with stricter deduplication:
+        newspaper-explorer analyze keywords yake --source der_tag \\
+            --deduplication-threshold 0.7
+
+    \b
+    Output:
+        Saves to: results/{source}/keywords/{output_name}.parquet
+        Columns: grouping columns, keywords (list), scores (list)
+    """
+    from newspaper_explorer.analyze.keywords.yake import YAKEExtractor
+
+    config = get_config()
+
+    click.echo("\n=== YAKE Keyword Extraction ===")
+    click.echo(f"Source: {source}")
+    click.echo(f"Group by: {group_by or '(page - default)'}")
+    click.echo(f"Top keywords: {top_k}")
+    click.echo(f"Language: {language}")
+    click.echo(f"Max n-gram size: {max_ngram_size}")
+    click.echo(f"Deduplication threshold: {deduplication_threshold}")
+
+    try:
+        # Initialize extractor
+        extractor = YAKEExtractor(
+            source_name=source,
+            language=language,
+            max_ngram_size=max_ngram_size,
+            deduplication_threshold=deduplication_threshold,
+        )
+
+        # Prepare grouping
+        group_by_list = list(group_by) if group_by else None
+
+        # Extract keywords
+        click.echo("\nExtracting keywords...")
+        df_keywords = extractor.extract_keywords(top_k=top_k, group_by=group_by_list)
+
+        # Save results
+        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df_keywords.write_parquet(output_path)
+
+        click.echo(f"\n✓ Saved keywords to: {output_path}")
+        click.echo(f"  Total groups: {len(df_keywords)}")
+        click.echo(f"  Columns: {df_keywords.columns}")
+
+    except FileNotFoundError as e:
+        click.echo(f"\nError: {e}", err=True)
+        click.echo(
+            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
+        )
+        return
+    except Exception as e:
+        click.echo(f"\nError during YAKE extraction: {e}", err=True)
+        logging.exception("Full error details:")
+        return
+
+
+@keywords_group.command(name="keybert")
+@click.option(
+    "--source",
+    type=str,
+    required=True,
+    help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--group-by",
+    type=str,
+    multiple=True,
+    default=None,
+    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=10,
+    help="Number of top keywords to extract per document",
+)
+@click.option(
+    "--model",
+    type=str,
+    default="paraphrase-multilingual-MiniLM-L12-v2",
+    help="Sentence transformer model (multilingual recommended for German)",
+)
+@click.option(
+    "--min-ngram",
+    type=int,
+    default=1,
+    help="Minimum n-gram size for candidate phrases",
+)
+@click.option(
+    "--max-ngram",
+    type=int,
+    default=2,
+    help="Maximum n-gram size for candidate phrases",
+)
+@click.option(
+    "--diversity",
+    type=float,
+    default=0.5,
+    help="Keyword diversity (0=similar, 1=diverse) using MMR",
+)
+@click.option(
+    "--use-mmr/--no-mmr",
+    default=True,
+    help="Use Maximal Marginal Relevance for diversity",
+)
+@click.option(
+    "--output-name",
+    type=str,
+    default="keybert_keywords",
+    help="Output filename (without extension)",
+)
+def keybert(
+    source: str,
+    group_by: Optional[tuple[str, ...]],
+    top_k: int,
+    model: str,
+    min_ngram: int,
+    max_ngram: int,
+    diversity: float,
+    use_mmr: bool,
+    output_name: str,
+):
+    """
+    Extract keywords using KeyBERT (BERT-based semantic extraction).
+
+    KeyBERT uses BERT embeddings to extract keywords that are semantically
+    similar to the document. It computes cosine similarity between document
+    embeddings and candidate keyword embeddings.
+
+    Features:
+    - Semantic understanding (context-aware)
+    - Multilingual support (works well for German)
+    - Diversity control via MMR (Maximal Marginal Relevance)
+    - Pre-trained models (no training needed)
+
+    Best for: Semantic keyword extraction, capturing meaning and context
+
+    Model options:
+    - paraphrase-multilingual-MiniLM-L12-v2 (default, good for German)
+    - distiluse-base-multilingual-cased-v2 (larger, more accurate)
+    - all-MiniLM-L6-v2 (English only, faster)
+
+    Examples:
+
+    \b
+    Extract keywords per page (recommended):
+        newspaper-explorer analyze keywords keybert --source der_tag
+
+    \b
+    Use larger multilingual model:
+        newspaper-explorer analyze keywords keybert --source der_tag \\
+            --model distiluse-base-multilingual-cased-v2
+
+    \b
+    Extract with high diversity:
+        newspaper-explorer analyze keywords keybert --source der_tag \\
+            --diversity 0.9 --top-k 15
+
+    \b
+    Extract only single words:
+        newspaper-explorer analyze keywords keybert --source der_tag \\
+            --min-ngram 1 --max-ngram 1
+
+    \b
+    Output:
+        Saves to: results/{source}/keywords/{output_name}.parquet
+        Columns: grouping columns, keywords (list), scores (list)
+    """
+    from newspaper_explorer.analyze.keywords.keybert import KeyBERTExtractor
+
+    config = get_config()
+
+    click.echo("\n=== KeyBERT Keyword Extraction ===")
+    click.echo(f"Source: {source}")
+    click.echo(f"Group by: {group_by or '(page - default)'}")
+    click.echo(f"Top keywords: {top_k}")
+    click.echo(f"Model: {model}")
+    click.echo(f"N-gram range: {min_ngram}-{max_ngram}")
+    click.echo(f"Diversity (MMR): {diversity if use_mmr else 'disabled'}")
+
+    try:
+        # Initialize extractor
+        click.echo("\nLoading BERT model (this may take a moment)...")
+        extractor = KeyBERTExtractor(
+            source_name=source,
+            model_name=model,
+            keyphrase_ngram_range=(min_ngram, max_ngram),
+            diversity=diversity,
+        )
+
+        # Prepare grouping
+        group_by_list = list(group_by) if group_by else None
+
+        # Extract keywords
+        click.echo("Extracting keywords...")
+        df_keywords = extractor.extract_keywords(
+            top_k=top_k, group_by=group_by_list, use_mmr=use_mmr
+        )
+
+        # Save results
+        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df_keywords.write_parquet(output_path)
+
+        click.echo(f"\n✓ Saved keywords to: {output_path}")
+        click.echo(f"  Total groups: {len(df_keywords)}")
+        click.echo(f"  Columns: {df_keywords.columns}")
+
+    except FileNotFoundError as e:
+        click.echo(f"\nError: {e}", err=True)
+        click.echo(
+            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
+        )
+        return
+    except Exception as e:
+        click.echo(f"\nError during KeyBERT extraction: {e}", err=True)
         logging.exception("Full error details:")
         return

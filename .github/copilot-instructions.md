@@ -374,3 +374,4 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 - `docs/LLM.md` - Complete LLM utilities guide (client, prompts, schemas, metadata)
 - `docs/NORMALIZATION.md` - Historical text normalization guide
 - `docs/ENTITIES.md` - Entity extraction documentation
+- `docs/LAYOUT.md` - Complete layout analysis guide (detection, extraction, matching, filtering)

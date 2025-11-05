@@ -24,18 +24,119 @@ class RegionExtractor:
 
     Works with any detection type (images, text, headlines, etc.).
     Can filter by region type using the class_name attribute.
+    Supports coordinate-based filtering to exclude common areas like headers.
     """
 
-    def __init__(self, padding: int = 5):
+    def __init__(
+        self,
+        padding: int = 5,
+        exclude_top_percent: Optional[float] = None,
+        exclude_bottom_percent: Optional[float] = None,
+        min_region_height: Optional[int] = None,
+        min_region_width: Optional[int] = None,
+    ):
         """
         Initialize the RegionExtractor.
 
         Args:
             padding: Padding around cropped regions (pixels)
+            exclude_top_percent: Exclude regions in top X% of page (0-100).
+                                Useful for filtering newspaper headers.
+            exclude_bottom_percent: Exclude regions in bottom X% of page (0-100).
+                                   Useful for filtering page numbers/footers.
+            min_region_height: Minimum height (pixels) for regions to extract
+            min_region_width: Minimum width (pixels) for regions to extract
         """
         self.padding = padding
+        self.exclude_top_percent = exclude_top_percent
+        self.exclude_bottom_percent = exclude_bottom_percent
+        self.min_region_height = min_region_height
+        self.min_region_width = min_region_width
 
-        logger.info(f"RegionExtractor initialized: padding={padding}")
+        logger.info(
+            f"RegionExtractor initialized: padding={padding}, "
+            f"exclude_top={exclude_top_percent}%, exclude_bottom={exclude_bottom_percent}%, "
+            f"min_height={min_region_height}, min_width={min_region_width}"
+        )
+
+    def _filter_by_coordinates(
+        self,
+        detections: List[Detection],
+        page_height: int,
+        page_width: int,
+    ) -> List[Detection]:
+        """
+        Filter detections based on coordinate constraints.
+
+        Args:
+            detections: List of detections to filter
+            page_height: Height of the page image
+            page_width: Width of the page image
+
+        Returns:
+            Filtered list of detections
+        """
+        if not detections:
+            return detections
+
+        filtered = []
+        excluded_count = {"top": 0, "bottom": 0, "size": 0}
+
+        for detection in detections:
+            # Check top exclusion zone (for headers)
+            if self.exclude_top_percent is not None:
+                top_threshold = (self.exclude_top_percent / 100) * page_height
+                if detection.bbox.y1 < top_threshold:
+                    excluded_count["top"] += 1
+                    logger.debug(
+                        f"Excluded {detection.detection_id} (top zone): "
+                        f"y1={detection.bbox.y1:.0f} < {top_threshold:.0f}"
+                    )
+                    continue
+
+            # Check bottom exclusion zone (for footers/page numbers)
+            if self.exclude_bottom_percent is not None:
+                bottom_threshold = page_height - (self.exclude_bottom_percent / 100) * page_height
+                if detection.bbox.y2 > bottom_threshold:
+                    excluded_count["bottom"] += 1
+                    logger.debug(
+                        f"Excluded {detection.detection_id} (bottom zone): "
+                        f"y2={detection.bbox.y2:.0f} > {bottom_threshold:.0f}"
+                    )
+                    continue
+
+            # Check minimum size constraints
+            if (
+                self.min_region_height is not None
+                and detection.bbox.height < self.min_region_height
+            ):
+                excluded_count["size"] += 1
+                logger.debug(
+                    f"Excluded {detection.detection_id} (height): "
+                    f"{detection.bbox.height:.0f} < {self.min_region_height}"
+                )
+                continue
+
+            if self.min_region_width is not None and detection.bbox.width < self.min_region_width:
+                excluded_count["size"] += 1
+                logger.debug(
+                    f"Excluded {detection.detection_id} (width): "
+                    f"{detection.bbox.width:.0f} < {self.min_region_width}"
+                )
+                continue
+
+            filtered.append(detection)
+
+        # Log exclusion summary
+        total_excluded = sum(excluded_count.values())
+        if total_excluded > 0:
+            logger.info(
+                f"Filtered {total_excluded}/{len(detections)} regions: "
+                f"top={excluded_count['top']}, bottom={excluded_count['bottom']}, "
+                f"size={excluded_count['size']}"
+            )
+
+        return filtered
 
     def extract_regions(
         self,
@@ -70,6 +171,21 @@ class RegionExtractor:
             )
             return []
 
+        # Load page image to get dimensions for filtering
+        page_image = cv2.imread(page_layout.image_path)
+        if page_image is None:
+            logger.error(f"Failed to load image: {page_layout.image_path}")
+            return detections
+
+        page_height, page_width = page_image.shape[:2]
+
+        # Apply coordinate-based filtering
+        detections = self._filter_by_coordinates(detections, page_height, page_width)
+
+        if not detections:
+            logger.debug(f"No regions remaining after filtering from {page_layout.page_id}")
+            return []
+
         logger.info(
             f"Extracting {len(detections)} regions from {page_layout.page_id}"
             + (f" (type: {region_type})" if region_type else "")
@@ -77,12 +193,6 @@ class RegionExtractor:
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Load page image
-        page_image = cv2.imread(page_layout.image_path)
-        if page_image is None:
-            logger.error(f"Failed to load image: {page_layout.image_path}")
-            return detections
 
         # Crop and save each region, creating new Detection objects
         extracted_detections = []

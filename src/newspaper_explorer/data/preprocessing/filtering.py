@@ -228,6 +228,62 @@ def filter_by_length(
     return df
 
 
+def filter_by_word_count(
+    df: pl.DataFrame,
+    text_column: str = "text",
+    input_column: Optional[str] = None,
+    min_words: int = 2,
+    max_words: Optional[int] = None,
+) -> pl.DataFrame:
+    """
+    Filter out texts based on word count.
+
+    Removes rows where word count is outside the specified range.
+    Useful for removing single-word artifacts, headers, or excessively long malformed entries.
+    More meaningful than character count for content filtering.
+
+    Args:
+        df: Input DataFrame
+        text_column: Default column containing text (for backward compatibility)
+        input_column: Column to check word count (default: text_column)
+        min_words: Minimum number of words (default: 2)
+        max_words: Maximum number of words (default: None = no limit)
+
+    Returns:
+        DataFrame with texts filtered by word count
+
+    Example:
+        >>> # Remove single-word lines (likely artifacts)
+        >>> df = filter_by_word_count(df, min_words=2)
+        >>> # Keep only lines with 3-50 words
+        >>> df = filter_by_word_count(df, min_words=3, max_words=50)
+        >>> # Remove very long lines (possible OCR errors)
+        >>> df = filter_by_word_count(df, max_words=100)
+    """
+    if input_column is None:
+        input_column = text_column
+
+    logger.info(f"Filtering by word count: {input_column} (min={min_words}, max={max_words})")
+
+    original_count = len(df)
+
+    # Count words by splitting on whitespace
+    word_counts = df[input_column].str.split(" ").list.len()
+
+    # Apply filters
+    mask = word_counts >= min_words
+    if max_words is not None:
+        mask = mask & (word_counts <= max_words)
+
+    df = df.filter(mask)
+
+    filtered_count = original_count - len(df)
+    logger.info(f"Filtered out {filtered_count:,} rows ({filtered_count/original_count*100:.1f}%)")
+    logger.info(f"Remaining: {len(df):,} rows")
+
+    return df
+
+
 def clean_ocr_artifacts(
     df: pl.DataFrame,
     text_column: str = "text",

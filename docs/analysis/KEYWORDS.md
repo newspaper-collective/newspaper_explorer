@@ -1,3 +1,34 @@
+# Keyword Extraction
+
+Extract salient keywords and phrases from newspaper texts using multiple methods.
+
+## Available Methods
+
+1. **[TF-IDF](#tf-idf-keyword-extraction)** - Statistical distinctive vocabulary (fast, no training)
+2. **[RAKE](#rake-keyword-extraction)** - Multi-word phrase extraction (linguistic patterns)
+3. **[YAKE](#yake-keyword-extraction)** - Unsupervised statistical features (language-agnostic)
+4. **[KeyBERT](#keybert-keyword-extraction)** - Semantic keywords via BERT embeddings
+
+## Topic Modeling
+
+For **topic modeling** (discovering latent themes across your corpus), see:
+- **[LDA Topic Modeling](TOPICS.md)** - Uses `analyze topics lda` commands
+
+## Methodology Note
+
+This package distinguishes between **keyword extraction** (this page) and **topic modeling** (separate):
+
+- **Keyword Extractors** (TF-IDF, RAKE, YAKE, KeyBERT): Extract salient words/phrases representing document content
+- **Topic Modeling** (LDA, BERTopic): Discovers latent themes across the corpus
+
+Commands reflect this distinction:
+- `newspaper-explorer analyze keywords` - Extract keywords
+- `newspaper-explorer analyze topics` - Topic modeling
+
+See the [Comparative Analysis](#comparative-analysis) section for detailed methodological discussion.
+
+---
+
 # TF-IDF Keyword Extraction
 
 Extract meaningful keywords from newspaper texts using **TF-IDF** (Term Frequency-Inverse Document Frequency).
@@ -457,9 +488,534 @@ Some documents might be short or have few unique words. Check:
 - min_df setting (try min_df=1)
 - Preprocessing (might be too aggressive)
 
+---
+
+# RAKE Keyword Extraction
+
+Extract **multi-word keyphrases** using **RAKE** (Rapid Automatic Keyword Extraction).
+
+## What is RAKE?
+
+RAKE is a rule-based keyphrase extraction algorithm that identifies multi-word phrases using linguistic patterns and word co-occurrence statistics. It splits text on stopwords and punctuation, then scores candidate phrases based on word frequency and co-occurrence.
+
+**Key features:**
+- **Multi-word phrases**: Extracts "erste weltkrieg" not just "weltkrieg"
+- **No training required**: Rule-based, works immediately
+- **Fast**: Efficient for large corpora
+- **Language-agnostic**: Works with any language (stopword list needed)
+
+**Best for**: Extracting domain terminology, technical terms, named entity-like phrases
+
+## Quick Start
+
+### Basic Usage
+
+Extract keyphrases per page:
+
+```bash
+newspaper-explorer analyze keywords rake --source der_tag
+```
+
+### Extract Longer Phrases
+
+Get keyphrases up to 5 words:
+
+```bash
+newspaper-explorer analyze keywords rake \
+    --source der_tag \
+    --max-length 5 \
+    --top-k 15
+```
+
+### Extract by Date
+
+Daily keyphrase trends:
+
+```bash
+newspaper-explorer analyze keywords rake \
+    --source der_tag \
+    --group-by date \
+    --top-k 20
+```
+
+## Options
+
+### `--top-k`
+Number of keyphrases per document (default: 10)
+
+### `--min-length` / `--max-length`
+Phrase length in words:
+- `--min-length 1 --max-length 1`: Single words only
+- `--min-length 2 --max-length 4`: 2-4 word phrases (good for German compounds)
+- `--min-length 1 --max-length 3`: Mix of single and multi-word (default)
+
+### `--use-stopwords` / `--no-stopwords`
+Use German stopwords (recommended, enabled by default)
+
+### `--output-name`
+Custom output filename
+
+## Output Format
+
+Results saved to: `results/{source}/keywords/{output_name}.parquet`
+
+Columns:
+- Grouping columns (e.g., `newspaper_page_id`, `date`)
+- `keywords`: List of extracted keyphrases
+- `scores`: RAKE scores (higher = more important)
+
+## When to Use RAKE
+
+**Use RAKE when:**
+- ✅ You need multi-word technical terms or concepts
+- ✅ You want fast extraction without training
+- ✅ You're analyzing domain-specific text with specialized vocabulary
+- ✅ You want to capture German compound concepts ("soziale frage", "neue zeit")
+
+**Don't use RAKE when:**
+- ❌ You need semantic similarity (use KeyBERT)
+- ❌ You only want single distinctive words (use TF-IDF)
+- ❌ You want corpus-wide themes (use LDA)
+
+---
+
+# YAKE Keyword Extraction
+
+Extract keywords using **YAKE** (Yet Another Keyword Extractor).
+
+## What is YAKE?
+
+YAKE is an unsupervised statistical keyword extraction method that uses multiple text features (word frequency, casing, position, context) to identify important keywords without external resources or training.
+
+**Key features:**
+- **Unsupervised**: No training, no external corpora needed
+- **Statistical**: Uses frequency, casing, position, left/right context
+- **Multi-lingual**: Specify language for better results
+- **N-grams**: Extracts single words, bigrams, trigrams
+
+**Best for**: General-purpose keyword extraction with balanced statistical approach
+
+## Quick Start
+
+### Basic Usage
+
+Extract keywords per page:
+
+```bash
+newspaper-explorer analyze keywords yake --source der_tag
+```
+
+### Extract Only Single Words
+
+Focus on unigrams:
+
+```bash
+newspaper-explorer analyze keywords yake \
+    --source der_tag \
+    --max-ngram-size 1 \
+    --top-k 15
+```
+
+### Strict Deduplication
+
+Reduce redundancy:
+
+```bash
+newspaper-explorer analyze keywords yake \
+    --source der_tag \
+    --deduplication-threshold 0.7
+```
+
+## Options
+
+### `--top-k`
+Number of keywords per document (default: 10)
+
+### `--language`
+Language code for better results:
+- `de`: German (default)
+- `en`: English
+- See YAKE docs for more languages
+
+### `--max-ngram-size`
+Maximum n-gram size:
+- `1`: Single words only
+- `2`: Words + bigrams
+- `3`: Words + bigrams + trigrams (default)
+
+### `--deduplication-threshold`
+Similarity threshold for removing redundant keywords (0-1):
+- `0.9`: Keep similar keywords (default)
+- `0.7`: Moderate deduplication
+- `0.5`: Strict deduplication
+
+### `--output-name`
+Custom output filename
+
+## Output Format
+
+Results saved to: `results/{source}/keywords/{output_name}.parquet`
+
+Columns:
+- Grouping columns (e.g., `newspaper_page_id`, `date`)
+- `keywords`: List of extracted keywords
+- `scores`: YAKE scores (**lower = more important**, inverted from others)
+
+⚠️ **Note**: YAKE scores are inverted - lower scores indicate more important keywords!
+
+## When to Use YAKE
+
+**Use YAKE when:**
+- ✅ You want balanced statistical extraction
+- ✅ You need language-aware processing
+- ✅ You want mix of single and multi-word keywords
+- ✅ You want unsupervised extraction without dependencies
+
+**Don't use YAKE when:**
+- ❌ You need semantic understanding (use KeyBERT)
+- ❌ You only want distinctive vocabulary (use TF-IDF)
+- ❌ You specifically need long multi-word phrases (use RAKE)
+
+---
+
+# KeyBERT Keyword Extraction
+
+Extract **semantic keywords** using **KeyBERT** (BERT-based extraction).
+
+## What is KeyBERT?
+
+KeyBERT uses BERT embeddings to extract keywords that are semantically similar to the document. It computes document and candidate keyword embeddings, then selects keywords with highest cosine similarity to the document embedding.
+
+**Key features:**
+- **Semantic understanding**: Captures meaning, not just statistics
+- **Multilingual**: Pre-trained models work across languages
+- **Diversity control**: MMR (Maximal Marginal Relevance) prevents redundancy
+- **Pre-trained**: No training needed, uses transformer models
+
+**Best for**: Semantic keyword extraction, capturing concepts and meaning
+
+## Quick Start
+
+### Basic Usage
+
+Extract semantic keywords per page:
+
+```bash
+newspaper-explorer analyze keywords keybert --source der_tag
+```
+
+### Use Larger Model
+
+Better accuracy with larger multilingual model:
+
+```bash
+newspaper-explorer analyze keywords keybert \
+    --source der_tag \
+    --model distiluse-base-multilingual-cased-v2
+```
+
+### High Diversity Keywords
+
+Avoid redundant similar keywords:
+
+```bash
+newspaper-explorer analyze keywords keybert \
+    --source der_tag \
+    --diversity 0.9 \
+    --top-k 15
+```
+
+### Extract Only Single Words
+
+Focus on single-word concepts:
+
+```bash
+newspaper-explorer analyze keywords keybert \
+    --source der_tag \
+    --min-ngram 1 \
+    --max-ngram 1
+```
+
+## Options
+
+### `--top-k`
+Number of keywords per document (default: 10)
+
+### `--model`
+Sentence transformer model:
+- `paraphrase-multilingual-MiniLM-L12-v2`: Default, good balance for German
+- `distiluse-base-multilingual-cased-v2`: Larger, more accurate
+- `all-MiniLM-L6-v2`: English only, faster
+
+### `--min-ngram` / `--max-ngram`
+N-gram range for candidate phrases:
+- `--min-ngram 1 --max-ngram 1`: Single words only
+- `--min-ngram 1 --max-ngram 2`: Words + bigrams (default)
+- `--min-ngram 1 --max-ngram 3`: Words + bigrams + trigrams
+
+### `--diversity`
+Diversity parameter for MMR (0-1):
+- `0.0`: No diversity (most similar to document)
+- `0.5`: Balanced (default)
+- `1.0`: Maximum diversity (varied keywords)
+
+### `--use-mmr` / `--no-mmr`
+Enable/disable Maximal Marginal Relevance for diversity (enabled by default)
+
+### `--output-name`
+Custom output filename
+
+## Output Format
+
+Results saved to: `results/{source}/keywords/{output_name}.parquet`
+
+Columns:
+- Grouping columns (e.g., `newspaper_page_id`, `date`)
+- `keywords`: List of extracted keywords
+- `scores`: Cosine similarity scores (0-1, higher = more semantically relevant)
+
+## When to Use KeyBERT
+
+**Use KeyBERT when:**
+- ✅ You want semantic understanding of document content
+- ✅ You need context-aware keyword extraction
+- ✅ You want to capture conceptual themes, not just frequent words
+- ✅ You're working with German text (multilingual models)
+
+**Don't use KeyBERT when:**
+- ❌ You need fast extraction (slower due to BERT inference)
+- ❌ You want purely statistical distinctive vocabulary (use TF-IDF)
+- ❌ You need corpus-wide topic discovery (use LDA)
+- ❌ You have limited computational resources (use RAKE or YAKE)
+
+## Model Notes
+
+**First run**: Downloads the selected model (200-500MB). Subsequent runs reuse cached model.
+
+**GPU acceleration**: Automatically uses GPU if available (much faster).
+
+**Memory**: Requires more memory than statistical methods. For large corpora, consider batch processing or use smaller model.
+
+---
+
+# Topic Modeling with LDA
+
+**This section has moved!** 
+
+LDA is topic modeling, not keyword extraction. For complete LDA documentation, see:
+
+**[→ Topic Modeling Documentation (TOPICS.md)](TOPICS.md)**
+
+Use the separate topic modeling commands:
+```bash
+newspaper-explorer analyze topics lda --source der_tag --mode train --num-topics 20
+newspaper-explorer analyze topics lda --source der_tag --mode topics
+newspaper-explorer analyze topics lda --source der_tag --mode documents
+```
+
+---
+
+# Comparative Analysis
+
+## Method Comparison Table
+
+| Method | Type | Speed | Training | Semantic | Multi-word | Best For |
+|--------|------|-------|----------|----------|-----------|----------|
+| **TF-IDF** | Statistical | ⚡⚡⚡ Very Fast | None | ❌ No | ❌ No | Distinctive vocabulary |
+| **RAKE** | Rule-based | ⚡⚡ Fast | None | ❌ No | ✅ Yes | Domain terminology, phrases |
+| **YAKE** | Statistical | ⚡⚡ Fast | None | ⚠️ Limited | ✅ Yes | Balanced extraction |
+| **KeyBERT** | Embedding | ⚡ Moderate | Pre-trained | ✅ Yes | ✅ Yes | Semantic concepts |
+| **LDA** | Topic Model | ⚡ Slow | Required | ⚠️ Themes | ❌ No | Topic discovery |
+
+## Methodological Framework
+
+This package follows a **methodologically rigorous** distinction between different approaches:
+
+### Keyword Extraction vs Topic Modeling
+
+**Keyword Extraction** (TF-IDF, RAKE, YAKE, KeyBERT):
+- **Goal**: Identify salient words/phrases representing document content
+- **Scope**: Document-level or aggregated groups
+- **Output**: Lists of keywords with relevance scores
+- **Use in DH**: Content analysis, text mining, information retrieval
+
+**Topic Modeling** (LDA):
+- **Goal**: Discover latent themes across corpus
+- **Scope**: Corpus-level with document distributions
+- **Output**: Topics (term distributions) + document-topic mixtures
+- **Use in DH**: Thematic analysis, discourse analysis, corpus exploration
+
+### Terminology Precision
+
+We use **precise terminology** to avoid methodological confusion:
+
+- **"Keywords"**: Words/phrases extracted by TF-IDF, RAKE, YAKE, KeyBERT
+- **"Topic terms"**: Representative vocabulary from LDA topic distributions
+- **"Keyphrases"**: Multi-word expressions (RAKE, YAKE, KeyBERT)
+
+While LDA's topic terms *can* be used like keywords, they are fundamentally different: they represent topic themes, not document salience.
+
+## Selection Guide
+
+### By Research Question
+
+**"What makes this document unique?"**
+→ Use **TF-IDF** - finds distinctive vocabulary
+
+**"What technical terms appear?"**
+→ Use **RAKE** - extracts domain-specific phrases
+
+**"What are the key concepts here?"**
+→ Use **KeyBERT** - captures semantic meaning
+
+**"What are the balanced important keywords?"**
+→ Use **YAKE** - statistical feature-based extraction
+
+**"What themes exist across the corpus?"**
+→ Use **LDA** - discovers latent topics
+
+### By Text Characteristics
+
+**Short documents (< 100 words)**:
+- ✅ TF-IDF (document-level distinctive terms)
+- ✅ RAKE (phrase extraction)
+- ⚠️ YAKE (may struggle with limited context)
+- ❌ KeyBERT (needs sufficient semantic context)
+- ❌ LDA (needs larger documents)
+
+**Long documents (> 1000 words)**:
+- ✅ All methods work well
+- ⚡ TF-IDF, RAKE, YAKE for speed
+- ✅ KeyBERT for semantic depth
+- ✅ LDA for thematic structure
+
+**Domain-specific vocabulary**:
+- ✅✅ RAKE - extracts technical multi-word terms
+- ✅ TF-IDF - finds distinctive domain terms
+- ✅ KeyBERT - understands domain concepts (with domain-tuned model)
+- ⚠️ YAKE - good but less specialized
+- ❌ LDA - requires topic-level corpus structure
+
+**Multilingual/Historical German**:
+- ✅ KeyBERT with multilingual models
+- ✅ TF-IDF (language-agnostic)
+- ✅ RAKE with German stopwords
+- ✅ YAKE with language="de"
+- ⚠️ LDA (sensitive to spelling variations)
+
+### By Computational Resources
+
+**Limited resources (CPU only, < 8GB RAM)**:
+- ✅✅ TF-IDF - very efficient
+- ✅✅ RAKE - fast rule-based
+- ✅ YAKE - efficient statistical
+- ❌ KeyBERT - requires more memory, slow on CPU
+- ❌ LDA - memory intensive for large corpora
+
+**Good resources (GPU, > 16GB RAM)**:
+- ✅ All methods work well
+- ⚡ KeyBERT benefits significantly from GPU
+- ✅ LDA can handle larger corpora
+
+### By Analysis Type
+
+**Exploratory analysis**:
+1. Start with **TF-IDF** (fast overview)
+2. Check **RAKE** (see phrase patterns)
+3. Try **LDA** (discover themes)
+
+**Semantic analysis**:
+1. Use **KeyBERT** (semantic understanding)
+2. Supplement with **YAKE** (balanced keywords)
+
+**Information retrieval**:
+1. Use **TF-IDF** (distinctive terms)
+2. Add **RAKE** (multi-word queries)
+
+**Discourse analysis**:
+1. Use **LDA** (thematic structure)
+2. Supplement with **TF-IDF** (distinctive vocabulary per theme)
+
+## Combining Methods
+
+Different methods complement each other. Consider using **multiple approaches**:
+
+### Example: Comprehensive Document Analysis
+
+```bash
+# 1. Distinctive vocabulary
+newspaper-explorer analyze keywords tfidf --source der_tag --top-k 15
+
+# 2. Multi-word concepts
+newspaper-explorer analyze keywords rake --source der_tag --top-k 10
+
+# 3. Semantic keywords
+newspaper-explorer analyze keywords keybert --source der_tag --top-k 10
+
+# 4. Topic structure
+newspaper-explorer analyze keywords lda --source der_tag --mode train --num-topics 20
+newspaper-explorer analyze keywords lda --source der_tag --mode documents --num-topics 20
+```
+
+Then **compare results**:
+- **Overlap**: Terms appearing in multiple methods are highly salient
+- **TF-IDF only**: Distinctive but perhaps not conceptually deep
+- **KeyBERT only**: Semantically relevant but perhaps not statistically distinctive
+- **RAKE only**: Domain-specific terminology
+- **LDA topics**: Broader thematic structure
+
+### Example: Historical Newspaper Analysis
+
+For 1900-1920 German newspapers:
+
+1. **TF-IDF by year** → Track distinctive vocabulary evolution
+2. **RAKE by year** → Identify emerging multi-word concepts
+3. **LDA (20 topics)** → Discover major discourse themes
+4. **KeyBERT per significant event** → Deep semantic analysis of key moments
+
+## Digital Humanities Considerations
+
+### Methodological Transparency
+
+When publishing DH research:
+- **Specify method**: Don't just say "keyword extraction"
+- **Justify choice**: Explain why TF-IDF vs KeyBERT vs LDA
+- **Report parameters**: Document all settings (top_k, ngram ranges, etc.)
+- **Discuss limitations**: Each method has blind spots
+
+### Validation Strategies
+
+1. **Manual verification**: Sample and check extracted keywords
+2. **Cross-method validation**: Compare results across methods
+3. **Historical accuracy**: Check against known historical events/terminology
+4. **Expert evaluation**: Domain experts assess relevance
+
+### Reproducibility
+
+All commands in this documentation are **fully reproducible**:
+- Fixed random seeds in LDA
+- Documented parameters
+- Version-controlled source configurations
+- Transparent preprocessing
+
+## Performance Benchmarks
+
+Approximate speed on "Der Tag" corpus (1900-1920, ~500K pages):
+
+| Method | Time per 1000 pages | Memory | GPU Benefit |
+|--------|---------------------|--------|-------------|
+| TF-IDF | ~10 seconds | Low | None |
+| RAKE | ~15 seconds | Low | None |
+| YAKE | ~20 seconds | Low | None |
+| KeyBERT | ~5 minutes (CPU) / ~30 sec (GPU) | High | Very High |
+| LDA Train | ~10-30 minutes | High | Medium |
+| LDA Assign | ~2 minutes | Medium | None |
+
+*Benchmarks vary by hardware, document length, and parameters*
+
 ## See Also
 
 - [Preprocessing Documentation](../preprocessing/NORMALIZATION.md) - Text preprocessing options
 - [Entity Extraction](ENTITIES.md) - Extract named entities (people, places, organizations)
 - [Layout Analysis](LAYOUT.md) - Analyze page structure
-- [Python API](../../PYTHON_API.md) - Using TF-IDF in Python scripts
+- [Python API](../../PYTHON_API.md) - Using keyword extraction in Python scripts

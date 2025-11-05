@@ -335,15 +335,56 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
     default=True,
     help="Skip already processed pages (default: yes)",
 )
-def extract_pictures(source, year, save_crops, resume):
+@click.option(
+    "--exclude-top-percent",
+    type=float,
+    default=None,
+    help="Exclude regions in top X%% of page (e.g., 10 for headers)",
+)
+@click.option(
+    "--exclude-bottom-percent",
+    type=float,
+    default=None,
+    help="Exclude regions in bottom X%% of page (e.g., 5 for footers)",
+)
+@click.option(
+    "--min-height",
+    type=int,
+    default=None,
+    help="Minimum region height in pixels",
+)
+@click.option(
+    "--min-width",
+    type=int,
+    default=None,
+    help="Minimum region width in pixels",
+)
+def extract_pictures(
+    source,
+    year,
+    save_crops,
+    resume,
+    exclude_top_percent,
+    exclude_bottom_percent,
+    min_height,
+    min_width,
+):
     """
     Extract picture regions from newspaper pages (without caption matching).
 
     Extracts detected picture regions and saves crops. For caption matching,
     use the 'match-captions' command after extraction.
 
-    Example:
+    Coordinate-based filtering options help exclude common false positives like
+    newspaper headers (--exclude-top-percent) or page numbers (--exclude-bottom-percent).
+
+    Examples:
+        # Basic extraction
         newspaper-explorer analyze layout extract-pictures --source der_tag --year 1902
+
+        # Exclude top 15% (headers) and small regions
+        newspaper-explorer analyze layout extract-pictures --source der_tag --year 1902 \\
+            --exclude-top-percent 15 --min-height 100 --min-width 100
     """
     # Configure logging
     logging.basicConfig(
@@ -382,10 +423,28 @@ def extract_pictures(source, year, save_crops, resume):
 
     click.echo(f"✓ Found {len(detection_files)} detection files")
 
-    # Initialize extractor (crops any region type)
+    # Initialize extractor with filtering options
     from newspaper_explorer.analyze.layout.region_extraction import RegionExtractor
 
-    extractor = RegionExtractor(padding=5)
+    extractor = RegionExtractor(
+        padding=5,
+        exclude_top_percent=exclude_top_percent,
+        exclude_bottom_percent=exclude_bottom_percent,
+        min_region_height=min_height,
+        min_region_width=min_width,
+    )
+
+    # Show filter configuration
+    if any([exclude_top_percent, exclude_bottom_percent, min_height, min_width]):
+        click.echo("\nFiltering configuration:")
+        if exclude_top_percent:
+            click.echo(f"  ✓ Excluding top {exclude_top_percent}% of page (headers)")
+        if exclude_bottom_percent:
+            click.echo(f"  ✓ Excluding bottom {exclude_bottom_percent}% of page (footers)")
+        if min_height:
+            click.echo(f"  ✓ Minimum height: {min_height}px")
+        if min_width:
+            click.echo(f"  ✓ Minimum width: {min_width}px")
 
     # Extract images
     output_dir = config.results_dir / source / "layout" / "images"

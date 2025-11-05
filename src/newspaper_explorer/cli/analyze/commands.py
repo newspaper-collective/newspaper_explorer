@@ -1,6 +1,6 @@
 """
 CLI commands for analysis group.
-Organizes all analysis commands (layout, entities, topics, etc.).
+Organizes all analysis commands (layout, entities, keywords, topics, emotions, etc.).
 """
 
 import click
@@ -8,11 +8,13 @@ import click
 from newspaper_explorer.cli.analyze.layout.commands import layout_group
 from newspaper_explorer.cli.analyze.entities.commands import entities_group
 from newspaper_explorer.cli.analyze.keywords.commands import keywords_group
+from newspaper_explorer.cli.analyze.topics.commands import topics_group
+from newspaper_explorer.cli.analyze.emotions.commands import emotions_group
 
 
 @click.group()
 def analyze():
-    """Run analysis on newspaper data (entities, topics, layout, etc.)."""
+    """Run analysis on newspaper data (entities, keywords, topics, layout, etc.)."""
     pass
 
 
@@ -20,3 +22,5 @@ def analyze():
 analyze.add_command(layout_group)
 analyze.add_command(entities_group)
 analyze.add_command(keywords_group)
+analyze.add_command(topics_group)
+analyze.add_command(emotions_group)
