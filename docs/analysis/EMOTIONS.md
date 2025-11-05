@@ -1096,72 +1096,6 @@ for emotion in emotion_cols:
 print("✓ All validation checks passed")
 ```
 
----
-
-## Dependencies
-
-Required packages (in `requirements.txt`):
-
-```txt
-# Core deep learning
-torch>=2.0.0              # PyTorch with CUDA support
-transformers>=4.30.0      # Hugging Face transformers
-
-# Data processing
-polars>=0.20.0           # Fast DataFrame operations
-pyarrow>=12.0.0          # Parquet support
-
-# CLI
-click>=8.0.0             # Command-line interface
-
-# Progress tracking
-tqdm>=4.65.0             # Progress bars
-
-# Optional (for visualization)
-matplotlib>=3.7.0        # Plotting
-seaborn>=0.12.0         # Statistical visualizations
-```
-
-### Installation
-
-```bash
-# Basic installation
-pip install torch transformers polars pyarrow click tqdm
-
-# With CUDA support (for GPU acceleration)
-pip install torch --index-url https://download.pytorch.org/whl/cu118
-
-# With visualization
-pip install matplotlib seaborn
-
-# Or install all project dependencies
-pip install -r requirements.txt
-```
-
-### System Requirements
-
-**Minimum**:
-- Python 3.8+
-- 8 GB RAM
-- 10 GB disk space (for models)
-
-**Recommended**:
-- Python 3.10+
-- 32 GB RAM
-- NVIDIA GPU with 24GB+ VRAM
-- CUDA 11.8+
-- SSD/NVMe storage
-- 50 GB disk space (for models + data)
-
-**Optimal**:
-- Python 3.11+
-- 64 GB RAM
-- 4x NVIDIA L40S or similar (48GB each)
-- CUDA 12.0+
-- NVMe storage
-- 500 GB disk space
-
----
 
 ## References
 
@@ -1173,10 +1107,6 @@ pip install -r requirements.txt
 
 - **Model Download**: [OwnCloud GWDG](https://owncloud.gwdg.de/index.php/s/g2PjWWcknSRlMSd)
 
-### Theory & Methodology
-
-- **Shaver, P., Schwartz, J., Kirson, D., & O'Connor, C. (1987)**. Emotion knowledge: Further exploration of a prototype approach. *Journal of Personality and Social Psychology*, 52(6), 1061–1086. (Shaver's hierarchical emotion model)
-
 - **German BERT**: [deepset/gbert-large](https://huggingface.co/deepset/gbert-large) - Pre-trained German language model
 
 ### Implementation
@@ -1185,8 +1115,4 @@ pip install -r requirements.txt
 - **Transformers**: [https://huggingface.co/docs/transformers](https://huggingface.co/docs/transformers) - Hugging Face library for BERT models
 - **Polars**: [https://pola.rs/](https://pola.rs/) - Fast DataFrame library
 
-### Related Work
 
-- **Emotion detection in text**: Surveys and state-of-the-art approaches
-- **Historical text analysis**: Domain adaptation techniques
-- **Large-scale NLP**: Best practices for processing millions of documents
