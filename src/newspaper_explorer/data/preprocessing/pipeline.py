@@ -227,7 +227,9 @@ class TextPreprocessor:
                 # Note: filter-length doesn't change the column, so keep current_column
                 current_column = current_column
             elif step == "filter-word-count":
-                df = filter_by_word_count(df, text_column=current_column, input_column=current_column)
+                df = filter_by_word_count(
+                    df, text_column=current_column, input_column=current_column
+                )
                 # Note: filter-word-count doesn't change the column, so keep current_column
                 current_column = current_column
             elif step == "clean-ocr":
