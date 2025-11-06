@@ -2,7 +2,7 @@
 Compare entity extraction methods.
 
 This module provides utilities for comparing entity extraction results
-from different methods (GLiNER, LLM, etc.) using the QueryEngine.
+of different methods (GLiNER, LLM, etc.) using the QueryEngine.
 """
 
 import json
@@ -176,7 +176,7 @@ def compare_coverage(source_name: str, method_id_1: str, method_id_2: str) -> pl
         """
         )
 
-    return comparison
+    return cast(pl.DataFrame, comparison)
 
 
 def compare_entities(

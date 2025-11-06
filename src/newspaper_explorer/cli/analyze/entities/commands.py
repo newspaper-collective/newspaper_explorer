@@ -273,12 +273,14 @@ def gliner2(
         label_list = [label.strip() for label in labels.split(",")]
 
         # Parse label descriptions if provided
+        labels_dict: dict[str, str | dict] = {}
         if label_descriptions:
             try:
-                labels_dict = json_module.loads(label_descriptions)
-                if not isinstance(labels_dict, dict):
+                parsed_dict = json_module.loads(label_descriptions)
+                if not isinstance(parsed_dict, dict):
                     click.echo("Error: --label-descriptions must be a JSON dict", err=True)
                     raise click.Abort()
+                labels_dict = parsed_dict
             except json_module.JSONDecodeError as e:
                 click.echo(f"Error parsing --label-descriptions JSON: {e}", err=True)
                 raise click.Abort()
@@ -501,7 +503,7 @@ def list_results(source: str):
     Example:
         newspaper-explorer analyze entities list-results --source der_tag
     """
-    from newspaper_explorer.analyze.entities.method_comparison import list_entity_results
+    from newspaper_explorer.analyze.entities.utils import list_entity_results
 
     try:
         results = list_entity_results(source)
@@ -563,7 +565,7 @@ def compare_results(source: str, method_1: str, method_2: str, detailed: bool):
             --method-1 llm_gpt-4o-mini_20241103_143022 \\
             --method-2 gliner_multi-v2-1_20241103_143145
     """
-    from newspaper_explorer.analyze.entities.method_comparison import (
+    from newspaper_explorer.analyze.entities.utils import (
         compare_existing_results,
         print_comparison_report,
     )

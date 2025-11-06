@@ -175,3 +175,362 @@ def split_into_sentences(
     result_df = pl.DataFrame(results)
 
     return result_df
+
+
+def get_longest_lines(
+    df: pl.DataFrame,
+    text_column: str = "text",
+    top_n: int = 10,
+) -> pl.DataFrame:
+    """
+    Retrieve the longest lines from the DataFrame.
+
+    Args:
+        df: Polars DataFrame containing text lines
+        text_column: Name of the column containing text (default: "text")
+        top_n: Number of longest lines to retrieve (default: 10)
+    """
+    if text_column not in df.columns:
+        raise ValueError(f"Column '{text_column}' not found in DataFrame")
+
+    # Get lengths of all lines
+    length_series = df[text_column].str.len_chars().fill_null(0)
+
+    # Get indices of longest lines
+    longest_indices = length_series.arg_sort(descending=True)[:top_n]
+
+    # Return longest lines
+    return df[longest_indices]
+
+
+def analyze_character_lengths(
+    df: pl.DataFrame,
+    text_column: str = "text",
+    sample_size: int = 50000,
+) -> dict:
+    """
+    Analyze character lengths in text data.
+
+    This function samples texts from the DataFrame and computes comprehensive
+    statistics about character lengths. Useful for:
+    - Understanding text length distribution
+    - Comparing with token lengths
+    - Data quality checks
+
+    Args:
+        df: Polars DataFrame containing text to analyze
+        text_column: Name of the column containing text (default: "text")
+        sample_size: Number of rows to sample for analysis (default: 50000)
+
+    Returns:
+        Dictionary containing:
+        - total_rows: Total number of rows in DataFrame
+        - sample_size: Number of rows analyzed
+        - min_chars: Minimum character count
+        - max_chars: Maximum character count
+        - mean_chars: Average character count
+        - median_chars: Median character count
+        - p90_chars: 90th percentile character count
+        - p95_chars: 95th percentile character count
+        - p99_chars: 99th percentile character count
+        - distribution: Dict with counts for different character ranges
+        - longest_examples: List of (char_count, text) tuples for longest texts
+
+    Example:
+        >>> from newspaper_explorer.data.loading.loader import DataLoader
+        >>> df = DataLoader.load_parquet("data/raw/der_tag/text/der_tag_lines.parquet")
+        >>> stats = analyze_character_lengths(df, sample_size=50000)
+        >>> print(f"Average characters: {stats['mean_chars']:.1f}")
+    """
+    if text_column not in df.columns:
+        raise ValueError(f"Column '{text_column}' not found in DataFrame")
+
+    total_rows = len(df)
+    logger.info(f"Analyzing character lengths for {total_rows:,} rows")
+
+    # Sample evenly distributed rows if needed
+    if total_rows > sample_size:
+        logger.info(f"Sampling {sample_size:,} rows evenly distributed across dataset")
+        step = max(1, total_rows // sample_size)
+        df_sample = (
+            df.lazy()
+            .with_row_index()
+            .filter(pl.col("index") % step == 0)
+            .select(pl.col(text_column))
+            .limit(sample_size)
+            .collect()
+        )
+    else:
+        logger.info(f"Using all {total_rows:,} rows")
+        df_sample = df.select(text_column)
+
+    texts = df_sample[text_column].to_list()
+    actual_sample_size = len(texts)
+
+    # Get character lengths
+    logger.info("Computing character lengths...")
+    lengths = [len(text) for text in texts]
+
+    # Compute statistics
+    sorted_lengths = sorted(lengths)
+    min_chars = min(lengths)
+    max_chars = max(lengths)
+    mean_chars = sum(lengths) / len(lengths)
+    median_chars = sorted_lengths[len(sorted_lengths) // 2]
+
+    # Percentiles
+    p90 = sorted_lengths[int(0.90 * len(sorted_lengths))]
+    p95 = sorted_lengths[int(0.95 * len(sorted_lengths))]
+    p99 = sorted_lengths[int(0.99 * len(sorted_lengths))]
+
+    # Distribution
+    under_50 = sum(1 for l in lengths if l <= 50)
+    under_100 = sum(1 for l in lengths if l <= 100)
+    under_200 = sum(1 for l in lengths if l <= 200)
+    under_500 = sum(1 for l in lengths if l <= 500)
+    under_1000 = sum(1 for l in lengths if l <= 1000)
+
+    distribution = {
+        "under_50": under_50,
+        "under_100": under_100,
+        "under_200": under_200,
+        "under_500": under_500,
+        "under_1000": under_1000,
+    }
+
+    # Get longest examples
+    longest_indices = sorted(range(len(lengths)), key=lambda i: lengths[i], reverse=True)[:5]
+    longest_examples = [(lengths[idx], texts[idx]) for idx in longest_indices]
+
+    logger.info(f"Character analysis complete for {actual_sample_size:,} texts")
+
+    return {
+        "total_rows": total_rows,
+        "sample_size": actual_sample_size,
+        "min_chars": min_chars,
+        "max_chars": max_chars,
+        "mean_chars": mean_chars,
+        "median_chars": median_chars,
+        "p90_chars": p90,
+        "p95_chars": p95,
+        "p99_chars": p99,
+        "distribution": distribution,
+        "longest_examples": longest_examples,
+    }
+
+
+def analyze_token_lengths(
+    df: pl.DataFrame,
+    text_column: str = "text",
+    tokenizer_name: str = "deepset/gbert-large",
+    sample_size: int = 50000,
+    max_length: int = 512,
+) -> dict:
+    """
+    Analyze token lengths in text data using BERT tokenizer.
+
+    This function samples texts from the DataFrame and computes comprehensive
+    statistics about token lengths. Useful for:
+    - Understanding padding requirements for BERT models
+    - Estimating speedup potential from dynamic padding
+    - Identifying truncation issues
+
+    Args:
+        df: Polars DataFrame containing text to analyze
+        text_column: Name of the column containing text (default: "text")
+        tokenizer_name: HuggingFace tokenizer to use (default: "deepset/gbert-large")
+        sample_size: Number of rows to sample for analysis (default: 50000)
+        max_length: Maximum sequence length for tokenization (default: 512)
+
+    Returns:
+        Dictionary containing:
+        - total_rows: Total number of rows in DataFrame
+        - sample_size: Number of rows analyzed
+        - min_tokens: Minimum token count
+        - max_tokens: Maximum token count
+        - mean_tokens: Average token count
+        - median_tokens: Median token count
+        - p90_tokens: 90th percentile token count
+        - p95_tokens: 95th percentile token count
+        - p99_tokens: 99th percentile token count
+        - distribution: Dict with counts for different token ranges
+        - truncated_count: Number of texts truncated to max_length
+        - truncated_percent: Percentage of texts truncated
+        - wasted_padding_percent: Percentage of compute wasted with static padding
+        - expected_speedup: Expected speedup factor with dynamic padding
+        - longest_examples: List of (token_count, text) tuples for longest texts
+
+    Example:
+        >>> from newspaper_explorer.data.loading.loader import DataLoader
+        >>> df = DataLoader.load_parquet("data/raw/der_tag/text/der_tag_lines.parquet")
+        >>> stats = analyze_token_lengths(df, sample_size=50000)
+        >>> print(f"Average tokens: {stats['mean_tokens']:.1f}")
+        >>> print(f"Expected speedup: {stats['expected_speedup']:.1f}x")
+
+    Raises:
+        ImportError: If transformers is not installed
+        ValueError: If text_column not found in DataFrame
+    """
+    try:
+        from transformers.models.bert import BertTokenizerFast
+    except ImportError:
+        raise ImportError(
+            "transformers is required for token analysis. "
+            "Install it with: pip install transformers"
+        )
+
+    if text_column not in df.columns:
+        raise ValueError(f"Column '{text_column}' not found in DataFrame")
+
+    total_rows = len(df)
+    logger.info(f"Analyzing token lengths for {total_rows:,} rows")
+
+    # Sample evenly distributed rows if needed
+    if total_rows > sample_size:
+        logger.info(f"Sampling {sample_size:,} rows evenly distributed across dataset")
+        step = max(1, total_rows // sample_size)
+        df_sample = (
+            df.lazy()
+            .with_row_index()
+            .filter(pl.col("index") % step == 0)
+            .select(pl.col(text_column))
+            .limit(sample_size)
+            .collect()
+        )
+    else:
+        logger.info(f"Using all {total_rows:,} rows")
+        df_sample = df.select(text_column)
+
+    texts = df_sample[text_column].to_list()
+    actual_sample_size = len(texts)
+
+    # Load tokenizer
+    logger.info(f"Loading tokenizer: {tokenizer_name}")
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
+
+    # Tokenize and get lengths
+    logger.info("Tokenizing texts (this may take a minute)...")
+    lengths = [
+        len(tokenizer.encode(text, truncation=True, max_length=max_length)) for text in texts
+    ]
+
+    # Compute statistics
+    sorted_lengths = sorted(lengths)
+    min_tokens = min(lengths)
+    max_tokens = max(lengths)
+    mean_tokens = sum(lengths) / len(lengths)
+    median_tokens = sorted_lengths[len(sorted_lengths) // 2]
+
+    # Percentiles
+    p90 = sorted_lengths[int(0.90 * len(sorted_lengths))]
+    p95 = sorted_lengths[int(0.95 * len(sorted_lengths))]
+    p99 = sorted_lengths[int(0.99 * len(sorted_lengths))]
+
+    # Distribution
+    under_50 = sum(1 for l in lengths if l <= 50)
+    under_100 = sum(1 for l in lengths if l <= 100)
+    under_200 = sum(1 for l in lengths if l <= 200)
+    under_300 = sum(1 for l in lengths if l <= 300)
+    at_max = sum(1 for l in lengths if l == max_length)
+
+    distribution = {
+        "under_50": under_50,
+        "under_100": under_100,
+        "under_200": under_200,
+        "under_300": under_300,
+        "at_max_length": at_max,
+    }
+
+    # Truncation analysis
+    truncated_count = at_max
+    truncated_percent = 100 * truncated_count / len(lengths)
+
+    # Speedup estimate
+    wasted_padding_percent = 100 * (max_length - mean_tokens) / max_length
+    expected_speedup = max_length / mean_tokens
+
+    # Get longest examples
+    longest_indices = sorted(range(len(lengths)), key=lambda i: lengths[i], reverse=True)[:5]
+    longest_examples = [(lengths[idx], texts[idx]) for idx in longest_indices]
+
+    logger.info(f"Token analysis complete for {actual_sample_size:,} texts")
+
+    return {
+        "total_rows": total_rows,
+        "sample_size": actual_sample_size,
+        "min_tokens": min_tokens,
+        "max_tokens": max_tokens,
+        "mean_tokens": mean_tokens,
+        "median_tokens": median_tokens,
+        "p90_tokens": p90,
+        "p95_tokens": p95,
+        "p99_tokens": p99,
+        "distribution": distribution,
+        "truncated_count": truncated_count,
+        "truncated_percent": truncated_percent,
+        "wasted_padding_percent": wasted_padding_percent,
+        "expected_speedup": expected_speedup,
+        "longest_examples": longest_examples,
+    }
+
+
+def get_longest_lines_by_tokens(
+    df: pl.DataFrame,
+    text_column: str = "text",
+    tokenizer_name: str = "deepset/gbert-large",
+    top_n: int = 10,
+) -> pl.DataFrame:
+    """
+    Retrieve the longest lines based on token count (not character count).
+
+    Uses a tokenizer to determine actual token lengths, which is more accurate
+    than character count for understanding model input size. Useful for:
+    - Finding texts that will be truncated
+    - Understanding the distribution of long texts
+    - Testing with edge cases
+
+    Args:
+        df: Polars DataFrame containing text lines
+        text_column: Name of the column containing text (default: "text")
+        tokenizer_name: HuggingFace tokenizer to use (default: "deepset/gbert-large")
+        top_n: Number of longest lines to retrieve (default: 10)
+
+    Returns:
+        Polars DataFrame with longest lines, including a "token_count" column
+
+    Example:
+        >>> longest = get_longest_lines_by_tokens(df, top_n=10)
+        >>> print(longest[["token_count", "text"]])
+
+        >>> # Use with different tokenizer
+        >>> longest = get_longest_lines_by_tokens(df, tokenizer_name="bert-base-german-cased")
+
+        >>> # Get more results
+        >>> longest = get_longest_lines_by_tokens(df, top_n=50)
+    """
+    try:
+        from transformers.models.bert import BertTokenizerFast
+    except ImportError:
+        raise ImportError("transformers is required. Install it with: pip install transformers")
+
+    if text_column not in df.columns:
+        raise ValueError(f"Column '{text_column}' not found in DataFrame")
+
+    logger.info(f"Loading tokenizer: {tokenizer_name}")
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
+
+    # Get top 100 longest by character count first (optimization)
+    longest_by_chars = get_longest_lines(df, text_column=text_column, top_n=100)
+
+    # Tokenize and get actual token counts
+    logger.info("Tokenizing texts to get token counts...")
+    texts = longest_by_chars[text_column].to_list()
+    token_counts = [len(tokenizer.encode(text, truncation=True, max_length=512)) for text in texts]
+
+    # Add token counts to DataFrame
+    result_df = longest_by_chars.with_columns(pl.Series("token_count", token_counts))
+
+    # Sort by token count and take top N
+    result_df = result_df.sort("token_count", descending=True).head(top_n)
+
+    return result_df
