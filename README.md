@@ -7,36 +7,30 @@ A toolkit for exploring historical newspapers through computational analysis. Hi
 
 Built during a two-day hackathon, this project provides an **initial starting point for researchers, students, and cultural heritage professionals** to explore large newspaper datasets under a **unified interface** combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data. The toolkit gives researchers a **first step into unknown datasets**, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
 
-During the hackathon, we extensively experimented with various data analysis approaches, testing GLiNER for named entity extraction, Google Gemini for knowledge graph generation, YOLOv11 for layout detection, LLM-based topic modeling via OpenRouter, and a custom emotion classification model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 high-resolution page images**, totaling over **10 GB of compressed XML archives** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
+During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, Google Gemini for knowledge graph generation, YOLOv11 for layout detection, LLM-based topic modeling via OpenRouter, and a custom emotion classification model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 high-resolution page images**, totaling over **10 GB of compressed XML archives** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
 
-Built with open cultural data from the Stiftung Preußischer Kulturbesitz, this project unlocks stories hidden in digitized newspaper archives by bridging the gap between historical sources and computational methods.
+Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
-
-**Our Vision**: Newspaper Explorer aims to provide a complete, scalable pipeline from raw digitized newspapers to actionable insights:
-- **Unified data interface**: Load and query millions of text lines using Polars DataFrames and DuckDB SQL
-- **Multiple analysis approaches**: Framework for combining statistical analysis, entity extraction, topic modeling, layout detection, and LLM-powered insights
-- **Reproducible workflows**: Configuration-driven architecture with source definitions in JSON for consistent processing
-- **Automatic error correction**: Built-in fixes for known dataset issues (mislabeled dates, incorrect file locations)
-- **Extensible design**: Modular structure allows adding new analysis methods independently of data loading
-
-
-**What's currently implemented:**
-- Download and parse ALTO/METS XML archives into structured Parquet files
-- Load and query multi-gigabyte datasets with Polars DataFrames and DuckDB SQL
-- Preprocess historical German text with normalization, cleaning, and lemmatization
-- Use LLM client with structured prompts and Pydantic schemas for type-safe outputs
-- Track complete data lineage through unified ID system (source → issue → page → text block → line)
-- Download high-resolution page images from METS references
-- Validate data quality with ALTO-METS consistency checks
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Key Features
+
+- **Configuration-Driven Pipeline**: Download → extract → parse → analyze workflow controlled by source JSON files
+- **High Performance**: Parallel ALTO/METS parsing with Polars DataFrames and DuckDB SQL queries on multi-GB datasets
+- **LLM Integration**: Structured prompts with Pydantic schemas for entity extraction, topic analysis, emotion detection
+- **Complete Traceability**: Unified ID system tracks lineage from source → issue → page → text block → line
+- **Historical Text Support**: Preprocessing pipeline with normalization, cleaning, and lemmatization for German historical text
+- **Image Downloads**: Retrieve high-resolution newspaper page scans from METS references
+- **Smart Resume**: Automatic tracking of processed files to avoid reprocessing
+- **Modular CLI**: Clean command structure with comprehensive validation and status tracking
 
 ---
 
 ## Hackathon Demo: Streamlit UI
 
-During the two-day hackathon, we built a Streamlit-based web interface to showcase the first results of our various analysis approaches on the "Der Tag" dataset. These screenshots demonstrate the exploratory analysis capabilities we tested, it helped us identify computational challenges and informed the development of the current CLI-based architecture.
+During the two-day hackathon, we built a Streamlit-based web interface to showcase the first results of our various analysis approaches on the "Der Tag" dataset. These screenshots demonstrate the exploratory analysis capabilities we tested.
 
 <details>
 <summary>📸 View screenshots from the Streamlit demo (October 2025)</summary>
@@ -97,21 +91,11 @@ During the two-day hackathon, we built a Streamlit-based web interface to showca
 
 ---
 
-## Key Features
-
-- **Smart Data Pipeline**: Configuration-driven download → extract → parse → analyze workflow
-- **High Performance**: Parallel processing with Polars DataFrames and DuckDB queries
-- **LLM Integration**: Structured prompts for entity extraction, topic analysis, emotion detection
-- **Query Engine**: DuckDB-based analysis layer for efficient multi-GB data queries
-- **Foreign Keys**: Complete traceability from raw XML to analysis results
-- **Resume Support**: Automatic tracking of processed files to avoid reprocessing
-- **Image Support**: Download high-resolution newspaper page scans from METS references
-- **Modular CLI**: Clean command structure for all operations
-
 ## Table of Contents
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Analysis Methods](#analysis-methods)
 - [Core Concepts](#core-concepts)
 - [Python API](#python-api)
 - [Documentation](#documentation)
@@ -189,6 +173,79 @@ newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
 
 ---
 
+## Analysis Methods
+
+The toolkit provides multiple analysis approaches that can be combined for comprehensive newspaper exploration:
+
+### Entity Extraction
+Extract named entities (persons, organizations, locations, events) from historical texts using three methods:
+
+- **GLiNER** - Fast local model with multi-GPU support (250MB-1.2GB models)
+- **GLiNER2** - Optimized CPU inference with label descriptions for improved accuracy
+- **LLM** - High-quality extraction with structured validation via API
+
+**CLI**: `newspaper-explorer analyze entities {gliner,gliner2,llm,compare} --source <name>`
+
+**See**: [Entity Extraction Guide](docs/analysis/ENTITIES.md) for complete documentation with performance comparisons, method comparison workflows, and Python API examples.
+
+### Layout Analysis
+Detect and extract document structure using YOLOv11-based layout detection:
+
+- **11 element types**: headlines, images, captions, tables, text blocks, headers, footers, etc.
+- **Text matching**: Link detected regions to OCR text from ALTO XML
+- **Region extraction**: Crop and save any detected element type
+- **Proximity matching**: Match related elements (captions to images, bylines to headlines)
+- **Coordinate filtering**: Exclude headers, footers, and decorative elements
+
+**CLI**: `newspaper-explorer analyze layout {detect,visualize,extract-pictures,match-headlines} --source <name>`
+
+**See**: [Layout Analysis Guide](docs/analysis/LAYOUT.md) for complete workflows, filtering strategies, and spatial proximity matching.
+
+### Emotion Analysis
+Classify emotional content in newspaper texts using fine-tuned models from Universität Würzburg:
+
+- **6 emotion categories**: Agitation, Anger, Fear, Joy, Love, Sadness
+- **Multi-label classification**: Texts can express multiple emotions
+- **Temporal analysis**: Track emotional patterns over time
+- **Historical accuracy**: Models trained on historical German literature
+
+**CLI**: `newspaper-explorer analyze emotions classify --source <name>`
+
+**See**: [Emotion Analysis Guide](docs/analysis/EMOTIONS.md) for model details, performance metrics, and analysis workflows.
+
+### Topic Modeling
+Coming soon - LLM-based topic extraction and clustering for thematic analysis.
+
+**See**: [Topics Guide](docs/analysis/TOPICS.md)
+
+### Keyword Extraction
+Coming soon - Statistical and semantic keyword extraction for document summarization.
+
+**See**: [Keywords Guide](docs/analysis/KEYWORDS.md)
+
+### LLM Integration
+Flexible LLM client with structured prompts and response validation:
+
+- **Structured outputs**: Pydantic schemas for type-safe responses
+- **Prompt templates**: Pre-built prompts for common tasks (entity extraction, topic analysis, emotion detection, etc.)
+- **Metadata support**: Include publication dates, sources, and context in prompts
+- **Automatic retry**: Handle API failures gracefully
+- **Multiple providers**: OpenAI, Anthropic, Google Gemini via OpenRouter
+
+**See**: [LLM Utilities Guide](docs/analysis/LLM.md) for client usage, prompt engineering, and schema design.
+
+### Query Engine
+SQL-based analysis layer for efficient querying of multi-GB datasets:
+
+- **DuckDB integration**: Query Parquet files directly without loading into memory
+- **Foreign key relationships**: Join analysis results back to source texts
+- **Aggregation queries**: Temporal patterns, entity frequencies, emotion distributions
+- **Export options**: CSV, JSON, Parquet outputs
+
+**See**: [Query Architecture Guide](docs/analysis/QUERY.md) for SQL examples and integration patterns.
+
+---
+
 ## Core Concepts
 
 ### Configuration-Driven Architecture
@@ -202,7 +259,7 @@ Download → Extract → Parse → Aggregate → Preprocess → Analyze
  (XML)      (ALTO)   (Parquet)  (Blocks)   (Clean)    (Results)
 ```
 
-### Key Features
+### Data Model
 
 - **Line-Level + Text Blocks**: Parse creates line-level data (each text line from ALTO). Aggregate creates text blocks (coherent paragraphs).
 - **METS Metadata**: Every issue has METS XML with metadata (title, date, volume) automatically merged with text data.
@@ -221,51 +278,14 @@ Download → Extract → Parse → Aggregate → Preprocess → Analyze
 
 ## Python API
 
-Use the newspaper explorer as a Python library:
+The toolkit can be used as a Python library for custom analysis workflows. Load newspaper data with Polars DataFrames, query with DuckDB SQL, extract entities, analyze emotions, detect layout elements, and integrate LLM-powered insights.
 
-```python
-# Load parsed newspaper data
-from newspaper_explorer.data.loading.loader import DataLoader
-import polars as pl
-
-loader = DataLoader(source_name="der_tag")
-df = loader.load_source()
-df_1901 = df.filter(pl.col("year") == 1901)
-
-# Query with SQL (DuckDB)
-from newspaper_explorer.analyze.query.engine import QueryEngine
-
-engine = QueryEngine(source_name="der_tag")
-result = engine.query("""
-    SELECT year, COUNT(*) as lines
-    FROM lines
-    WHERE year BETWEEN 1900 AND 1905
-    GROUP BY year
-""")
-
-# LLM analysis with structured output
-from newspaper_explorer.llm.client import LLMClient
-from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
-from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
-
-text = "Kaiser Wilhelm II empfing Bernhard von Bülow in Berlin."
-prompt = ENTITY_EXTRACTION.format(text=text)
-
-with LLMClient() as client:
-    response = client.complete(
-        prompt=prompt["user"],
-        response_schema=EntityResponse
-    )
-print(response.persons)  # ["Kaiser Wilhelm II", "Bernhard von Bülow"]
-```
-
-See **[Python API Examples](docs/PYTHON_API.md)** for comprehensive documentation with examples for:
+**See [Python API Examples](docs/PYTHON_API.md)** for comprehensive documentation with examples for:
 - Data loading and schemas
 - Query engine (DuckDB)
-- LLM analysis
+- Analysis methods (entities, emotions, layout)
+- LLM integration with structured outputs
 - Text preprocessing
-- Entity extraction
-- Advanced queries
 - Working with images
 
 ---
@@ -282,12 +302,16 @@ See **[Python API Examples](docs/PYTHON_API.md)** for comprehensive documentatio
 - **[Data Architecture](docs/data/DATA_ARCHITECTURE.md)** - Overall pipeline design
 - **[Data Loader](docs/data/DATA_LOADER.md)** - ALTO/METS parsing, schemas, DataFrames
 - **[Image Downloads](docs/data/IMAGES.md)** - High-resolution page scans
-- **[Preprocessing](docs/preprocessing/NORMALIZATION.md)** - Historical text normalization
+- **[Preprocessing](docs/data/preprocessing/NORMALIZATION.md)** - Historical text normalization
 
-### Analysis
-- **[Query Engine](docs/analysis/QUERY_ARCHITECTURE.md)** - DuckDB analytics on Parquet
+### Analysis Methods
+- **[Entity Extraction](docs/analysis/ENTITIES.md)** - Named entity recognition (GLiNER, GLiNER2, LLM)
+- **[Layout Analysis](docs/analysis/LAYOUT.md)** - YOLOv11-based document structure detection
+- **[Emotion Analysis](docs/analysis/EMOTIONS.md)** - Multi-label emotion classification
+- **[Topic Modeling](docs/analysis/TOPICS.md)** - Thematic analysis and clustering
+- **[Keyword Extraction](docs/analysis/KEYWORDS.md)** - Statistical and semantic keywords
 - **[LLM Utilities](docs/analysis/LLM.md)** - Prompts, schemas, client usage
-- **[Entity Extraction](docs/analysis/ENTITIES.md)** - Named entity recognition with GLiNER
+- **[Query Engine](docs/analysis/QUERY.md)** - DuckDB analytics on Parquet
 
 ### Development
 - **[ID Generation](docs/development/ID_GENERATION.md)** - Unified ID system and foreign keys
