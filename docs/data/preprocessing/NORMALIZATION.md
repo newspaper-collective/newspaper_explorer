@@ -1,5 +1,8 @@
 # Text Normalization
 
+> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**  
+> This document focuses specifically on normalization methods.
+
 Historical German newspaper text often uses outdated spelling conventions and characters that can pose challenges for modern NLP analysis. The Newspaper Explorer now supports automatic text normalization using state-of-the-art Transnormer models.
 
 ## Overview
@@ -17,8 +20,7 @@ The Transnormer models achieve excellent accuracy on historical German text:
 | Model                       | Time Period | Word Accuracy | Word Accuracy (case-insensitive) |
 | --------------------------- | ----------- | ------------- | -------------------------------- |
 | transnormer-19c-beta-v02    | 1780-1899   | 98.88%        | 99.34%                           |
-| transnormer-18-19c-beta-v01 | 1700-1799   | 99.53%        | 99.62%                           |
-| transnormer-18-19c-beta-v01 | 1800-1899   | 99.46%        | 99.53%                           |
+| transnormer-18-19c-beta-v01 | 1700-1899   | 99.46%        | 99.53%                           |
 
 Compared to a simple character replacement baseline (88-95% accuracy), these models provide significantly better results.
 
@@ -258,6 +260,7 @@ normalized_df = normalize_text(df, model="19c", batch_size=8)
 
 ## Related Documentation
 
+- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide with all methods
 - [Text Processing](TEXT_PROCESSING.md) - Text cleaning and processing
 - [Data Loading](LOADING.md) - Loading newspaper data
 - [Configuration](CONFIGURATION_PHILOSOPHY.md) - Environment setup

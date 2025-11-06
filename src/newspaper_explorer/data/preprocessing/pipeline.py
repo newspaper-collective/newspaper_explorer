@@ -32,6 +32,7 @@ from newspaper_explorer.data.preprocessing.filtering import (
     remove_numbers,
     remove_stopwords,
     filter_by_length,
+    filter_by_word_count,
     clean_ocr_artifacts,
 )
 from newspaper_explorer.data.preprocessing.linguistic import (
@@ -103,7 +104,8 @@ class TextPreprocessor:
         - dehyphenate: Remove line-break hyphens
         - lemmatize-spacy: Lemmatize with spaCy (fast)
         - lemmatize: Lemmatize with GermaLemma (slow)
-        - filter-length: Filter out too short/long texts
+        - filter-length: Filter out too short/long texts (by character count)
+        - filter-word-count: Filter out too few/many words (by word count)
         - clean-ocr: Remove OCR artifacts and invalid characters
 
         Args:
@@ -223,6 +225,10 @@ class TextPreprocessor:
             elif step == "filter-length":
                 df = filter_by_length(df, text_column=current_column, input_column=current_column)
                 # Note: filter-length doesn't change the column, so keep current_column
+                current_column = current_column
+            elif step == "filter-word-count":
+                df = filter_by_word_count(df, text_column=current_column, input_column=current_column)
+                # Note: filter-word-count doesn't change the column, so keep current_column
                 current_column = current_column
             elif step == "clean-ocr":
                 df = clean_ocr_artifacts(

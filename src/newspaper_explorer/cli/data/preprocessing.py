@@ -106,9 +106,14 @@ def register_preprocessing_commands(data_group):
           remove-punctuation     - Remove punctuation marks
           remove-numbers         - Remove numeric digits
           remove-stopwords       - Remove German stopwords (requires spaCy)
+          remove-diacritics      - Remove diacritics (ä→a, ö→o, ü→u)
+          normalize-whitespace   - Normalize whitespace
           dehyphenate            - Remove line-break hyphens (requires pyphen)
           lemmatize-spacy        - Lemmatize with spaCy (FAST, context-aware)
           lemmatize              - Lemmatize with GermaLemma (SLOW but thorough)
+          filter-length          - Filter by character count
+          filter-word-count      - Filter by word count
+          clean-ocr              - Remove OCR artifacts
 
         \b
         Examples:

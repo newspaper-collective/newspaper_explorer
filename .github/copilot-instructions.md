@@ -372,6 +372,9 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 - `docs/IMAGES.md` - Image download documentation
 - `docs/QUERY_ARCHITECTURE.md` - Query engine documentation
 - `docs/LLM.md` - Complete LLM utilities guide (client, prompts, schemas, metadata)
-- `docs/NORMALIZATION.md` - Historical text normalization guide
-- `docs/ENTITIES.md` - Entity extraction documentation
-- `docs/LAYOUT.md` - Complete layout analysis guide (detection, extraction, matching, filtering)
+- `docs/data/preprocessing/PREPROCESSING.md` - Complete preprocessing guide (all methods, pipelines, workflows)
+- `docs/data/preprocessing/NORMALIZATION.md` - Historical text normalization guide (Transnormer, DTA-CAB)
+- `docs/analysis/ENTITIES.md` - Entity extraction documentation
+- `docs/analysis/LAYOUT.md` - Complete layout analysis guide (detection, extraction, matching, filtering)
+- `docs/analysis/EMOTIONS.md` - Emotion classification documentation
+- `docs/analysis/TOPICS.md` - Topic modeling documentation
