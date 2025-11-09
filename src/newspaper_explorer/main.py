@@ -19,6 +19,7 @@ import click
 
 from newspaper_explorer.cli.analyze.commands import analyze
 from newspaper_explorer.cli.data.commands import data
+from newspaper_explorer.cli.ui.commands import ui_commands
 
 
 @click.group()
@@ -42,9 +43,15 @@ def cli() -> None:
         newspaper-explorer analyze layout match-headlines --source <name>
         newspaper-explorer analyze layout build-articles --source <name>
 
+    \b
+    User Interface:
+        newspaper-explorer ui start [--port 8080]
+        newspaper-explorer ui info
+
     For detailed help on any command group, use:
         newspaper-explorer data --help
         newspaper-explorer analyze --help
+        newspaper-explorer ui --help
     """
     pass
 
@@ -52,6 +59,7 @@ def cli() -> None:
 # Register command groups
 cli.add_command(data)
 cli.add_command(analyze)  # layout is now under analyze
+cli.add_command(ui_commands)
 
 
 if __name__ == "__main__":

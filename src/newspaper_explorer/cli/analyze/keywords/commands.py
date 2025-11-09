@@ -360,6 +360,18 @@ def tfidf(
     help="Use German stopwords (recommended)",
 )
 @click.option(
+    "--batch-size",
+    type=int,
+    default=1000,
+    help="Number of documents per batch",
+    show_default=True,
+)
+@click.option(
+    "--num-workers",
+    type=int,
+    help="Number of parallel workers (default: CPU count - 1)",
+)
+@click.option(
     "--output-name",
     type=str,
     default="rake_keywords",
@@ -372,6 +384,8 @@ def rake(
     min_length: int,
     max_length: int,
     use_stopwords: bool,
+    batch_size: int,
+    num_workers: int,
     output_name: str,
 ):
     """
@@ -386,6 +400,7 @@ def rake(
     - No training required (rule-based)
     - Fast and language-agnostic
     - Good for extracting domain-specific terminology
+    - Parallel processing with batching for large datasets
 
     Best for: Extracting technical terms, named entities, multi-word concepts
 
@@ -396,14 +411,14 @@ def rake(
         newspaper-explorer analyze keywords rake --source der_tag
 
     \b
-    Extract longer keyphrases (up to 5 words):
+    Extract longer keyphrases (up to 5 words) with 8 workers:
         newspaper-explorer analyze keywords rake --source der_tag \\
-            --max-length 5 --top-k 15
+            --max-length 5 --top-k 15 --num-workers 8
 
     \b
-    Extract per date with custom grouping:
+    Extract per date with custom grouping and large batches:
         newspaper-explorer analyze keywords rake --source der_tag \\
-            --group-by date --top-k 20
+            --group-by date --top-k 20 --batch-size 5000
 
     \b
     Output:
@@ -420,6 +435,11 @@ def rake(
     click.echo(f"Top keyphrases: {top_k}")
     click.echo(f"Phrase length: {min_length}-{max_length} words")
     click.echo(f"Use stopwords: {use_stopwords}")
+    click.echo(f"Batch size: {batch_size}")
+    if num_workers:
+        click.echo(f"Workers: {num_workers}")
+    else:
+        click.echo("Workers: auto-detect (CPU count - 1)")
 
     try:
         # Initialize extractor
@@ -433,9 +453,14 @@ def rake(
         # Prepare grouping
         group_by_list = list(group_by) if group_by else None
 
-        # Extract keyphrases
+        # Extract keyphrases with batching and multiprocessing
         click.echo("\nExtracting keyphrases...")
-        df_keywords = extractor.extract_keyphrases(top_k=top_k, group_by=group_by_list)
+        df_keywords = extractor.extract_keyphrases(
+            top_k=top_k,
+            group_by=group_by_list,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
 
         # Save results
         output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
@@ -653,6 +678,55 @@ def yake(
     default="keybert_keywords",
     help="Output filename (without extension)",
 )
+@click.option(
+    "--batch-size",
+    type=int,
+    default=32,
+    help="Batch size for GPU processing (increase for better GPU utilization)",
+    show_default=True,
+)
+@click.option(
+    "--max-seq-length",
+    type=int,
+    default=512,
+    help="Maximum sequence length for BERT (truncates longer texts)",
+    show_default=True,
+)
+@click.option(
+    "--device",
+    type=str,
+    help="Device to use ('cuda', 'cpu', or None for auto-detect)",
+)
+@click.option(
+    "--use-chunking/--no-chunking",
+    default=True,
+    help="Split long texts into chunks to avoid truncation (recommended)",
+    show_default=True,
+)
+@click.option(
+    "--chunk-size",
+    type=int,
+    default=400,
+    help="Token size for each chunk",
+    show_default=True,
+)
+@click.option(
+    "--chunk-overlap",
+    type=int,
+    default=50,
+    help="Overlap between chunks in tokens",
+    show_default=True,
+)
+@click.option(
+    "--use-multi-gpu",
+    is_flag=True,
+    help="Use multiple GPUs if available (experimental)",
+)
+@click.option(
+    "--limit",
+    type=int,
+    help="Limit number of documents to process (for testing)",
+)
 def keybert(
     source: str,
     group_by: Optional[tuple[str, ...]],
@@ -663,6 +737,14 @@ def keybert(
     diversity: float,
     use_mmr: bool,
     output_name: str,
+    batch_size: int,
+    max_seq_length: int,
+    device: Optional[str],
+    use_chunking: bool,
+    chunk_size: int,
+    chunk_overlap: int,
+    use_multi_gpu: bool,
+    limit: Optional[int],
 ):
     """
     Extract keywords using KeyBERT (BERT-based semantic extraction).
@@ -721,6 +803,13 @@ def keybert(
     click.echo(f"Model: {model}")
     click.echo(f"N-gram range: {min_ngram}-{max_ngram}")
     click.echo(f"Diversity (MMR): {diversity if use_mmr else 'disabled'}")
+    click.echo(f"Batch size: {batch_size}")
+    click.echo(f"Max sequence length: {max_seq_length}")
+    click.echo(f"Chunking: {'enabled' if use_chunking else 'disabled'}")
+    if use_chunking:
+        click.echo(f"  Chunk size: {chunk_size}, overlap: {chunk_overlap}")
+    if use_multi_gpu:
+        click.echo(f"Multi-GPU: enabled")
 
     try:
         # Initialize extractor
@@ -730,6 +819,13 @@ def keybert(
             model_name=model,
             keyphrase_ngram_range=(min_ngram, max_ngram),
             diversity=diversity,
+            batch_size=batch_size,
+            max_seq_length=max_seq_length,
+            device=device,
+            use_chunking=use_chunking,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            use_multi_gpu=use_multi_gpu,
         )
 
         # Prepare grouping
@@ -738,7 +834,7 @@ def keybert(
         # Extract keywords
         click.echo("Extracting keywords...")
         df_keywords = extractor.extract_keywords(
-            top_k=top_k, group_by=group_by_list, use_mmr=use_mmr
+            top_k=top_k, group_by=group_by_list, use_mmr=use_mmr, limit=limit
         )
 
         # Save results

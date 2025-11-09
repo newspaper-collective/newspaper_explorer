@@ -50,7 +50,6 @@ dependencies = [
     "rake-nltk>=1.0.6",
     "yake>=0.4.8",
     "keybert>=0.8.0",
-    "streamlit>=1.28.0",
     "plotly>=5.17.0",
     "pandas>=2.0.0",
     "neo4j>=5.0.0",
@@ -67,6 +66,8 @@ dev = [
     "types-tqdm>=4.67.0",
     "lxml-stubs",
 ]
+ui = ["nicegui>=1.4.0"]
+streamlit = ["streamlit>=1.28.0"]
 
 
 [project.scripts]
@@ -130,5 +131,8 @@ module = [
     "gensim.models",
     "gensim.corpora",
     "gensim.parsing.preprocessing",
+    "keybert",
+    "yake",
+    "rake_nltk",
 ]
 ignore_missing_imports = true

@@ -107,7 +107,6 @@ def get_gliner_model_id(model_name: str) -> str:
 def _process_texts_on_gpu(
     device: str,
     texts: List[str],
-    text_ids: List[str],
     text_indices: List[int],
     model_id: str,
     labels: List[str],
@@ -127,7 +126,6 @@ def _process_texts_on_gpu(
     Args:
         device: Device string (e.g., "cuda:0", "cuda", "cpu")
         texts: List of text chunks to process
-        text_ids: List of source IDs corresponding to texts
         text_indices: Original indices for reassembly
         model_id: HuggingFace GLiNER model identifier
         labels: Entity labels to extract
@@ -179,17 +177,6 @@ def _process_texts_on_gpu(
         max_tokens = model.config.max_len if hasattr(model, "config") else 384
         model.data_processor.transformer_tokenizer.model_max_length = max_tokens
 
-    # Compile model for faster inference (PyTorch 2.0+)
-    if device.startswith("cuda") and hasattr(torch, "compile"):
-        try:
-            logger.info(f"Compiling model on {device} with torch.compile()...")
-            model = torch.compile(model, mode="reduce-overhead")
-            logger.info(f"Model compilation complete on {device}")
-        except Exception as e:
-            logger.warning(
-                f"Could not compile model on {device}: {e}. Continuing without compilation."
-            )
-
     # Wait for all GPUs to finish loading (multi-GPU mode only)
     if barrier is not None:
         barrier.wait()
@@ -214,7 +201,6 @@ def _process_texts_on_gpu(
         leave=True,
     ):
         batch_texts = texts[i : i + batch_size]
-        batch_ids = text_ids[i : i + batch_size]
         batch_indices = text_indices[i : i + batch_size]
 
         # Batch inference
@@ -297,24 +283,6 @@ class GLiNEREntityExtractor:
         # Setup paths following new architecture
         self.config = get_config()
 
-    def _prepare_text(self, text: str) -> List[str]:
-        """
-        Prepare text for extraction by chunking if needed.
-
-        Args:
-            text: Raw text.
-
-        Returns:
-            List of text chunks. Single-item list if text is short enough.
-        """
-        # Use chunk_text utility for smart chunking at sentence boundaries
-        chunks = chunk_text(
-            text,
-            max_length=self.max_text_length,
-            split_margin=100,  # Look for split points within 100 chars of limit
-        )
-        return chunks
-
     def extract_from_dataframe(
         self,
         df: pl.DataFrame,
@@ -355,7 +323,12 @@ class GLiNEREntityExtractor:
         chunk_counts = []
 
         for row in df_filtered.iter_rows(named=True):
-            chunks = self._prepare_text(row[text_column])
+            # Use chunk_text utility for smart chunking at sentence boundaries
+            chunks = chunk_text(
+                row[text_column],
+                max_length=self.max_text_length,
+                split_margin=100,  # Look for split points within 100 chars of limit
+            )
             chunk_counts.append(len(chunks))
             # Add all chunks with same ID
             for chunk in chunks:
@@ -409,7 +382,7 @@ class GLiNEREntityExtractor:
             # Split chunks across GPUs
             chunks_per_gpu = (len(texts) + num_gpus - 1) // num_gpus
             processes = []
-            result_queue = Queue()
+            result_queue: Queue = Queue()
 
             for gpu_id in range(num_gpus):
                 start_idx = gpu_id * chunks_per_gpu
@@ -419,7 +392,6 @@ class GLiNEREntityExtractor:
                     break
 
                 gpu_texts = texts[start_idx:end_idx]
-                gpu_ids = line_ids[start_idx:end_idx]
                 gpu_indices = text_indices[start_idx:end_idx]
 
                 logger.info(f"GPU {gpu_id}: will process {len(gpu_texts)} chunks")
@@ -429,7 +401,6 @@ class GLiNEREntityExtractor:
                     kwargs={
                         "device": f"cuda:{gpu_id}",
                         "texts": gpu_texts,
-                        "text_ids": gpu_ids,
                         "text_indices": gpu_indices,
                         "model_id": self.model_id,
                         "labels": self.labels,
@@ -458,20 +429,25 @@ class GLiNEREntityExtractor:
 
         else:
             # Single GPU/CPU processing
-            logger.info("Loading GLiNER model (this may take a while on first run)...")
-            processing_results = _process_texts_on_gpu(
+            single_gpu_results = _process_texts_on_gpu(
                 device=device,
                 texts=texts,
-                text_ids=line_ids,
                 text_indices=text_indices,
                 model_id=self.model_id,
                 labels=self.labels,
                 threshold=self.threshold,
                 batch_size=self.batch_size,
-                result_queue=None,
+                result_queue=None,  # Single-GPU mode
                 barrier=None,
                 gpu_id=None,
             )
+
+            # Type safety: single-GPU mode must return results
+            if single_gpu_results is None:
+                logger.error("Unexpected None result from single-GPU processing")
+                raise RuntimeError("Single-GPU processing returned no results")
+
+            processing_results = single_gpu_results
 
         # Convert results to records
         all_records = []

@@ -4,13 +4,17 @@
     "collection_id": "17232177",
     "collection_url": "https://zenodo.org/records/17232177",
     "description": "Der Tag newspaper collection from Zenodo (XML OCR data)",
+    "source_provider": "Staatsbibliothek zu Berlin",
+    "license": "CC Zero v1.0 Universal",
     "metadata": {
         "newspaper_title": "Der Tag",
         "language": "de",
         "years_available": "1900-1920",
         "location": "Berlin, Germany",
         "format": "ALTO XML",
-        "zdb_source_id": "3074409-X"
+        "zdb_source_id": "3074409-X",
+        "info": "\"Der Tag\" was published in Berlin until 1934, initially by the Scherl publishing house, then taken over by Deutsche Verlagsgesellschaft and sold to Alfred Hugenberg in 1916. It was among the first German newspapers to include photographs.",
+        "citation": "Jana, K. (2025). Fulltext and Metadata of the German Daily Newspaper \"Der Tag\" (1900-1921) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.17232177"
     },
     "loading": {
         "pattern": "**/fulltext/*.xml",

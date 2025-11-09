@@ -179,42 +179,93 @@ def register_info_commands(data_group):
 
             try:
                 from newspaper_explorer.data.download.images import ImageDownloader
+                from newspaper_explorer.data.utils.images import ImageIndexer
 
-                image_downloader = ImageDownloader(source_name=source)
-                image_status = image_downloader.get_download_status()
+                # Try to use image index first (faster and more detailed)
+                indexer = ImageIndexer(source)
+                index = indexer.load_index()
 
-                click.echo(f"Location: {image_status['images_dir']}")
-
-                if image_status["images_dir_exists"]:
-                    click.echo(f"Status: ✓ Directory exists")
-                    click.echo(f"Images downloaded: {image_status['images_downloaded']:,}")
+                if index is not None and len(index) > 0:
+                    # Use image index
+                    stats = indexer.get_stats()
+                    click.echo(f"Location: {indexer.images_dir}")
+                    click.echo(f"Status: ✓ Indexed")
+                    click.echo(f"Images indexed: {stats['total_images']:,}")
+                    click.echo(f"Total size: {stats['total_size_gb']:.2f} GB")
+                    click.echo(f"Average file size: {stats['avg_file_size_mb']:.2f} MB")
                     click.echo(
-                        f"Images expected: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
+                        f"Year range: {stats['min_year']} - {stats['max_year']} ({stats['years']} years)"
                     )
 
+                    # Also check expected images from METS
+                    image_downloader = ImageDownloader(source_name=source)
+                    image_status = image_downloader.get_download_status()
+
                     if image_status["total_images_expected"] > 0:
-                        coverage = image_status["coverage_pct"]
+                        coverage = (
+                            stats["total_images"] / image_status["total_images_expected"]
+                        ) * 100
+                        click.echo(
+                            f"Images expected: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
+                        )
                         click.echo(f"Coverage: {coverage:.1f}%")
 
                         if coverage < 100:
-                            missing = (
-                                image_status["total_images_expected"]
-                                - image_status["images_downloaded"]
-                            )
-                            click.echo(f"\n⚠ {missing:,} images not yet downloaded. Run:")
+                            missing = image_status["total_images_expected"] - stats["total_images"]
+                            click.echo(f"\n⚠ {missing:,} images missing. Run:")
                             click.echo(
                                 f"  newspaper-explorer data download-images --source {source}"
                             )
                         else:
                             click.echo(f"\n✓ All images downloaded!")
+                    else:
+                        click.echo(f"\n💡 Tip: Image index is available for fast queries")
                 else:
-                    click.echo(f"Status: ✗ Not found")
-                    if image_status["total_images_expected"] > 0:
+                    # Fallback to original method
+                    image_downloader = ImageDownloader(source_name=source)
+                    image_status = image_downloader.get_download_status()
+
+                    click.echo(f"Location: {image_status['images_dir']}")
+
+                    if image_status["images_dir_exists"]:
+                        click.echo(f"Status: ✓ Directory exists")
+                        click.echo(f"Images downloaded: {image_status['images_downloaded']:,}")
                         click.echo(
-                            f"Expected images: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
+                            f"Images expected: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
                         )
-                        click.echo(f"\n⚠ No images downloaded. Run:")
-                        click.echo(f"  newspaper-explorer data download-images --source {source}")
+
+                        if image_status["total_images_expected"] > 0:
+                            coverage = image_status["coverage_pct"]
+                            click.echo(f"Coverage: {coverage:.1f}%")
+
+                            if coverage < 100:
+                                missing = (
+                                    image_status["total_images_expected"]
+                                    - image_status["images_downloaded"]
+                                )
+                                click.echo(f"\n⚠ {missing:,} images not yet downloaded. Run:")
+                                click.echo(
+                                    f"  newspaper-explorer data download-images --source {source}"
+                                )
+                            else:
+                                click.echo(f"\n✓ All images downloaded!")
+
+                        # Suggest creating index
+                        if image_status["images_downloaded"] > 0:
+                            click.echo(f"\n💡 Tip: Create an image index for faster queries:")
+                            click.echo(
+                                f"  # (Future) newspaper-explorer data index-images --source {source}"
+                            )
+                    else:
+                        click.echo(f"Status: ✗ Not found")
+                        if image_status["total_images_expected"] > 0:
+                            click.echo(
+                                f"Expected images: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
+                            )
+                            click.echo(f"\n⚠ No images downloaded. Run:")
+                            click.echo(
+                                f"  newspaper-explorer data download-images --source {source}"
+                            )
             except Exception as e:
                 click.echo(f"Status: ⚠ Could not determine image status")
                 click.echo(f"Error: {e}")

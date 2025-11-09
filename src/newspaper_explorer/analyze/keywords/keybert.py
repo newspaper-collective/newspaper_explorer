@@ -21,9 +21,10 @@ Example:
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import polars as pl
+import torch
 
 # Configure sentence-transformers cache directory to use project models directory
 # This keeps model downloads organized and prevents cluttering user home directory
@@ -31,11 +32,196 @@ _MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "se
 _MODELS_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = str(_MODELS_DIR)
 from keybert import KeyBERT
+from sentence_transformers import SentenceTransformer
+from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_keywords_on_gpu(
+    device: str,
+    texts: List[str],
+    doc_ids: List[str],
+    model_name: str,
+    keyphrase_ngram_range: Tuple[int, int],
+    stopwords: Optional[List[str]],
+    top_k: int,
+    diversity: float,
+    use_mmr: bool,
+    max_seq_length: int,
+    batch_size: int = 32,
+    result_queue=None,
+    barrier=None,
+    gpu_id: Optional[int] = None,
+) -> Optional[List[Dict]]:
+    """
+    Worker function to extract keywords on a specific GPU device.
+
+    Can be used in two modes:
+    1. Direct call (single-GPU): result_queue=None, barrier=None - returns results
+    2. Spawned process (multi-GPU): result_queue and barrier provided - sends to queue
+
+    Args:
+        device: Device string (e.g., "cuda:0", "cuda", "cpu")
+        texts: List of texts to process
+        doc_ids: Document IDs for tracking
+        model_name: Sentence transformer model name
+        keyphrase_ngram_range: N-gram range for keywords
+        stopwords: List of stopwords to exclude
+        top_k: Number of keywords per document
+        diversity: MMR diversity parameter
+        use_mmr: Whether to use MMR
+        max_seq_length: Max sequence length for tokenization
+        batch_size: Batch size for embedding generation (default: 32)
+        result_queue: Optional multiprocessing queue for results (multi-GPU mode)
+        barrier: Optional multiprocessing barrier for synchronization (multi-GPU mode)
+        gpu_id: Optional GPU ID for progress bar labeling (multi-GPU mode)
+
+    Returns:
+        List of result dictionaries if result_queue is None, else None
+    """
+    # In multi-GPU mode, suppress output during model loading
+    if gpu_id is not None:
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+
+    # Load models
+    sentence_model = SentenceTransformer(model_name, device=device)
+    sentence_model.max_seq_length = max_seq_length
+    model = KeyBERT(model=sentence_model)  # type: ignore[arg-type]
+
+    # Wait for all GPUs to finish loading (multi-GPU mode only)
+    if barrier is not None:
+        barrier.wait()
+
+    # Prepare stopwords
+    stopwords_param = stopwords if stopwords is not None else []
+
+    # Process texts in batches for better GPU utilization
+    results = []
+
+    # Configure progress bar
+    if gpu_id is not None:
+        pbar_desc = f"GPU {gpu_id}"
+        pbar_position = gpu_id
+    else:
+        pbar_desc = "Extracting keywords"
+        pbar_position = 0
+
+    # Process in batches - KeyBERT supports batch processing!
+    for batch_start in tqdm(
+        range(0, len(texts), batch_size),
+        desc=pbar_desc,
+        position=pbar_position,
+        leave=True,
+    ):
+        batch_end = min(batch_start + batch_size, len(texts))
+        batch_texts = texts[batch_start:batch_end]
+        batch_ids = doc_ids[batch_start:batch_end]
+
+        # Filter out invalid texts
+        valid_batch = []
+        valid_ids = []
+        invalid_indices = []
+        for idx, (doc_id, text) in enumerate(zip(batch_ids, batch_texts)):
+            if text and isinstance(text, str) and len(text.strip()) >= 20:
+                valid_batch.append(text)
+                valid_ids.append(doc_id)
+            else:
+                # Track invalid texts to add empty results later
+                invalid_indices.append((idx, doc_id))
+
+        if not valid_batch:
+            # All texts in batch were invalid
+            for _, doc_id in invalid_indices:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keywords": [],
+                        "scores": [],
+                    }
+                )
+            continue
+
+        try:
+            # Extract keywords for entire batch at once (true batch processing!)
+            if use_mmr and diversity > 0:
+                batch_extracted = model.extract_keywords(
+                    valid_batch,  # Pass list of documents for batch processing
+                    keyphrase_ngram_range=keyphrase_ngram_range,
+                    stop_words=stopwords_param,
+                    top_n=top_k,
+                    use_mmr=True,
+                    diversity=diversity,
+                )
+            else:
+                batch_extracted = model.extract_keywords(
+                    valid_batch,  # Pass list of documents for batch processing
+                    keyphrase_ngram_range=keyphrase_ngram_range,
+                    stop_words=stopwords_param,
+                    top_n=top_k,
+                )
+
+            # Process batch results
+            for doc_id, extracted in zip(valid_ids, batch_extracted):
+                if extracted and isinstance(extracted, list):
+                    keywords = [kw for kw, score in extracted]
+                    scores = [score for kw, score in extracted]
+                    results.append(
+                        {
+                            "doc_id": doc_id,
+                            "keywords": keywords,
+                            "scores": scores,
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "doc_id": doc_id,
+                            "keywords": [],
+                            "scores": [],
+                        }
+                    )
+
+            # Add empty results for invalid texts
+            for _, doc_id in invalid_indices:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keywords": [],
+                        "scores": [],
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"Error processing batch: {e}")
+            # Add empty results for failed batch
+            for doc_id in valid_ids:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keywords": [],
+                        "scores": [],
+                    }
+                )
+            for _, doc_id in invalid_indices:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keywords": [],
+                        "scores": [],
+                    }
+                )
+
+    # Return or send to queue
+    if result_queue is not None:
+        result_queue.put(results)
+        return None
+    else:
+        return results
 
 
 class KeyBERTExtractor:
@@ -70,6 +256,13 @@ class KeyBERTExtractor:
         use_stopwords: bool = True,
         custom_stopwords: Optional[List[str]] = None,
         diversity: float = 0.5,
+        batch_size: int = 32,
+        max_seq_length: int = 512,
+        device: Optional[str] = None,
+        use_chunking: bool = True,
+        chunk_size: int = 400,
+        chunk_overlap: int = 50,
+        use_multi_gpu: bool = False,
     ):
         """
         Initialize KeyBERT extractor.
@@ -86,12 +279,26 @@ class KeyBERTExtractor:
             use_stopwords: Whether to filter stopwords from candidates
             custom_stopwords: Additional stopwords to exclude
             diversity: Diversity of keywords (0=similar, 1=diverse) using MMR
+            batch_size: Batch size for processing documents (default: 32)
+            max_seq_length: Maximum sequence length for BERT (default: 512)
+            device: Device to use ('cuda', 'cpu', or None for auto-detect)
+            use_chunking: Split long texts into chunks to avoid truncation (default: True)
+            chunk_size: Token size for each chunk (default: 400, leaves room for special tokens)
+            chunk_overlap: Overlap between chunks in tokens (default: 50)
+            use_multi_gpu: Use multiple GPUs if available (default: False)
         """
         self.source_name = source_name
         self.text_column = text_column
         self.config = get_config()
+        self.model_name = model_name
         self.keyphrase_ngram_range = keyphrase_ngram_range
         self.diversity = diversity
+        self.batch_size = batch_size
+        self.max_seq_length = max_seq_length
+        self.use_chunking = use_chunking
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.use_multi_gpu = use_multi_gpu
 
         # Determine input file
         if input_file:
@@ -111,18 +318,48 @@ class KeyBERTExtractor:
             else:
                 self.input_file = textblocks_file
 
-        # Setup stopwords
+        # Setup stopwords - KeyBERT needs List[str], not set
         stopwords_list = self._get_stopwords(use_stopwords, custom_stopwords)
-        self.stopwords = set(stopwords_list) if stopwords_list else None
+        self.stopwords = stopwords_list  # Keep as List[str] | None, not set
 
-        # Initialize KeyBERT
+        # Detect device
+        if device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+
+        # Log configuration
         logger.info(f"Loading KeyBERT with model: {model_name}")
-        try:
-            self.model = KeyBERT(model=model_name)
-        except Exception as e:
-            logger.warning(f"Failed to load model {model_name}: {e}")
-            logger.info("Falling back to default model")
-            self.model = KeyBERT()
+        logger.info(f"Device: {self.device}")
+        logger.info(f"Batch size: {batch_size}")
+        logger.info(f"Max sequence length: {max_seq_length}")
+        if use_chunking:
+            logger.info(f"Chunking enabled: chunk_size={chunk_size}, overlap={chunk_overlap}")
+
+        # Initialize sentence model for chunking
+        self.sentence_model: Optional[SentenceTransformer]
+        if use_chunking:
+            self.sentence_model = SentenceTransformer(model_name, device=self.device)
+            self.sentence_model.max_seq_length = max_seq_length
+        else:
+            self.sentence_model = None
+
+        # Check for multi-GPU
+        if self.device == "cuda":
+            gpu_count = torch.cuda.device_count()
+            logger.info(f"Primary GPU: {torch.cuda.get_device_name(0)}")
+            logger.info(f"Available GPUs: {gpu_count}")
+
+            if gpu_count > 1 and use_multi_gpu:
+                logger.info(f"Multi-GPU enabled: will use {gpu_count} GPUs")
+                self.num_gpus = gpu_count
+            elif gpu_count > 1 and not use_multi_gpu:
+                logger.info(f"Multi-GPU available but disabled (use --use-multi-gpu to enable)")
+                self.num_gpus = 1
+            else:
+                self.num_gpus = 1
+        else:
+            self.num_gpus = 1
 
         logger.info(f"Initialized KeyBERT extractor for {source_name}")
         logger.info(f"Input file: {self.input_file}")
@@ -138,70 +375,82 @@ class KeyBERTExtractor:
         if not use_stopwords:
             return None
 
-        stopwords = []
-
-        try:
-            from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
-
-            stopwords = list(DE_STOP_WORDS)
-            logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
-        except ImportError:
-            logger.warning(
-                "SpaCy not installed, using basic German stopwords. "
-                "Install with: pip install -e '.[nlp]' for better stopword list"
-            )
-            # Basic German stopwords
-            stopwords = [
-                "der",
-                "die",
-                "das",
-                "und",
-                "in",
-                "zu",
-                "den",
-                "ist",
-                "von",
-                "mit",
-                "auf",
-                "für",
-                "als",
-                "an",
-                "im",
-                "dem",
-                "ein",
-                "eine",
-                "nicht",
-                "auch",
-                "sich",
-                "wird",
-                "oder",
-                "aus",
-                "werden",
-                "bei",
-                "nach",
-                "um",
-                "am",
-                "des",
-                "durch",
-                "einem",
-                "einer",
-                "bis",
-                "sind",
-                "war",
-                "nur",
-                "noch",
-                "kann",
-                "hat",
-                "wir",
-                "sie",
-            ]
+        # Convert set[LiteralString] to List[str] explicitly
+        stopwords: List[str] = list(DE_STOP_WORDS)
+        logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
 
         # Add custom stopwords
         if custom_stopwords:
             stopwords.extend(custom_stopwords)
             logger.info(f"Added {len(custom_stopwords)} custom stopwords")
 
-        return stopwords if stopwords else None
+        return stopwords
+
+    def _chunk_text(self, text: str) -> List[str]:
+        """
+        Split long text into overlapping chunks to avoid truncation.
+
+        Args:
+            text: Input text
+
+        Returns:
+            List of text chunks
+        """
+        if not self.use_chunking or not self.sentence_model:
+            return [text]
+
+        # Tokenize text
+        tokens = self.sentence_model.tokenizer.tokenize(text)
+
+        # If text fits in one chunk, return as-is
+        if len(tokens) <= self.chunk_size:
+            return [text]
+
+        # Create overlapping chunks
+        chunks = []
+        start = 0
+
+        while start < len(tokens):
+            end = start + self.chunk_size
+            chunk_tokens = tokens[start:end]
+
+            # Convert tokens back to text
+            chunk_text = self.sentence_model.tokenizer.convert_tokens_to_string(chunk_tokens)
+            chunks.append(chunk_text)
+
+            # Move to next chunk with overlap
+            start += self.chunk_size - self.chunk_overlap
+
+        logger.debug(f"Split text into {len(chunks)} chunks (original: {len(tokens)} tokens)")
+        return chunks
+
+    def _merge_keywords(
+        self, keyword_lists: List[List[Tuple[str, float]]], top_k: int
+    ) -> List[Tuple[str, float]]:
+        """
+        Merge keywords from multiple chunks.
+
+        For each keyword, takes the maximum score across chunks and returns top_k.
+
+        Args:
+            keyword_lists: List of keyword lists from different chunks
+            top_k: Number of top keywords to return
+
+        Returns:
+            Merged and deduplicated list of (keyword, score) tuples
+        """
+        # Aggregate scores for each keyword (take maximum)
+        keyword_scores: Dict[str, float] = {}
+        for kw_list in keyword_lists:
+            for keyword, score in kw_list:
+                if keyword in keyword_scores:
+                    keyword_scores[keyword] = max(keyword_scores[keyword], score)
+                else:
+                    keyword_scores[keyword] = score
+
+        # Sort by score and return top_k
+        sorted_keywords = sorted(keyword_scores.items(), key=lambda x: x[1], reverse=True)
+        return sorted_keywords[:top_k]
 
     def extract_keywords(
         self,
@@ -238,10 +487,12 @@ class KeyBERTExtractor:
             df = df.head(limit)
             logger.info(f"Limited to {limit} rows")
 
-        # Group if requested
+        # Group if requested - Fix deprecation warning
         if group_by:
             logger.info(f"Grouping by: {', '.join(group_by)}")
-            df = df.group_by(group_by).agg(pl.col(self.text_column).str.concat(" "))
+            df = df.group_by(group_by).agg(
+                pl.col(self.text_column).str.join(" ")  # Changed from str.concat
+            )
 
         # Extract document IDs and texts
         texts = df[self.text_column].to_list()
@@ -262,78 +513,105 @@ class KeyBERTExtractor:
 
         # Extract keywords
         logger.info(f"Extracting keywords from {len(texts)} documents...")
-        results = []
 
-        for doc_id, text in tqdm(zip(doc_ids, texts), total=len(texts), desc="Extracting keywords"):
-            if not text or not isinstance(text, str) or len(text.strip()) < 20:
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keywords": [],
-                        "scores": [],
-                    }
-                )
-                continue
+        # Multi-GPU processing
+        if self.num_gpus > 1:
+            logger.info(f"Distributing {len(texts)} documents across {self.num_gpus} GPUs")
 
+            import multiprocessing as mp
+
+            # Set start method to 'spawn' for CUDA compatibility
             try:
-                # Extract keywords with KeyBERT
-                if use_mmr and self.diversity > 0:
-                    # Use MMR for diverse keywords
-                    extracted = self.model.extract_keywords(
-                        text,
-                        keyphrase_ngram_range=self.keyphrase_ngram_range,
-                        stop_words=self.stopwords,
-                        top_n=top_k,
-                        use_mmr=True,
-                        diversity=self.diversity,
-                    )
-                else:
-                    # Use cosine similarity only
-                    extracted = self.model.extract_keywords(
-                        text,
-                        keyphrase_ngram_range=self.keyphrase_ngram_range,
-                        stop_words=self.stopwords,
-                        top_n=top_k,
-                    )
+                mp.set_start_method("spawn", force=True)
+            except RuntimeError:
+                # Already set, ignore
+                pass
 
-                if extracted:
-                    keywords = [kw for kw, score in extracted]
-                    scores = [float(score) for kw, score in extracted]
+            from multiprocessing import Process, Queue, Barrier
 
-                    results.append(
-                        {
-                            "doc_id": doc_id,
-                            "keywords": keywords,
-                            "scores": scores,
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "doc_id": doc_id,
-                            "keywords": [],
-                            "scores": [],
-                        }
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to extract keywords for {doc_id}: {e}")
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keywords": [],
-                        "scores": [],
-                    }
+            # Create barrier for synchronization
+            barrier = Barrier(self.num_gpus)
+
+            # Split documents across GPUs
+            docs_per_gpu = (len(texts) + self.num_gpus - 1) // self.num_gpus
+            processes = []
+            result_queue: Queue = Queue()
+
+            for gpu_id in range(self.num_gpus):
+                start_idx = gpu_id * docs_per_gpu
+                end_idx = min(start_idx + docs_per_gpu, len(texts))
+
+                if start_idx >= len(texts):
+                    break
+
+                gpu_texts = texts[start_idx:end_idx]
+                gpu_doc_ids = doc_ids[start_idx:end_idx]
+
+                logger.info(f"GPU {gpu_id}: will process {len(gpu_texts)} documents")
+
+                p = Process(
+                    target=_extract_keywords_on_gpu,
+                    kwargs={
+                        "device": f"cuda:{gpu_id}",
+                        "texts": gpu_texts,
+                        "doc_ids": gpu_doc_ids,
+                        "model_name": self.model_name,
+                        "keyphrase_ngram_range": self.keyphrase_ngram_range,
+                        "stopwords": self.stopwords,
+                        "top_k": top_k,
+                        "diversity": self.diversity,
+                        "use_mmr": use_mmr,
+                        "max_seq_length": self.max_seq_length,
+                        "batch_size": self.batch_size,
+                        "result_queue": result_queue,
+                        "barrier": barrier,
+                        "gpu_id": gpu_id,
+                    },
                 )
+                p.start()
+                processes.append(p)
+
+            # Collect results from all GPUs
+            logger.info("All GPUs are loading models and will start processing together...")
+            logger.info("Waiting for GPU processes to complete...")
+            results = []
+            for _ in range(len(processes)):
+                results.extend(result_queue.get())
+
+            # Wait for all processes to finish
+            for p in processes:
+                p.join()
+
+            logger.info("Multi-GPU processing complete")
+
+        else:
+            # Single GPU/CPU processing
+            single_gpu_results = _extract_keywords_on_gpu(
+                device=self.device,
+                texts=texts,
+                doc_ids=doc_ids,
+                model_name=self.model_name,
+                keyphrase_ngram_range=self.keyphrase_ngram_range,
+                stopwords=self.stopwords,
+                top_k=top_k,
+                diversity=self.diversity,
+                use_mmr=use_mmr,
+                max_seq_length=self.max_seq_length,
+                batch_size=self.batch_size,
+                result_queue=None,  # Single-GPU mode
+                barrier=None,
+                gpu_id=None,
+            )
+
+            # Type safety: single-GPU mode must return results
+            if single_gpu_results is None:
+                logger.error("Unexpected None result from single-GPU processing")
+                raise RuntimeError("Single-GPU processing returned no results")
+
+            results = single_gpu_results
 
         results_df = pl.DataFrame(results)
         logger.info(f"Extracted keywords for {len(results_df)} documents")
-
-        # Add grouping columns if they exist
-        if group_by:
-            # Merge back grouping columns
-            group_data = df.select(group_by)
-            group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
-            results_df = results_df.join(group_data, on="doc_id", how="left")
 
         return results_df
 

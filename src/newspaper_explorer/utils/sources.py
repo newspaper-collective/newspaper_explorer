@@ -66,6 +66,10 @@ class SourceMetadata(BaseModel):
     )
     description: Optional[str] = Field(default=None, description="Source description")
     format: Optional[str] = Field(default=None, description="Data format (e.g., 'ALTO XML')")
+    info: Optional[str] = Field(
+        default=None, description="Additional information about the newspaper"
+    )
+    citation: Optional[str] = Field(default=None, description="Citation for the dataset")
 
 
 class LoadingConfig(BaseModel):
@@ -102,6 +106,10 @@ class SourceConfig(BaseModel):
     collection_id: Optional[str] = Field(default=None, description="Zenodo collection ID")
     collection_url: Optional[HttpUrl] = Field(default=None, description="Zenodo collection URL")
     description: Optional[str] = Field(default=None, description="Dataset description")
+    source_provider: Optional[str] = Field(
+        default=None, description="Provider/institution of the source"
+    )
+    license: Optional[str] = Field(default=None, description="License for the dataset")
     fixes: Optional[Dict[str, Any]] = Field(default=None, description="Known data issues and fixes")
     notes: Optional[str] = Field(default=None, description="Additional notes")
 

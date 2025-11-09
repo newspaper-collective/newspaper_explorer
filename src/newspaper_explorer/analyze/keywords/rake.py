@@ -17,8 +17,9 @@ Example:
 """
 
 import logging
+import multiprocessing as mp
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
 from rake_nltk import Rake
@@ -27,6 +28,68 @@ from tqdm import tqdm
 from newspaper_explorer.config.base import get_config
 
 logger = logging.getLogger(__name__)
+
+
+def _worker_extract_batch(
+    args: Tuple[List[Tuple[str, str]], int, List[str], int, int],
+) -> List[Dict[str, Any]]:
+    """
+    Worker function for multiprocessing RAKE extraction.
+
+    Args:
+        args: Tuple of (batch_data, top_k, stopwords, min_length, max_length)
+
+    Returns:
+        List of result dictionaries
+    """
+    batch_data, top_k, stopwords, min_length, max_length = args
+
+    # Initialize RAKE for this worker
+    rake = Rake(
+        stopwords=stopwords,
+        min_length=min_length,
+        max_length=max_length,
+    )
+
+    results = []
+
+    for doc_id, text in batch_data:
+        if not text or not isinstance(text, str):
+            results.append(
+                {
+                    "doc_id": doc_id,
+                    "keyphrases": [],
+                    "scores": [],
+                }
+            )
+            continue
+
+        # Extract keyphrases
+        rake.extract_keywords_from_text(text)
+        ranked_phrases = rake.get_ranked_phrases_with_scores()
+
+        # Take top k
+        top_phrases = ranked_phrases[:top_k]
+
+        if top_phrases:
+            scores, phrases = zip(*top_phrases)
+            results.append(
+                {
+                    "doc_id": doc_id,
+                    "keyphrases": list(phrases),
+                    "scores": [float(s) for s in scores],
+                }
+            )
+        else:
+            results.append(
+                {
+                    "doc_id": doc_id,
+                    "keyphrases": [],
+                    "scores": [],
+                }
+            )
+
+    return results
 
 
 class RAKEExtractor:
@@ -182,19 +245,78 @@ class RAKEExtractor:
 
         return stopwords
 
+    def _extract_batch(
+        self,
+        batch_data: List[Tuple[str, str]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract keyphrases from a batch of documents.
+
+        Args:
+            batch_data: List of (doc_id, text) tuples
+            top_k: Number of top keyphrases per document
+
+        Returns:
+            List of result dictionaries
+        """
+        results = []
+
+        for doc_id, text in batch_data:
+            if not text or not isinstance(text, str):
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keyphrases": [],
+                        "scores": [],
+                    }
+                )
+                continue
+
+            # Extract keyphrases
+            self.rake.extract_keywords_from_text(text)
+            ranked_phrases = self.rake.get_ranked_phrases_with_scores()
+
+            # Take top k
+            top_phrases = ranked_phrases[:top_k]
+
+            if top_phrases:
+                scores, phrases = zip(*top_phrases)
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keyphrases": list(phrases),
+                        "scores": [float(s) for s in scores],
+                    }
+                )
+            else:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "keyphrases": [],
+                        "scores": [],
+                    }
+                )
+
+        return results
+
     def extract_keyphrases(
         self,
         top_k: int = 10,
         limit: Optional[int] = None,
         group_by: Optional[List[str]] = None,
+        batch_size: int = 1000,
+        num_workers: Optional[int] = None,
     ) -> pl.DataFrame:
         """
-        Extract keyphrases from documents.
+        Extract keyphrases from documents with batching and multiprocessing.
 
         Args:
             top_k: Number of top keyphrases per document
             limit: Limit number of documents to process
             group_by: Columns to group by (aggregates text)
+            batch_size: Number of documents per batch (default: 1000)
+            num_workers: Number of worker processes (default: CPU count - 1)
 
         Returns:
             DataFrame with columns: doc_id, keyphrases, scores
@@ -234,47 +356,56 @@ class RAKEExtractor:
         else:
             doc_ids = [f"doc_{i}" for i in range(len(texts))]
 
-        # Extract keyphrases
+        # Determine number of workers
+        if num_workers is None:
+            num_workers = max(1, mp.cpu_count() - 1)
+
         logger.info(f"Extracting keyphrases from {len(texts)} documents...")
+        logger.info(f"Using {num_workers} workers with batch size {batch_size}")
+
+        # Prepare data for processing
+        doc_text_pairs = list(zip(doc_ids, texts))
+
+        # Split into batches
+        batches = [
+            doc_text_pairs[i : i + batch_size] for i in range(0, len(doc_text_pairs), batch_size)
+        ]
+
+        logger.info(f"Processing {len(batches)} batches...")
+
+        # Process batches
         results = []
 
-        for doc_id, text in tqdm(
-            zip(doc_ids, texts), total=len(texts), desc="Extracting keyphrases"
-        ):
-            if not text or not isinstance(text, str):
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keyphrases": [],
-                        "scores": [],
-                    }
-                )
-                continue
+        if num_workers == 1:
+            # Single-process mode
+            for batch in tqdm(batches, desc="Processing batches"):
+                batch_results = self._extract_batch(batch, top_k)
+                results.extend(batch_results)
+        else:
+            # Multi-process mode
+            with mp.Pool(processes=num_workers) as pool:
+                # Create worker function with fixed parameters
+                worker_fn = _worker_extract_batch
 
-            # Extract keyphrases
-            self.rake.extract_keywords_from_text(text)
-            ranked_phrases = self.rake.get_ranked_phrases_with_scores()
+                # Prepare arguments for each batch
+                worker_args = [
+                    (
+                        batch,
+                        top_k,
+                        self._get_stopwords(True, None),  # Get stopwords for workers
+                        self.min_phrase_length,
+                        self.max_phrase_length,
+                    )
+                    for batch in batches
+                ]
 
-            # Take top k
-            top_phrases = ranked_phrases[:top_k]
-
-            if top_phrases:
-                scores, phrases = zip(*top_phrases)
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keyphrases": list(phrases),
-                        "scores": [float(s) for s in scores],
-                    }
-                )
-            else:
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keyphrases": [],
-                        "scores": [],
-                    }
-                )
+                # Process batches in parallel with progress bar
+                for batch_results in tqdm(
+                    pool.imap(worker_fn, worker_args),
+                    total=len(batches),
+                    desc="Processing batches",
+                ):
+                    results.extend(batch_results)
 
         results_df = pl.DataFrame(results)
         logger.info(f"Extracted keyphrases for {len(results_df)} documents")
