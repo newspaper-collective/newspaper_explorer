@@ -7,7 +7,7 @@ A toolkit for exploring historical newspapers through computational analysis. Hi
 
 Built during a two-day hackathon, this project provides an initial starting point for researchers, students, and cultural heritage professionals to explore large newspaper datasets under a unified interface combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data and allows researchers a first step into unknown datasets, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
 
-During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, Google Gemini for knowledge graph generation, YOLOv11 for layout detection, LLM-based topic modeling, and a custom emotion classification model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 high-resolution page images**, totaling over **10 GB of compressed XML archives** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
+During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, a tool for knowledge graph generation, various models for layout detection, LLM-based topic modeling, and a custom emotion classification BERT-model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 page images**, totaling over **10 GB of compressed XML files** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
 
 Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
@@ -57,7 +57,7 @@ During the two-day hackathon, we built a Streamlit-based web interface to showca
 
 ### Search and Word Cloud
 ![Search and Word Cloud](docs/hackathon/screenshots/06_search_and_word_cloud.png)
-*Screenshot: Caption search interface with word cloud visualization settings*
+*Screenshot: Caption search interface with word cloud settings*
 
 ### Entities Word Cloud
 ![Entities Word Cloud](docs/hackathon/screenshots/07_entities_word_cloud.png)
@@ -181,7 +181,7 @@ The toolkit provides multiple analysis approaches that can be combined for compr
 Extract named entities (persons, organizations, locations, events) from historical texts using three methods:
 
 - **GLiNER** - Fast local model with multi-GPU support (250MB-1.2GB models)
-- **GLiNER2** - Optimized CPU inference with label descriptions for improved accuracy
+- **GLiNER2** - Optimized CPU inference with label descriptions for improved accuracy (models not avaible yet)
 - **LLM** - High-quality extraction with structured validation via API
 
 **CLI**: `newspaper-explorer analyze entities {gliner,gliner2,llm,compare} --source <name>`
@@ -211,7 +211,7 @@ Classify emotional content in newspaper texts using fine-tuned models from Unive
 
 **CLI**: `newspaper-explorer analyze emotions classify --source <name>`
 
-**See**: [Emotion Analysis Guide](docs/analysis/EMOTIONS.md) for model details, performance metrics, and analysis workflows.
+**See**: [Emotion Analysis Guide](docs/analysis/EMOTIONS.md) for model details.
 
 ### Topic Modeling
 Coming soon - LLM-based topic extraction and clustering for thematic analysis.

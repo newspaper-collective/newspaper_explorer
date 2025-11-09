@@ -33,6 +33,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 import json
+import time
 
 import numpy as np
 import polars as pl
@@ -42,6 +43,14 @@ from gensim.parsing.preprocessing import STOPWORDS as GENSIM_STOPWORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_metadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
 
 logger = logging.getLogger(__name__)
 
@@ -514,6 +523,8 @@ class LDAExtractor:
             the document's content through its topic mixture, weighted by
             topic probabilities.
         """
+        start_time = time.time()
+
         if self.lda_model is None:
             if num_topics is None:
                 raise ValueError(
@@ -598,6 +609,35 @@ class LDAExtractor:
             )
 
         df = pl.DataFrame(results)
+
+        # Add foreign keys
+        logger.info("Extracting foreign keys from doc_ids...")
+        foreign_keys_list = []
+        for doc_id in df["doc_id"]:
+            fks = extract_foreign_keys(doc_id)
+            foreign_keys_list.append(fks)
+
+        # Add foreign key columns
+        df = df.with_columns(
+            [
+                pl.Series("source_id", [fk.get("source_id") for fk in foreign_keys_list]),
+                pl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys_list]),
+                pl.Series("page_id", [fk.get("page_id") for fk in foreign_keys_list]),
+                pl.Series("text_block_id", [fk.get("text_block_id") for fk in foreign_keys_list]),
+            ]
+        )
+
+        # Store for save_results
+        self._last_extraction_time = time.time() - start_time
+        self._last_input_df = preprocessed  # Store for metadata
+        self._last_params = {
+            "top_k": top_k,
+            "min_topic_prob": min_topic_prob,
+            "num_topics": self.lda_model.num_topics if self.lda_model else num_topics,
+            "limit": limit,
+            "group_by": group_by,
+        }
+
         logger.info(f"Extracted topic terms for {len(df)} documents")
 
         return df
@@ -605,26 +645,89 @@ class LDAExtractor:
     def save_results(
         self,
         results_df: pl.DataFrame,
-        output_name: str = "lda_topic_terms",
+        output_name: str = "lda_topics",
+        top_k: Optional[int] = None,
     ) -> Path:
         """
-        Save results to parquet file.
+        Save results to parquet file with metadata.
 
         Args:
-            results_df: Results DataFrame
-            output_name: Output filename (without extension)
+            results_df: Results DataFrame with topic assignments
+            output_name: Output filename (without extension, default: "lda_topics")
+            top_k: Number of terms (for metadata, optional)
 
         Returns:
-            Path to saved file
+            Path to saved parquet file
         """
-        output_dir = self.config.results_dir / self.source_name / "topics"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Create metadata
+        params = getattr(self, "_last_params", {})
+        if top_k is not None:
+            params["top_k"] = top_k
 
-        output_file = output_dir / f"{output_name}.parquet"
-        results_df.write_parquet(output_file)
+        # Add model-specific parameters
+        if self.lda_model:
+            params.update(
+                {
+                    "num_topics": self.lda_model.num_topics,
+                    "passes": self.lda_model.num_topics,  # Not stored, approximate
+                    "min_topic_prob": params.get("min_topic_prob", 0.1),
+                }
+            )
 
-        logger.info(f"Saved results to {output_file}")
-        return output_file
+        params.update(
+            {
+                "num_stopwords": len(self.stopwords),
+                "text_column": self.text_column,
+            }
+        )
+
+        # Extract input/output statistics
+        input_data = {}
+        if hasattr(self, "_last_input_df"):
+            # Create a temporary DataFrame for stats extraction
+            temp_df = pl.DataFrame({"text": ["sample"]})  # Placeholder
+            try:
+                input_data = extract_input_stats(temp_df, id_column="doc_id", date_column="")
+            except:
+                pass  # If extraction fails, use empty dict
+            input_data["num_documents"] = len(getattr(self, "_last_input_df", []))
+
+        output_data = extract_output_stats(results_df)
+
+        # Add topic-specific statistics
+        if "topics" in results_df.columns:
+            all_topics = []
+            for topic_list in results_df["topics"]:
+                if topic_list:
+                    all_topics.extend(topic_list)
+            output_data["unique_topics_assigned"] = len(set(all_topics))
+            output_data["total_topic_assignments"] = len(all_topics)
+
+        metadata = AnalysisMetadata(
+            analysis_type="topics",
+            method_type="lda",
+            model_name=f"lda_{params.get('num_topics', 'unknown')}_topics",
+            source=self.source_name,
+            parameters=params,
+            input_data=input_data,
+            output_data=output_data,
+            duration_seconds=getattr(self, "_last_extraction_time", None),
+            status="completed",
+        )
+
+        # Save using unified helper
+        results_base = self.config.results_dir / self.source_name
+        paths = save_analysis_results(
+            results_df=results_df,
+            metadata=metadata,
+            results_base_dir=results_base,
+            results_filename="topics.parquet",
+        )
+
+        logger.info(f"Saved results to {paths['results_path']}")
+        logger.info(f"Saved metadata to {paths['metadata_path']}")
+
+        return paths["results_path"]
 
 
 def extract_topic_terms_simple(

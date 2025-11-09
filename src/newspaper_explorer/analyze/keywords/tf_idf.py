@@ -18,6 +18,7 @@ Example:
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 from multiprocessing import Pool, cpu_count
@@ -28,6 +29,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_metadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +337,7 @@ class TFIDFExtractor:
         Returns:
             DataFrame with columns:
             - group_id: Document/group identifier
+            - source_id, issue_id, page_id, text_block_id: Foreign keys
             - keywords: List of top keywords
             - scores: List of corresponding TF-IDF scores
             - [original grouping columns if group_by used]
@@ -340,9 +350,11 @@ class TFIDFExtractor:
             >>> # Extract keywords per date
             >>> df = extractor.extract_keywords(document_level="date", top_k=15)
             >>>
-            >>> # Custom grouping by year and month
+            >>> # Custom groups (year and month)
             >>> df = extractor.extract_keywords(group_by=["year", "month"], top_k=20)
         """
+        start_time = time.time()
+
         logger.info(f"Loading data from {self.input_file}")
         df = pl.read_parquet(self.input_file)
 
@@ -502,9 +514,36 @@ class TFIDFExtractor:
         df_grouped = df_grouped.with_row_count("doc_idx")
         results_df = results_df.join(df_grouped, on="doc_idx", how="left")
 
-        # Select output columns: group columns + keywords + scores
-        output_cols = group_cols + ["keywords", "scores"]
-        results_df = results_df.select(output_cols)
+        # Rename first group column to "doc_id" for consistency
+        if group_cols:
+            # Create doc_id from group columns if multiple, or use first column name
+            if len(group_cols) == 1:
+                results_df = results_df.rename({group_cols[0]: "doc_id"})
+            else:
+                # Create composite ID from multiple columns
+                doc_ids = [
+                    "_".join(str(val) for val in row)
+                    for row in results_df.select(group_cols).iter_rows()
+                ]
+                results_df = results_df.with_columns(pl.Series("doc_id", doc_ids))
+
+        # Extract foreign keys from doc_ids
+        logger.info("Extracting foreign keys from doc_ids...")
+        doc_ids_list = results_df["doc_id"].to_list()
+        foreign_keys = [extract_foreign_keys(doc_id) for doc_id in doc_ids_list]
+
+        # Add foreign key columns
+        results_df = results_df.with_columns(
+            [
+                pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
+                pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
+                pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
+                pl.Series(
+                    "text_block_id",
+                    [fk.get("text_block_id", fk.get("line_id", "")) for fk in foreign_keys],
+                ),
+            ]
+        )
 
         logger.info(f"Extracted keywords for {len(results_df):,} documents")
 
@@ -513,33 +552,108 @@ class TFIDFExtractor:
         avg_keywords = total_keywords / len(results_df) if len(results_df) > 0 else 0
         logger.info(f"Average keywords per document: {avg_keywords:.1f}")
 
+        # Store timing info for save_results
+        self._last_extraction_time = time.time() - start_time
+        self._last_input_df = df
+        self._last_params = {
+            "document_level": document_level,
+            "group_by": group_by,
+            "min_df": min_df,
+            "max_df": max_df,
+            "ngram_range": ngram_range,
+            "preprocessing_steps": preprocessing_steps,
+        }
+
         return results_df
 
     def save_results(
         self,
         results_df: pl.DataFrame,
         output_name: str = "tfidf_keywords",
+        top_k: Optional[int] = None,
     ) -> Path:
         """
-        Save extracted keywords to parquet file.
+        Save extracted keywords to parquet file with metadata.
 
         Args:
             results_df: DataFrame with keywords (from extract_keywords)
-            output_name: Base name for output file (without extension)
+            output_name: Base name for output file (without extension, default: "tfidf_keywords")
+            top_k: Number of keywords (for metadata, optional)
 
         Returns:
             Path to saved file
         """
-        output_dir = self.config.results_dir / self.source_name / "keywords"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Creating metadata...")
 
-        output_file = output_dir / f"{output_name}.parquet"
+        # Calculate statistics
+        total_keywords = sum(len(kw_list) for kw_list in results_df["keywords"].to_list())
+        avg_keywords = total_keywords / len(results_df) if len(results_df) > 0 else 0
+        avg_score = (
+            sum(
+                sum(scores) / len(scores) if scores else 0
+                for scores in results_df["scores"].to_list()
+            )
+            / len(results_df)
+            if len(results_df) > 0
+            else 0
+        )
 
-        logger.info(f"Saving keywords to {output_file}")
-        results_df.write_parquet(output_file)
-        logger.info(f"Saved {len(results_df):,} keyword results")
+        # Create output statistics
+        output_stats = extract_output_stats(results_df)
+        output_stats.update(
+            {
+                "total_documents": len(results_df),
+                "total_keywords": total_keywords,
+                "avg_keywords_per_doc": round(avg_keywords, 2),
+                "avg_score": round(avg_score, 4),
+            }
+        )
 
-        return output_file
+        # Get duration if available from last extraction
+        duration = getattr(self, "_last_extraction_time", None)
+
+        # Get input stats if available
+        input_stats = {}
+        if hasattr(self, "_last_input_df"):
+            input_stats = extract_input_stats(self._last_input_df)
+
+        # Get extraction parameters if available
+        params = getattr(self, "_last_params", {})
+        params.update(
+            {
+                "algorithm": "TF-IDF (Term Frequency-Inverse Document Frequency)",
+                "top_k": top_k,
+                "text_column": self.text_column,
+            }
+        )
+
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_type="keywords",
+            method_type="tfidf",
+            model_name="sklearn_tfidfvectorizer",
+            source=self.source_name,
+            parameters=params,
+            input_data=input_stats,
+            output_data=output_stats,
+            status="completed",
+            duration_seconds=duration,
+        )
+
+        # Save using unified helper
+        results_base = self.config.results_dir / self.source_name
+        paths = save_analysis_results(
+            results_df=results_df,
+            metadata=metadata,
+            results_base_dir=results_base,
+            results_filename="keywords.parquet",
+        )
+
+        logger.info(f"Saved {len(results_df):,} keyword results to {paths['results_path']}")
+        logger.info(f"Metadata saved to: {paths['metadata_path']}")
+        logger.info(f"Analysis ID: {metadata.analysis_id}")
+
+        return paths["results_path"]
 
 
 def extract_keywords_from_document(

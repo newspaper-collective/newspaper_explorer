@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 import queue
 import warnings
+import time
 
 import polars as pl
 import torch
@@ -31,6 +32,14 @@ from transformers import logging as transformers_logging
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_metadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -401,9 +410,8 @@ class EmotionPredictor:
         # Initialize tokenizer
         self.tokenizer = BertTokenizerFast.from_pretrained("deepset/gbert-large")
 
-        # Output directory
-        self.output_dir = config.results_dir / source_name / "emotions"
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Base results directory (subdirectories created per analysis run)
+        self.results_base = config.results_dir / source_name
 
     def load_models(self):
         """Load all emotion models (sequential mode only)"""
@@ -455,6 +463,16 @@ class EmotionPredictor:
         output_name: str,
     ) -> Path:
         """Sequential prediction (single GPU or CPU)"""
+        start_time = time.time()
+
+        # Create output directory with analysis_id for versioning
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        analysis_id = f"gbert_large_shaver_{timestamp}"
+        output_dir = self.results_base / "emotions" / analysis_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         # Enable TF32 for Ampere+ GPUs (L40S supports this) - ~20% speedup
         if torch.cuda.is_available():
             # Use new PyTorch 2.9+ API for TF32 configuration
@@ -462,6 +480,7 @@ class EmotionPredictor:
             torch.backends.cuda.matmul.allow_tf32 = True
 
         logger.info(f"Processing {input_file} (sequential mode)")
+        logger.info(f"Output directory: {output_dir}")
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
@@ -469,20 +488,20 @@ class EmotionPredictor:
         # Load models
         models = self.load_models()
 
-        # Count total rows
-        df_meta = pl.scan_parquet(input_file).select(pl.len()).collect()
-        total_rows = df_meta[0, 0]
+        # Load input data for metadata extraction
+        df_input = pl.read_parquet(input_file)
+        total_rows = len(df_input)
         logger.info(f"Total rows: {total_rows:,}")
 
         # Check for existing results (resume functionality)
-        output_file = self.output_dir / f"{output_name}.parquet"
+        output_file = output_dir / "emotions.parquet"
         processed_ids = set()
 
         # Check both final output and chunk files
         existing_files = []
         if output_file.exists():
             existing_files.append(output_file)
-        existing_files.extend(self.output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        existing_files.extend(output_dir.glob(f"{output_name}_chunk_*.parquet"))
 
         if existing_files:
             logger.info(f"Found {len(existing_files)} existing file(s)")
@@ -503,7 +522,7 @@ class EmotionPredictor:
             logger.info(f"\nProcessing chunk {chunk_idx} (rows {chunk_start:,}-{chunk_end:,})")
 
             # Load chunk
-            df_chunk = pl.scan_parquet(input_file).slice(chunk_start, self.chunk_size).collect()
+            df_chunk = df_input.slice(chunk_start, self.chunk_size)
 
             # Filter out already processed rows (resume functionality)
             if processed_ids:
@@ -543,15 +562,30 @@ class EmotionPredictor:
                     pl.Series(f"{emotion}_prob", probabilities[emotion])
                 )
 
+            # Extract foreign keys from line_ids
+            logger.info("  Extracting foreign keys...")
+            line_ids = df_chunk["line_id"].to_list()
+            foreign_keys = [extract_foreign_keys(line_id) for line_id in line_ids]
+
+            # Add foreign key columns
+            df_chunk = df_chunk.with_columns(
+                [
+                    pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
+                    pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
+                    pl.Series("text_block_id", [fk["text_block_id"] for fk in foreign_keys]),
+                ]
+            )
+
             # Save chunk to temporary file (fast - no concat needed)
-            chunk_file = self.output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
+            chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
             df_chunk.write_parquet(chunk_file)
 
             logger.info(f"  ✓ Chunk {chunk_idx} saved to {chunk_file.name}")
 
         # Combine all chunk files into final output
         logger.info("\nCombining chunk files...")
-        chunk_files = sorted(self.output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        chunk_files = sorted(output_dir.glob(f"{output_name}_chunk_*.parquet"))
         if chunk_files:
             df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
             df_final.write_parquet(output_file)
@@ -561,8 +595,55 @@ class EmotionPredictor:
                 f.unlink()
             logger.info(f"Combined {len(chunk_files)} chunks into {output_file}")
 
+        # Create and save metadata
+        duration_seconds = time.time() - start_time
+        logger.info("Creating metadata...")
+
+        # Load final results for statistics
+        df_result = pl.read_parquet(output_file)
+
+        # Calculate emotion statistics
+        emotion_counts = {}
+        for emotion in self.EMOTION_NAMES:
+            count = df_result[emotion].sum()
+            emotion_counts[emotion.lower()] = count
+
+        # Create output statistics dict
+        output_stats = extract_output_stats(df_result)
+        output_stats["emotion_counts"] = emotion_counts
+        output_stats["total_predictions"] = len(df_result)
+
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_type="emotions",
+            method_type="bert_multi_label",
+            model_name="gbert_large_shaver",
+            source=self.source_name,
+            parameters={
+                "model_base": "deepset/gbert-large",
+                "emotions": list(self.EMOTION_NAMES),
+                "batch_size": self.batch_size,
+                "chunk_size": self.chunk_size,
+                "max_length": 512,
+                "use_fp16": self.use_fp16,
+                "use_compile": self.use_compile,
+                "multi_gpu": self.multi_gpu,
+                "num_gpus": self.num_gpus if self.multi_gpu else 1,
+                "text_column": text_column,
+            },
+            input_data=extract_input_stats(df_input),
+            output_data=output_stats,
+            status="completed",
+            duration_seconds=duration_seconds,
+        )
+
+        # Save metadata
+        metadata_path = save_metadata(metadata, output_file)
+        logger.info(f"Metadata saved to: {metadata_path}")
+
         logger.info(f"\n✓ Processing complete!")
         logger.info(f"Results saved to: {output_file}")
+        logger.info(f"Analysis ID: {metadata.analysis_id}")
 
         return output_file
 
@@ -577,7 +658,18 @@ class EmotionPredictor:
 
         Each GPU processes different emotions simultaneously for ~3x speedup.
         """
+        start_time = time.time()
+
+        # Create output directory with analysis_id for versioning
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        analysis_id = f"gbert_large_shaver_{timestamp}"
+        output_dir = self.results_base / "emotions" / analysis_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         logger.info(f"Processing {input_file} (parallel mode - {self.num_gpus} GPUs)")
+        logger.info(f"Output directory: {output_dir}")
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
@@ -589,20 +681,20 @@ class EmotionPredictor:
             # Already set, that's fine
             pass
 
-        # Count total rows
-        df_meta = pl.scan_parquet(input_file).select(pl.len()).collect()
-        total_rows = df_meta[0, 0]
+        # Load input data for metadata extraction
+        df_input = pl.read_parquet(input_file)
+        total_rows = len(df_input)
         logger.info(f"Total rows: {total_rows:,}")
 
         # Check for existing results (resume functionality)
-        output_file = self.output_dir / f"{output_name}.parquet"
+        output_file = output_dir / "emotions.parquet"
         processed_ids = set()
 
         # Check both final output and chunk files
         existing_files = []
         if output_file.exists():
             existing_files.append(output_file)
-        existing_files.extend(self.output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        existing_files.extend(output_dir.glob(f"{output_name}_chunk_*.parquet"))
 
         if existing_files:
             logger.info(f"Found {len(existing_files)} existing file(s)")
@@ -642,7 +734,7 @@ class EmotionPredictor:
             logger.info(f"Started worker for {emotion} on GPU {gpu_id}")
 
         # Process in chunks
-        output_file = self.output_dir / f"{output_name}.parquet"
+        output_file = output_dir / f"{output_name}.parquet"
         first_chunk = (
             not output_file.exists() or len(processed_ids) == 0
         )  # If file exists with data, we're resuming
@@ -652,7 +744,7 @@ class EmotionPredictor:
             logger.info(f"Processing chunk {chunk_idx} (rows {chunk_start:,}-{chunk_end:,})")
 
             # Load chunk
-            df_chunk = pl.scan_parquet(input_file).slice(chunk_start, self.chunk_size).collect()
+            df_chunk = df_input.slice(chunk_start, self.chunk_size)
 
             # Filter out already processed rows (resume functionality)
             if processed_ids:
@@ -688,8 +780,23 @@ class EmotionPredictor:
                     pl.Series(f"{emotion}_prob", probabilities[emotion])
                 )
 
+            # Extract foreign keys from line_ids
+            logger.info("  Extracting foreign keys...")
+            line_ids = df_chunk["line_id"].to_list()
+            foreign_keys = [extract_foreign_keys(line_id) for line_id in line_ids]
+
+            # Add foreign key columns
+            df_chunk = df_chunk.with_columns(
+                [
+                    pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
+                    pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
+                    pl.Series("text_block_id", [fk["text_block_id"] for fk in foreign_keys]),
+                ]
+            )
+
             # Save chunk to temporary file (fast - no concat needed)
-            chunk_file = self.output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
+            chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
             df_chunk.write_parquet(chunk_file)
 
             logger.info(f"  ✓ Chunk {chunk_idx} saved to {chunk_file.name}")
@@ -703,7 +810,7 @@ class EmotionPredictor:
 
         # Combine all chunk files into final output
         logger.info("\nCombining chunk files...")
-        chunk_files = sorted(self.output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        chunk_files = sorted(output_dir.glob(f"{output_name}_chunk_*.parquet"))
         if chunk_files:
             df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
             df_final.write_parquet(output_file)
@@ -713,8 +820,55 @@ class EmotionPredictor:
                 f.unlink()
             logger.info(f"Combined {len(chunk_files)} chunks into {output_file}")
 
+        # Create and save metadata
+        duration_seconds = time.time() - start_time
+        logger.info("Creating metadata...")
+
+        # Load final results for statistics
+        df_result = pl.read_parquet(output_file)
+
+        # Calculate emotion statistics
+        emotion_counts = {}
+        for emotion in self.EMOTION_NAMES:
+            count = df_result[emotion].sum()
+            emotion_counts[emotion.lower()] = count
+
+        # Create output statistics dict
+        output_stats = extract_output_stats(df_result)
+        output_stats["emotion_counts"] = emotion_counts
+        output_stats["total_predictions"] = len(df_result)
+
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_type="emotions",
+            method_type="bert_multi_label",
+            model_name="gbert_large_shaver",
+            source=self.source_name,
+            parameters={
+                "model_base": "deepset/gbert-large",
+                "emotions": list(self.EMOTION_NAMES),
+                "batch_size": self.batch_size,
+                "chunk_size": self.chunk_size,
+                "max_length": 512,
+                "use_fp16": self.use_fp16,
+                "use_compile": self.use_compile,
+                "multi_gpu": self.multi_gpu,
+                "num_gpus": self.num_gpus,
+                "text_column": text_column,
+            },
+            input_data=extract_input_stats(df_input),
+            output_data=output_stats,
+            status="completed",
+            duration_seconds=duration_seconds,
+        )
+
+        # Save metadata
+        metadata_path = save_metadata(metadata, output_file)
+        logger.info(f"Metadata saved to: {metadata_path}")
+
         logger.info(f"\n✓ Processing complete!")
         logger.info(f"Results saved to: {output_file}")
+        logger.info(f"Analysis ID: {metadata.analysis_id}")
 
         return output_file
 

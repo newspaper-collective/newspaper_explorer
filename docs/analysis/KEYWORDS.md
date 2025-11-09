@@ -1,13 +1,19 @@
 # Keyword Extraction
 
-Extract salient keywords and phrases from newspaper texts using multiple methods.
-
 ## Available Methods
 
 1. **[TF-IDF](#tf-idf-keyword-extraction)** - Statistical distinctive vocabulary (fast, no training)
 2. **[RAKE](#rake-keyword-extraction)** - Multi-word phrase extraction (linguistic patterns)
 3. **[YAKE](#yake-keyword-extraction)** - Unsupervised statistical features (language-agnostic)
 4. **[KeyBERT](#keybert-keyword-extraction)** - Semantic keywords via BERT embeddings
+
+**Default Output Files:**
+- TF-IDF: `tfidf_keywords.parquet` + `tfidf_keywords.json`
+- RAKE: `rake_keywords.parquet` + `rake_keywords.json`
+- YAKE: `yake_keywords.parquet` + `yake_keywords.json`
+- KeyBERT: `keybert_keywords.parquet` + `keybert_keywords.json`
+
+Each method uses a distinct default filename to prevent overwriting when running multiple methods on the same source. You can customize the output name with `--output-name`.
 
 ## Topic Modeling
 
@@ -211,6 +217,8 @@ newspaper-explorer analyze keywords tfidf \
 
 - `--output-name`: Output filename (default: "tfidf_keywords")
 - `--limit`: Limit rows for testing
+
+**Output**: Saves to `results/{source}/keywords/tfidf_keywords.parquet` + `tfidf_keywords.json` (metadata)
 
 ## Examples
 
@@ -553,7 +561,9 @@ Phrase length in words:
 Use German stopwords (recommended, enabled by default)
 
 ### `--output-name`
-Custom output filename
+Custom output filename (default: "rake_keywords")
+
+**Output**: Saves to `results/{source}/keywords/rake_keywords.parquet` + `rake_keywords.json` (metadata)
 
 ## Output Format
 
@@ -650,7 +660,9 @@ Similarity threshold for removing redundant keywords (0-1):
 - `0.5`: Strict deduplication
 
 ### `--output-name`
-Custom output filename
+Custom output filename (default: "yake_keywords")
+
+**Output**: Saves to `results/{source}/keywords/yake_keywords.parquet` + `yake_keywords.json` (metadata)
 
 ## Output Format
 
@@ -763,7 +775,9 @@ Diversity parameter for MMR (0-1):
 Enable/disable Maximal Marginal Relevance for diversity (enabled by default)
 
 ### `--output-name`
-Custom output filename
+Custom output filename (default: "keybert_keywords")
+
+**Output**: Saves to `results/{source}/keywords/keybert_keywords.parquet` + `keybert_keywords.json` (metadata)
 
 ## Output Format
 
@@ -997,21 +1011,6 @@ All commands in this documentation are **fully reproducible**:
 - Documented parameters
 - Version-controlled source configurations
 - Transparent preprocessing
-
-## Performance Benchmarks
-
-Approximate speed on "Der Tag" corpus (1900-1920, ~500K pages):
-
-| Method | Time per 1000 pages | Memory | GPU Benefit |
-|--------|---------------------|--------|-------------|
-| TF-IDF | ~10 seconds | Low | None |
-| RAKE | ~15 seconds | Low | None |
-| YAKE | ~20 seconds | Low | None |
-| KeyBERT | ~5 minutes (CPU) / ~30 sec (GPU) | High | Very High |
-| LDA Train | ~10-30 minutes | High | Medium |
-| LDA Assign | ~2 minutes | Medium | None |
-
-*Benchmarks vary by hardware, document length, and parameters*
 
 ## See Also
 

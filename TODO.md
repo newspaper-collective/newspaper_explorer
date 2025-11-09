@@ -9,6 +9,11 @@
 - yolo, spacy, hf cache dir move to .env
 - unify sample/limit cmd
 
+### UI Issues
+- use image index consitently
+- datamanager tab?
+- permalink to pages in issue browser to jump to them from other tabs
+
 ### Data Issues
 - Images need fixing too
 

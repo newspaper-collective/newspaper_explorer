@@ -25,6 +25,7 @@ class AppState:
         self.data_loader: Optional[DataLoader] = None
         self.image_indexer: Optional[ImageIndexer] = None
         self.entities_df = None
+        self.keywords_df = None
         self.start_date = date(1900, 1, 1)
         self.end_date = date(2024, 12, 31)
         self.current_image_page = 1
@@ -53,19 +54,124 @@ class AppState:
         # Load entities if available
         self.load_entities()
 
-    def load_entities(self):
-        """Load entity data from CSV if available"""
+        # Load keywords if available
+        self.load_keywords()
+
+    def get_available_entity_files(self) -> list:
+        """
+        Get list of available entity result files for the current source.
+        Scans subdirectories for entities.parquet with metadata.json.
+
+        Returns:
+            List of tuples (display_name, file_path) for each available entity file
+        """
+        if not self.selected_source:
+            return []
+
+        entities_dir = Path(self.config.results_dir) / self.selected_source / "entities"
+        if not entities_dir.exists():
+            return []
+
+        result_files = []
+
+        # Scan subdirectories for entities.parquet and metadata.json
+        for subdir in entities_dir.iterdir():
+            if not subdir.is_dir():
+                continue
+
+            parquet_file = subdir / "entities.parquet"
+            metadata_file = subdir / "metadata.json"
+
+            if not parquet_file.exists():
+                continue
+
+            # Try to create display name from metadata
+            import json
+
+            display_name = subdir.name
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+
+                    # Create nice display name from metadata
+                    method = metadata.get("method_type", "")
+                    model = metadata.get("model_name", "")
+                    created = metadata.get("created_at", "")
+
+                    if created:
+                        # Extract date part
+                        date_part = created.split("T")[0] if "T" in created else created[:10]
+                    else:
+                        date_part = ""
+
+                    if method and model:
+                        display_name = f"{method} - {model}"
+                        if date_part:
+                            display_name += f" ({date_part})"
+                    elif method:
+                        display_name = method
+                        if date_part:
+                            display_name += f" ({date_part})"
+                except:
+                    pass
+
+            result_files.append((display_name, str(parquet_file)))
+
+        # Sort by display name
+        result_files.sort(key=lambda x: x[0])
+        return result_files
+
+    def load_entities(self, file_path: Optional[str] = None):
+        """
+        Load entity data from parquet file in new format.
+
+        Expected columns: entity_text, entity_type, line_id, page_id, etc.
+        Will extract date from page_id automatically.
+
+        Args:
+            file_path: Path to entity parquet file
+        """
         if not self.selected_source:
             return None
 
-        csv_path = Path(self.config.results_dir) / self.selected_source / "entities" / "test.csv"
-        if csv_path.exists():
-            self.entities_df = pl.read_csv(csv_path)
-            if "Date" in self.entities_df.columns:
-                # Convert Date column to datetime
-                self.entities_df = self.entities_df.with_columns(
-                    pl.col("Date").str.to_datetime().alias("date")
-                )
+        # Use provided path or look for first available result
+        if file_path is None:
+            available = self.get_available_entity_files()
+            if not available:
+                self.entities_df = None
+                return None
+            file_path = available[0][1]  # Use first available file
+
+        path = Path(file_path)
+        if not path.exists():
+            self.entities_df = None
+            return None
+
+        # Load parquet file
+        try:
+            self.entities_df = pl.read_parquet(str(path))
+
+            # Extract date from page_id
+            # page_id format: {source}_{YYYY-MM-DD}_{page}_{subpage}
+            self.entities_df = self.entities_df.with_columns(
+                [
+                    pl.col("page_id")
+                    .str.extract(r"_(\d{4}-\d{2}-\d{2})_", 1)
+                    .str.to_date("%Y-%m-%d")
+                    .cast(pl.Datetime)
+                    .alias("date")
+                ]
+            )
+            # Don't fail, but visualizations may not work properly
+
+        except Exception as e:
+            print(f"Error loading entity file {path}: {e}")
+            import traceback
+
+            traceback.print_exc()
+            self.entities_df = None
+
         return self.entities_df
 
     def get_filtered_entities(self):
@@ -80,6 +186,134 @@ class AppState:
         )
 
         return filtered
+
+    def get_available_keyword_files(self) -> list:
+        """
+        Get list of available keyword result files for the current source.
+        Scans subdirectories for keywords.parquet with metadata.json.
+
+        Returns:
+            List of tuples (display_name, file_path) for each available keyword file
+        """
+        if not self.selected_source:
+            return []
+
+        keywords_dir = Path(self.config.results_dir) / self.selected_source / "keywords"
+        if not keywords_dir.exists():
+            return []
+
+        result_files = []
+
+        # New format: subdirectories with keywords.parquet and metadata.json
+        for subdir in keywords_dir.iterdir():
+            if subdir.is_dir():
+                parquet_file = subdir / "keywords.parquet"
+                metadata_file = subdir / "metadata.json"
+
+                if parquet_file.exists():
+                    # Try to create display name from metadata
+                    display_name = subdir.name
+                    if metadata_file.exists():
+                        try:
+                            import json
+
+                            with open(metadata_file, "r", encoding="utf-8") as f:
+                                metadata = json.load(f)
+
+                            # Create nice display name from metadata
+                            method = metadata.get("method_type", "")
+                            model = metadata.get("model_name", "")
+                            created = metadata.get("created_at", "")
+
+                            if created:
+                                date_part = (
+                                    created.split("T")[0] if "T" in created else created[:10]
+                                )
+                            else:
+                                date_part = ""
+
+                            if method and model:
+                                display_name = f"{method} - {model}"
+                                if date_part:
+                                    display_name += f" ({date_part})"
+                            elif method:
+                                display_name = method
+                                if date_part:
+                                    display_name += f" ({date_part})"
+                        except:
+                            pass
+
+                    result_files.append((display_name, str(parquet_file)))
+
+        # Sort by display name
+        result_files.sort(key=lambda x: x[0])
+        return result_files
+
+    def load_keywords(self, file_path: Optional[str] = None):
+        """
+        Load keyword data from parquet file
+
+        Args:
+            file_path: Optional path to keyword file. If None, looks for default files
+        """
+        if not self.selected_source:
+            return None
+
+        # Use provided path or try to find a default
+        if file_path is None:
+            keywords_dir = Path(self.config.results_dir) / self.selected_source / "keywords"
+            if not keywords_dir.exists():
+                self.keywords_df = None
+                return None
+
+            # Try to find any parquet file (prefer test files)
+            possible_files = [
+                "test_keybert_by_date.parquet",
+                "test_keybert_optimized.parquet",
+                "test_keybert.parquet",
+            ]
+            for filename in possible_files:
+                path = keywords_dir / filename
+                if path.exists():
+                    file_path = str(path)
+                    break
+
+            # If no default found, try first parquet file
+            if file_path is None:
+                parquet_files = list(keywords_dir.glob("*.parquet"))
+                if parquet_files:
+                    file_path = str(parquet_files[0])
+                else:
+                    self.keywords_df = None
+                    return None
+
+        path = Path(file_path)
+        if not path.exists():
+            self.keywords_df = None
+            return None
+
+        # Load parquet file
+        try:
+            self.keywords_df = pl.read_parquet(str(path))
+        except Exception as e:
+            print(f"Error loading keyword file {path}: {e}")
+            self.keywords_df = None
+
+        return self.keywords_df
+
+    def get_filtered_keywords(self):
+        """
+        Get keywords filtered by current date range (if doc_id contains date info)
+
+        Note: Filtering by date requires doc_id to contain date information.
+        For now, returns all keywords as date filtering may not be applicable.
+        """
+        if self.keywords_df is None:
+            return pl.DataFrame()
+
+        # For now, return all keywords
+        # TODO: Implement date filtering if doc_id contains parseable date info
+        return self.keywords_df
 
     def get_source_stats(self) -> dict:
         """Get statistics about the current source (lightweight version for sidebar)"""

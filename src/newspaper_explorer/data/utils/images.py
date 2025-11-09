@@ -15,6 +15,8 @@ import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.parser.mets import METSParser
+from newspaper_explorer.data.utils.ids import generate_issue_id
+from newspaper_explorer.utils.sources import load_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +28,16 @@ class ImageIndexer:
     The index includes:
     - image_path: Relative path to the image file
     - year, month, day: Date components from path
-    - date: Full date
+    - date: Full date (YYYY-MM-DD format)
     - page_number: Page number extracted from filename
-    - issue_id: Issue identifier from path
+    - issue_id: Issue identifier in format {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
     - filename: Image filename
     - file_size_bytes: File size in bytes
     - newspaper_title: From METS
     - year_volume: From METS
     - page_count: Total pages in issue from METS
+    - issue_number: Issue number from METS
+    - daily_issue_number: Daily issue number (1, 2, 3, etc.)
     - file_exists: Whether the image file exists
     """
 
@@ -46,6 +50,14 @@ class ImageIndexer:
         """
         self.source_name = source_name
         self.config = get_config()
+
+        # Load source config to get the ZDB source ID
+        source_config = load_source_config(source_name)
+        self.source_id = (
+            source_config.metadata.zdb_source_id
+            if (source_config and source_config.metadata.zdb_source_id)
+            else source_name
+        )
 
         self.images_dir = Path(self.config.data_dir) / "raw" / source_name / "images"
         self.index_path = Path(self.config.data_dir) / "raw" / source_name / "image_index.parquet"
@@ -78,7 +90,7 @@ class ImageIndexer:
 
         # Scan for images
         logger.info(f"Scanning for images in {self.images_dir}")
-        image_files = []
+        image_files: list[Path] = []
         for ext in ["*.jpg", "*.jpeg", "*.png"]:
             image_files.extend(self.images_dir.rglob(ext))
 
@@ -128,20 +140,21 @@ class ImageIndexer:
         logger.info(f"Image index complete: {len(full_index)} total images")
         return full_index
 
-    def _build_mets_cache(self) -> dict:
+    def _build_mets_cache(self) -> dict[str, dict]:
         """
         Build a cache of METS metadata keyed by issue identifier.
 
         Returns:
             Dictionary mapping issue_id to METS metadata
         """
-        mets_cache = {}
+        mets_cache: dict[str, dict] = {}
 
         if not self.xml_dir.exists():
             logger.warning(f"XML directory not found: {self.xml_dir}")
             return mets_cache
 
-        mets_files = list(self.xml_dir.rglob("*-mets.xml"))
+        # METS files are *.xml files NOT in fulltext directories
+        mets_files = [f for f in self.xml_dir.rglob("*.xml") if "fulltext" not in str(f)]
         logger.info(f"Processing {len(mets_files)} METS files")
 
         parser = METSParser()
@@ -150,19 +163,39 @@ class ImageIndexer:
                 metadata = parser.parse_file(mets_path)
 
                 if metadata:
-                    # Create issue_id from path (YYYY/MM/DD/issue_number)
-                    rel_path = mets_path.relative_to(self.xml_dir)
-                    parts = rel_path.parts
-                    if len(parts) >= 4:
-                        issue_id = f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}"
-                        # Convert IssueMetadata to dict for caching
-                        mets_cache[issue_id] = {
-                            "newspaper_title": metadata.newspaper_title,
-                            "year_volume": metadata.year_volume,
-                            "page_count": metadata.page_count,
-                            "date": metadata.date.isoformat() if metadata.date else None,
-                            "issue_number": metadata.issue_number,
-                        }
+                    # Generate proper issue_id using the standard format
+                    if metadata.date and metadata.issue_number is not None:
+                        # Extract daily issue number from path (folder name)
+                        rel_path = mets_path.relative_to(self.xml_dir)
+                        parts = rel_path.parts
+                        if len(parts) >= 5:  # Year/Month/Day/Issue/filename.xml
+                            daily_issue_num = int(parts[3])  # Folder name (e.g., "01" -> 1)
+
+                            # Generate proper issue_id: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
+                            issue_id = generate_issue_id(
+                                self.source_id,  # Use ZDB source ID, not source_name
+                                metadata.date,
+                                metadata.issue_number,
+                                daily_issue_num,
+                            )
+
+                            # Also store the path-based key for lookup
+                            path_key = f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}"
+
+                            # Convert IssueMetadata to dict for caching
+                            cache_entry = {
+                                "newspaper_title": metadata.newspaper_title,
+                                "year_volume": metadata.year_volume,
+                                "page_count": metadata.page_count,
+                                "date": metadata.date.isoformat() if metadata.date else None,
+                                "issue_number": metadata.issue_number,
+                                "issue_id": issue_id,
+                                "daily_issue_number": daily_issue_num,
+                            }
+
+                            # Store with both keys for compatibility
+                            mets_cache[path_key] = cache_entry
+                            mets_cache[issue_id] = cache_entry
             except Exception as e:
                 logger.warning(f"Failed to parse METS file {mets_path}: {e}")
 
@@ -201,11 +234,14 @@ class ImageIndexer:
                 except (IndexError, ValueError):
                     pass
 
-            # Create issue_id for METS lookup
-            issue_id = f"{year}/{month}/{day}/{issue_num}"
+            # Create path-based key for METS lookup
+            path_key = f"{year}/{month}/{day}/{issue_num}"
 
             # Get METS metadata if available
-            mets_data = mets_cache.get(issue_id, {})
+            mets_data = mets_cache.get(path_key, {})
+
+            # Use the proper issue_id from METS cache if available
+            issue_id = mets_data.get("issue_id", path_key)
 
             # Get file size in bytes
             file_size = img_path.stat().st_size if img_path.exists() else None
@@ -216,7 +252,7 @@ class ImageIndexer:
                 "year": int(year),
                 "month": int(month),
                 "day": int(day),
-                "date": f"{year}-{month}-{day}",
+                "date": f"{year}-{month.zfill(2)}-{day.zfill(2)}",
                 "issue_id": issue_id,
                 "page_number": page_number,
                 "filename": filename,
@@ -224,6 +260,8 @@ class ImageIndexer:
                 "newspaper_title": mets_data.get("newspaper_title"),
                 "year_volume": mets_data.get("year_volume"),
                 "page_count": mets_data.get("page_count"),
+                "issue_number": mets_data.get("issue_number"),
+                "daily_issue_number": mets_data.get("daily_issue_number"),
                 "file_exists": True,
             }
 
@@ -330,32 +368,3 @@ class ImageIndexer:
         else:
             # Random sample
             return index.sample(n=min(limit, len(index)))
-
-
-def create_image_index(source_name: str, force_rebuild: bool = False) -> pl.DataFrame:
-    """
-    Convenience function to create an image index.
-
-    Args:
-        source_name: Name of the newspaper source
-        force_rebuild: If True, rebuild entire index
-
-    Returns:
-        Polars DataFrame with image metadata
-    """
-    indexer = ImageIndexer(source_name)
-    return indexer.create_index(force_rebuild=force_rebuild)
-
-
-def load_image_index(source_name: str) -> Optional[pl.DataFrame]:
-    """
-    Convenience function to load an existing image index.
-
-    Args:
-        source_name: Name of the newspaper source
-
-    Returns:
-        Polars DataFrame with image metadata, or None if not found
-    """
-    indexer = ImageIndexer(source_name)
-    return indexer.load_index()

@@ -14,9 +14,12 @@ ID Hierarchy:
                                      -> article_id
 """
 
+import logging
 import uuid
 from datetime import datetime
-from typing import Dict, NamedTuple, Union
+from typing import Dict, NamedTuple, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -519,3 +522,250 @@ def extract_text_block_id_from_line_id(line_id: str) -> str:
 
     # Text block ID is everything before TL marker
     return "_".join(parts[:tl_idx])
+
+
+# ============================================================================
+# ID Type Identification
+# ============================================================================
+
+
+def identify_id_type(id_string: str) -> str:
+    """
+    Identify the type of ID from its structure.
+
+    This utility function examines an ID string and determines what type
+    of identifier it represents. Useful for generic processing where the
+    ID type is unknown.
+
+    Args:
+        id_string: Any ID string from the system
+
+    Returns:
+        ID type: "source_id", "issue_id", "page_id", "text_block_id",
+                "line_id", "detection_id", "article_id", "entity_id",
+                "doc_id", or "unknown"
+
+    Example:
+        >>> identify_id_type("der_tag")
+        'source_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2")
+        'issue_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005")
+        'page_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005_TB_1")
+        'text_block_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005_TB_1_TL_1")
+        'line_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005_headline_a3f9c2")
+        'detection_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005_art_b7e4d1")
+        'article_id'
+        >>> identify_id_type("3074409-X_1902-09-05_415_2_005_TB_1_TL_1_ent_c5a8b3")
+        'entity_id'
+    """
+    parts = id_string.split("_")
+
+    # Check for special suffixes
+    if len(parts) >= 2:
+        # Entity ID: ends with _ent_{uuid}
+        if len(parts) >= 2 and parts[-2] == "ent":
+            return "entity_id"
+
+        # Article ID: ends with _art_{uuid}
+        if len(parts) >= 2 and parts[-2] == "art":
+            return "article_id"
+
+        # Detection ID: has element type before UUID (headline, image, caption, etc.)
+        # Check if second-to-last part looks like a detection class
+        detection_classes = [
+            "headline",
+            "image",
+            "caption",
+            "advertisement",
+            "table",
+            "paragraph",
+            "title",
+        ]
+        if parts[-2] in detection_classes or (
+            len(parts[-1]) == 6 and all(c in "0123456789abcdef" for c in parts[-1])
+        ):
+            # Last part is a short UUID (6 hex chars)
+            return "detection_id"
+
+    # Find date marker (YYYY-MM-DD format)
+    date_idx = None
+    for i, part in enumerate(parts):
+        if len(part) == 10 and part.count("-") == 2:
+            try:
+                # Verify it looks like a date
+                if part[4] == "-" and part[7] == "-":
+                    int(part[:4])  # Year
+                    int(part[5:7])  # Month
+                    int(part[8:10])  # Day
+                    date_idx = i
+                    break
+            except ValueError:
+                continue
+
+    # No date found - must be source_id or unknown
+    if date_idx is None:
+        # Simple source names don't contain dates
+        if len(parts) <= 2:
+            return "source_id"
+        return "unknown"
+
+    # Count parts after date to determine ID type
+    # Structure: source + date + issue + daily + page + [block] + [line]
+    # date_idx points to date, so we have:
+    # - date_idx + 1 = issue number
+    # - date_idx + 2 = daily issue number
+    # - date_idx + 3 = page number
+    # - date_idx + 4+ = block/line parts
+
+    parts_after_date = len(parts) - date_idx - 1
+
+    # Issue ID: date + issue + daily (2 parts after date)
+    if parts_after_date == 2:
+        return "issue_id"
+
+    # Page ID: date + issue + daily + page (3 parts after date)
+    if parts_after_date == 3:
+        return "page_id"
+
+    # Text block or line ID (4+ parts after date)
+    if parts_after_date >= 4:
+        # Check for TL (TextLine) marker
+        if "TL" in parts[date_idx + 4 :]:
+            return "line_id"
+        else:
+            return "text_block_id"
+
+    return "unknown"
+
+
+def extract_foreign_keys(id_string: str) -> Dict[str, Optional[str]]:
+    """
+    Extract all foreign key IDs from any ID type.
+
+    Given any ID in the system, extract all parent IDs (foreign keys)
+    that link this entity to higher levels in the hierarchy.
+
+    Args:
+        id_string: Any ID string from the system
+
+    Returns:
+        Dictionary with all extractable foreign keys:
+        - source_id: Source identifier
+        - issue_id: Issue identifier (if extractable)
+        - page_id: Page identifier (if extractable)
+        - text_block_id: Text block identifier (if extractable)
+        - line_id: Line identifier (if applicable)
+
+    Example:
+        >>> fks = extract_foreign_keys("3074409-X_1902-09-05_415_2_005_TB_1_TL_1")
+        >>> fks["source_id"]
+        '3074409-X'
+        >>> fks["issue_id"]
+        '3074409-X_1902-09-05_415_2'
+        >>> fks["page_id"]
+        '3074409-X_1902-09-05_415_2_005'
+        >>> fks["text_block_id"]
+        '3074409-X_1902-09-05_415_2_005_TB_1'
+    """
+    id_type = identify_id_type(id_string)
+
+    result: Dict[str, Optional[str]] = {
+        "source_id": None,
+        "issue_id": None,
+        "page_id": None,
+        "text_block_id": None,
+        "line_id": None,
+    }
+
+    try:
+        if id_type == "line_id" or id_type == "entity_id":
+            # Extract line components
+            if id_type == "entity_id":
+                # Remove _ent_{uuid} suffix
+                parts = id_string.split("_")
+                line_id = "_".join(parts[:-2])
+            else:
+                line_id = id_string
+
+            components = parse_line_id(line_id)
+            result["source_id"] = str(components["source"])
+            result["issue_id"] = (
+                f"{components['source']}_{components['date']}_"
+                f"{components['issue_number']:03d}_{components['daily_issue_number']}"
+            )
+            result["page_id"] = str(components["full_page_id"])
+            result["text_block_id"] = str(components["full_text_block_id"])
+            result["line_id"] = line_id
+
+        elif id_type == "text_block_id":
+            # Extract text block components
+            page_id = extract_page_id_from_text_block_id(id_string)
+            page_components = parse_page_id(page_id)
+            result["source_id"] = page_components.source
+            result["issue_id"] = extract_issue_id_from_page_id(page_id)
+            result["page_id"] = page_id
+            result["text_block_id"] = id_string
+
+        elif id_type == "page_id" or id_type == "detection_id" or id_type == "article_id":
+            # Extract page components
+            if id_type in ["detection_id", "article_id"]:
+                # Remove suffix to get page_id
+                page_id = extract_page_id_from_detection_or_article_id(id_string)
+            else:
+                page_id = id_string
+
+            page_components = parse_page_id(page_id)
+            result["source_id"] = page_components.source
+            result["issue_id"] = extract_issue_id_from_page_id(page_id)
+            result["page_id"] = page_id
+
+        elif id_type == "issue_id":
+            # Extract issue components
+            issue_components = parse_issue_id(id_string)
+            result["source_id"] = issue_components.source
+            result["issue_id"] = id_string
+
+        elif id_type == "source_id":
+            result["source_id"] = id_string
+
+    except (ValueError, IndexError) as e:
+        logger.warning(f"Could not extract foreign keys from {id_string}: {e}")
+
+    return result
+
+
+def extract_page_id_from_detection_or_article_id(id_string: str) -> str:
+    """
+    Extract page_id from a detection_id or article_id.
+
+    Args:
+        id_string: Detection or article ID
+
+    Returns:
+        Page ID
+
+    Example:
+        >>> extract_page_id_from_detection_or_article_id(
+        ...     "3074409-X_1902-09-05_415_2_005_headline_a3f9c2"
+        ... )
+        '3074409-X_1902-09-05_415_2_005'
+    """
+    parts = id_string.split("_")
+
+    # Find the date part
+    date_idx = None
+    for i, part in enumerate(parts):
+        if len(part) == 10 and part.count("-") == 2:
+            date_idx = i
+            break
+
+    if date_idx is None:
+        raise ValueError(f"Could not find date in ID: {id_string}")
+
+    # Page ID is: source + date + issue + daily + page
+    return "_".join(parts[: date_idx + 4])

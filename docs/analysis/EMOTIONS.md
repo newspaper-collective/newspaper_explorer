@@ -91,7 +91,7 @@ The emotion classifiers are based on research from the University of Würzburg a
 src/newspaper_explorer/
 ├── analyze/
 │   └── emotions/
-│       ├── predictor.py          # Main EmotionPredictor class
+│       ├── bert_classifier.py    # Main EmotionPredictor class
 │       ├── predict_parquet.py    # Standalone script (legacy)
 │       └── predict_parquet_multi_gpu.py  # Standalone script (legacy)
 ├── cli/
@@ -146,7 +146,7 @@ Download → Parse ALTO/METS → Polars DataFrame → Preprocessing (optional)
 
 **Initialization**:
 ```python
-from newspaper_explorer.analyze.emotions.predictor import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
 predictor = EmotionPredictor(
     source_name="der_tag",
@@ -487,7 +487,7 @@ newspaper-explorer analyze emotions predict --source der_tag \
 
 ```python
 from pathlib import Path
-from newspaper_explorer.analyze.emotions.predictor import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
 # Initialize predictor
 predictor = EmotionPredictor(
@@ -510,7 +510,7 @@ print(f"Results saved to: {output_file}")
 
 ```python
 from pathlib import Path
-from newspaper_explorer.analyze.emotions.predictor import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
 # High-performance configuration
 predictor = EmotionPredictor(
@@ -546,7 +546,7 @@ print(df[["Sadness_prob", "Love_prob", "Joy_prob", "Fear_prob", "Anger_prob", "A
 ```python
 from pathlib import Path
 import polars as pl
-from newspaper_explorer.analyze.emotions.predictor import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
 # 1. Setup
 source = "der_tag"
@@ -777,50 +777,127 @@ Optional columns:
 
 ### Output Schema
 
-Original columns + emotion predictions:
+The emotion predictor outputs **two files** with the same base name:
+
+1. **emotions.parquet**: Emotion predictions with foreign keys
+2. **emotions.json**: Analysis metadata for reproducibility
+
+#### Parquet Schema (emotions.parquet)
+
+Original columns + foreign keys + emotion predictions:
 
 ```python
 {
-    # Original columns (preserved)
+    # Original ID
     "line_id": str,
+    
+    # Foreign Keys (auto-extracted from line_id)
+    "source_id": str,        # e.g., "3074409-X"
+    "issue_id": str,         # e.g., "3074409-X_1902-09-05_415_2"
+    "page_id": str,          # e.g., "3074409-X_1902-09-05_415_2_005"
+    "text_block_id": str,    # e.g., "3074409-X_1902-09-05_415_2_005_TB_1"
+    
+    # Original columns (preserved)
     "text": str,
     "date": datetime,
     "year": int,
     # ... other original columns ...
     
     # Binary predictions (0 or 1)
-    "Sadness": int,
-    "Love": int,
-    "Joy": int,
-    "Fear": int,
-    "Anger": int,
-    "Agitation": int,
+    "sadness": int,
+    "love": int,
+    "joy": int,
+    "fear": int,
+    "anger": int,
+    "agitation": int,
     
     # Probability scores (0.0 to 1.0)
-    "Sadness_prob": float,
-    "Love_prob": float,
-    "Joy_prob": float,
-    "Fear_prob": float,
-    "Anger_prob": float,
-    "Agitation_prob": float,
+    "sadness_prob": float,
+    "love_prob": float,
+    "joy_prob": float,
+    "fear_prob": float,
+    "anger_prob": float,
+    "agitation_prob": float,
 }
 ```
+
+**Note**: Column names for emotions are now lowercase (was uppercase in old format).
+
+#### Metadata Schema (emotions.json)
+
+Analysis metadata for reproducibility:
+
+```json
+{
+  "analysis_id": "bert_multi_label_gbert_large_shaver_20250119_143022",
+  "analysis_type": "emotions",
+  "method_type": "bert_multi_label",
+  "model_name": "gbert_large_shaver",
+  "source": "der_tag",
+  "parameters": {
+    "model_base": "deepset/gbert-large",
+    "emotions": ["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"],
+    "batch_size": 32,
+    "chunk_size": 50000,
+    "max_length": 512,
+    "use_fp16": true,
+    "use_compile": true,
+    "multi_gpu": false,
+    "num_gpus": 1,
+    "text_column": "text"
+  },
+  "input_data": {
+    "row_count": 100000,
+    "columns": ["line_id", "text", "date", ...],
+    "date_range": ["1901-01-08", "1920-12-31"],
+    "id_type": "line_id"
+  },
+  "output_data": {
+    "row_count": 100000,
+    "columns": ["line_id", "source_id", "issue_id", ...],
+    "emotion_counts": {
+      "sadness": 5234,
+      "love": 1203,
+      "joy": 8765,
+      "fear": 3421,
+      "anger": 2109,
+      "agitation": 1876
+    },
+    "total_predictions": 100000
+  },
+  "status": "completed",
+  "duration_seconds": 456.78,
+  "created_at": "2025-01-19T14:30:22",
+  "software_version": "0.1.0",
+  "environment": {}
+}
+```
+
+See [EMOTIONS_METADATA_MIGRATION.md](./EMOTIONS_METADATA_MIGRATION.md) for migration details.
 
 ### Example Output
 
 ```python
 import polars as pl
+from newspaper_explorer.data.utils.metadata import load_metadata
 
-df = pl.read_parquet("results/der_tag/emotions/emotion_predictions.parquet")
+# Load results
+df = pl.read_parquet("results/der_tag/emotions/emotions.parquet")
 print(df.head())
 
 # Output:
-# ┌───────────┬────────────────────┬────────────┬──────┬─────────┬──────┬─────┬───────────────┐
-# │ line_id   │ text               │ date       │ year │ Sadness │ Love │ Joy │ Sadness_prob  │
-# ├───────────┼────────────────────┼────────────┼──────┼─────────┼──────┼─────┼───────────────┤
-# │ 1902_...  │ "Die Nachricht..." │ 1902-01-01 │ 1902 │ 1       │ 0    │ 0   │ 0.87          │
-# │ 1902_...  │ "Eine frohe..."    │ 1902-01-01 │ 1902 │ 0       │ 0    │ 1   │ 0.12          │
-# └───────────┴────────────────────┴────────────┴──────┴─────────┴──────┴─────┴───────────────┘
+# ┌────────────┬───────────┬──────────────┬──────────────┬─────────┬─────┬──────────────┐
+# │ line_id    │ source_id │ issue_id     │ page_id      │ sadness │ joy │ sadness_prob │
+# ├────────────┼───────────┼──────────────┼──────────────┼─────────┼─────┼──────────────┤
+# │ 3074409-X_ │ 3074409-X │ 3074409-X_19 │ 3074409-X_19 │ 1       │ 0   │ 0.87         │
+# │ 1902_...   │           │ 02-01-01_... │ 02-01-01_... │         │     │              │
+# └────────────┴───────────┴──────────────┴──────────────┴─────────┴─────┴──────────────┘
+
+# Load metadata
+metadata = load_metadata("results/der_tag/emotions/emotions.json")
+print(f"Analysis ID: {metadata.analysis_id}")
+print(f"Duration: {metadata.duration_seconds:.1f}s")
+print(f"Emotion counts: {metadata.output_data['emotion_counts']}")
 ```
 
 ---
@@ -839,13 +916,20 @@ newspaper-explorer analyze emotions predict --source der_tag
 # 3. Load and analyze results
 python3 << 'EOF'
 import polars as pl
+from newspaper_explorer.data.utils.metadata import load_metadata
 
-df = pl.read_parquet("results/der_tag/emotions/emotion_predictions.parquet")
+# Load results
+df = pl.read_parquet("results/der_tag/emotions/emotions.parquet")
 
-# Emotion counts
-emotions = ["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]
+# Emotion counts (from data)
+emotions = ["sadness", "love", "joy", "fear", "anger", "agitation"]
 print("Emotion counts:")
 print(df[emotions].sum())
+
+# Or from metadata
+metadata = load_metadata("results/der_tag/emotions/emotions.json")
+print("\nEmotion counts (from metadata):")
+print(metadata.output_data["emotion_counts"])
 
 # Emotion percentages
 print("\nEmotion percentages:")
@@ -868,6 +952,16 @@ newspaper-explorer analyze emotions predict \
 
 # 3. Monitor GPU usage (in separate terminal)
 watch -n 1 nvidia-smi
+
+# 4. Check processing stats
+python3 << 'EOF'
+from newspaper_explorer.data.utils.metadata import load_metadata
+
+metadata = load_metadata("results/der_tag/emotions/emotions.json")
+print(f"Processed: {metadata.output_data['row_count']:,} lines")
+print(f"Duration: {metadata.duration_seconds:.1f}s")
+print(f"Speed: {metadata.output_data['row_count']/metadata.duration_seconds:.0f} lines/sec")
+EOF
 ```
 
 ### Workflow 3: Normalized Text Processing
@@ -882,21 +976,18 @@ newspaper-explorer data preprocess \
 newspaper-explorer analyze emotions predict \
     --source der_tag \
     --input-file data/processed/der_tag/der_tag_textblocks_preprocessed.parquet \
-    --text-column text_normalized \
-    --output-name emotions_normalized
+    --text-column text_normalized
 
 # 3. Compare results
 python3 << 'EOF'
 import polars as pl
 
-df_raw = pl.read_parquet("results/der_tag/emotions/emotion_predictions.parquet")
-df_norm = pl.read_parquet("results/der_tag/emotions/emotions_normalized.parquet")
+# Note: Old format uses uppercase emotion names, new format lowercase
+df = pl.read_parquet("results/der_tag/emotions/emotions.parquet")
 
-print("Raw text emotion rates:")
-print(df_raw[["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]].mean())
-
-print("\nNormalized text emotion rates:")
-print(df_norm[["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]].mean())
+emotions = ["sadness", "love", "joy", "fear", "anger", "agitation"]
+print("Emotion rates on normalized text:")
+print(df[emotions].mean())
 EOF
 ```
 
@@ -1185,8 +1276,8 @@ print(anger_keywords.head(20))
 
 **Solutions**:
 1. Increase batch size (more work per batch)
-2. Increase DataLoader workers (edit `predictor.py`: `num_workers=8`)
-3. Increase prefetch factor (edit `predictor.py`: `prefetch_factor=8`)
+2. Increase DataLoader workers (edit `bert_classifier.py`: `num_workers=8`)
+3. Increase prefetch factor (edit `bert_classifier.py`: `prefetch_factor=8`)
 4. Check if data loading is bottleneck (use `htop` to monitor CPU)
 5. Use faster storage (SSD/NVMe)
 

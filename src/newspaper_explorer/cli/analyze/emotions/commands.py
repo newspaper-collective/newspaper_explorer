@@ -149,7 +149,7 @@ def predict(
             - {Emotion}_prob: Confidence score (0.0-1.0)
         Example: Sadness, Sadness_prob, Love, Love_prob, Joy, Joy_prob, etc.
     """
-    from newspaper_explorer.analyze.emotions.predictor import EmotionPredictor
+    from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
     # Setup logging
     logging.basicConfig(

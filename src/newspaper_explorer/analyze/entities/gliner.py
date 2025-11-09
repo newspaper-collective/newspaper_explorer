@@ -19,9 +19,16 @@ import torch
 from gliner import GLiNER
 from tqdm import tqdm
 
-from newspaper_explorer.analyze.query.engine import create_result_metadata
 from newspaper_explorer.config.base import get_config, get_project_root
 from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    extract_input_stats,
+    extract_output_stats,
+    save_metadata,
+    save_analysis_results,
+)
 from newspaper_explorer.data.utils.text import chunk_text
 
 logger = logging.getLogger(__name__)
@@ -453,13 +460,21 @@ class GLiNEREntityExtractor:
         all_records = []
         for idx, entities in processing_results:
             line_id = line_ids[idx]
+
+            # Extract foreign keys from line_id
+            fks = extract_foreign_keys(line_id)
+
             for entity in entities:
                 # Map label to standard type
                 entity_type = self.LABEL_MAPPING.get(entity["label"], entity["label"].lower())
 
                 all_records.append(
                     {
-                        "source_id": line_id,
+                        "line_id": line_id,
+                        "source_id": fks.get("source_id"),
+                        "issue_id": fks.get("issue_id"),
+                        "page_id": fks.get("page_id"),
+                        "text_block_id": fks.get("text_block_id"),
                         "entity_text": entity["text"],
                         "entity_type": entity_type,
                         "confidence": float(entity.get("score", 0.0)),
@@ -470,33 +485,39 @@ class GLiNEREntityExtractor:
         logger.info(f"Raw entities extracted: {len(all_records)}")
         if all_records:
             results_df_raw = pl.DataFrame(all_records)
-            # Deduplicate: keep highest confidence for each (source_id, entity_text, entity_type)
+            # Deduplicate: keep highest confidence for each (line_id, entity_text, entity_type)
             # Count detections to track how many times same entity was found across chunks
             results_df = (
-                results_df_raw.group_by(["source_id", "entity_text", "entity_type"])
+                results_df_raw.group_by(
+                    [
+                        "line_id",
+                        "source_id",
+                        "issue_id",
+                        "page_id",
+                        "text_block_id",
+                        "entity_text",
+                        "entity_type",
+                    ]
+                )
                 .agg(
                     [
                         pl.col("confidence").max().alias("confidence"),
                         pl.col("confidence").count().alias("detection_count"),
                     ]
                 )
-                .sort(["source_id", "entity_type", "confidence"], descending=[False, False, True])
+                .sort(["line_id", "entity_type", "confidence"], descending=[False, False, True])
             )
             logger.info(f"After deduplication: {len(results_df)} unique entities")
-            all_records = results_df.to_dicts()
         else:
             logger.info("No entities extracted")
-
-        logger.info(f"Total entities extracted: {len(all_records)}")
-
-        # Convert to DataFrame
-        if all_records:
-            results_df = pl.DataFrame(all_records)
-        else:
             # Empty DataFrame with correct schema
             results_df = pl.DataFrame(
                 schema={
+                    "line_id": pl.Utf8,
                     "source_id": pl.Utf8,
+                    "issue_id": pl.Utf8,
+                    "page_id": pl.Utf8,
+                    "text_block_id": pl.Utf8,
                     "entity_text": pl.Utf8,
                     "entity_type": pl.Utf8,
                     "confidence": pl.Float64,
@@ -504,6 +525,7 @@ class GLiNEREntityExtractor:
                 }
             )
 
+        logger.info(f"Total entities extracted: {len(results_df)}")
         return results_df
 
     def extract_and_save(
@@ -552,8 +574,8 @@ class GLiNEREntityExtractor:
         # Calculate duration
         duration = time.time() - start_time
 
-        # Create metadata
-        metadata = create_result_metadata(
+        # Create metadata using new system
+        metadata = AnalysisMetadata(
             analysis_type="entities",
             method_type="gliner",
             model_name=self.model_name.replace("/", "_").replace(".", "_"),
@@ -567,42 +589,34 @@ class GLiNEREntityExtractor:
                 "max_text_length": self.max_text_length,
                 "chunking": "enabled",
                 "text_column": text_column,
-                "source_id_column": id_column,  # Track what source_id references
+                "id_column": id_column,  # Track what ID column was used
+                "num_gpus": num_gpus,
             },
-            line_count=limit if limit else len(df),
+            input_data=extract_input_stats(df, id_column=id_column),
+            output_data=extract_output_stats(results_df),
             duration_seconds=duration,
+            status="completed",
         )
 
-        # Setup output directory: results/{source}/entities/{method_id}/
-        output_dir = (
-            self.config.results_dir / self.source_name / "entities" / metadata["analysis_id"]
+        # Save results using unified helper
+        results_base = self.config.results_dir / self.source_name
+        paths = save_analysis_results(
+            results_df=results_df, metadata=metadata, results_base_dir=results_base
         )
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save results
-        results_path = output_dir / "entities.parquet"
-        results_df.write_parquet(results_path, compression="zstd")
-        logger.info(f"Saved {len(results_df)} entities to {results_path}")
-
-        # Save metadata
-        metadata_path = output_dir / "metadata.json"
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-        logger.info(f"Saved metadata to {metadata_path}")
 
         # Summary
         logger.info("=" * 60)
         logger.info("Extraction Complete!")
-        logger.info(f"Method ID: {metadata['analysis_id']}")
+        logger.info(f"Analysis ID: {metadata.analysis_id}")
         logger.info(f"Total entities: {len(results_df)}")
         logger.info(f"Duration: {duration:.1f}s")
-        logger.info(f"Output: {output_dir}")
+        logger.info(f"Output: {paths['output_dir']}")
         logger.info("=" * 60)
 
         return {
             "metadata": metadata,
             "results_df": results_df,
-            "output_dir": output_dir,
-            "results_path": results_path,
-            "metadata_path": metadata_path,
+            "output_dir": paths["output_dir"],
+            "results_path": paths["results_path"],
+            "metadata_path": paths["metadata_path"],
         }

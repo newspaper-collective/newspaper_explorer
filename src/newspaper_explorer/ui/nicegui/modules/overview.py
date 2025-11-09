@@ -17,7 +17,7 @@ async def create_overview_tab(state):
     # Hero section
     with ui.row().classes("w-full items-center justify-center q-mb-md"):
         with ui.column().classes("items-center"):
-            ui.label("📰 Historical Newspaper Explorer").classes("text-h3 q-mb-md")
+            ui.label("Newspaper Explorer").classes("text-h3 q-mb-md")
 
     # Statistics overview for selected source
     if state.selected_source:

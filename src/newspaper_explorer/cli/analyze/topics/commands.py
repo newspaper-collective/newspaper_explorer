@@ -368,3 +368,274 @@ def lda(
         click.echo(f"\nError during LDA processing: {e}", err=True)
         logging.exception("Full error details:")
         return
+
+
+@topics_group.command(name="bertopic")
+@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@click.option(
+    "--input-file",
+    type=click.Path(exists=True),
+    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+)
+@click.option(
+    "--text-column",
+    type=str,
+    default="text",
+    help="Name of text column to process",
+    show_default=True,
+)
+@click.option(
+    "--group-by",
+    type=str,
+    help="Grouping column(s), comma-separated (e.g., 'page_id', 'date', 'year,month')",
+)
+@click.option(
+    "--n-topics",
+    type=int,
+    default=None,
+    help="Target number of topics (None = automatic discovery)",
+)
+@click.option(
+    "--min-cluster-size",
+    type=int,
+    default=10,
+    help="Minimum chunks per topic cluster",
+    show_default=True,
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=5,
+    help="Number of topic terms per document",
+    show_default=True,
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=32,
+    help="Batch size for embedding generation",
+    show_default=True,
+)
+@click.option(
+    "--embedding-model",
+    type=str,
+    default="paraphrase-multilingual-MiniLM-L12-v2",
+    help="SentenceTransformer model for embeddings",
+    show_default=True,
+)
+@click.option(
+    "--min-text-length",
+    type=int,
+    default=100,
+    help="Minimum text length in characters",
+    show_default=True,
+)
+@click.option(
+    "--chunk-sentences",
+    type=int,
+    default=5,
+    help="Sentences per chunk",
+    show_default=True,
+)
+@click.option(
+    "--no-stopwords",
+    is_flag=True,
+    help="Disable German stopword removal",
+)
+@click.option(
+    "--num-gpus",
+    type=int,
+    default=1,
+    help="Number of GPUs to use for embedding (1=single, >1=multi-GPU parallel)",
+    show_default=True,
+)
+@click.option(
+    "--output-name",
+    type=str,
+    default="bertopic_topics",
+    help="Output filename (without extension)",
+    show_default=True,
+)
+@click.option(
+    "--limit",
+    type=int,
+    help="Limit input rows (for testing)",
+)
+def bertopic(
+    source: str,
+    input_file: str,
+    text_column: str,
+    group_by: str,
+    n_topics: int,
+    min_cluster_size: int,
+    top_k: int,
+    batch_size: int,
+    embedding_model: str,
+    min_text_length: int,
+    chunk_sentences: int,
+    no_stopwords: bool,
+    num_gpus: int,
+    output_name: str,
+    limit: int,
+):
+    """
+    Discover topics using BERTopic (global semantic topic modeling).
+
+    **Global Topics Approach**:
+    Fits a single BERTopic model on the entire corpus to discover global topics,
+    then assigns documents to these topics. This approach:
+    
+    - Enables temporal analysis (same topic space across all documents)
+    - Is 10-100x faster than per-document modeling
+    - Produces better topic quality (learns from entire corpus)
+    - Supports multi-GPU for embedding generation
+    
+    Workflow:
+    1. Chunk all documents into sentences
+    2. Embed all chunks in batches (multi-GPU supported)
+    3. Fit BERTopic ONCE to discover global topics
+    4. Assign each document to discovered topics
+
+    Examples:
+
+    \b
+    Discover topics from all pages:
+        newspaper-explorer analyze topics bertopic \\
+            --source der_tag --group-by page_id
+
+    \b
+    Discover 20 topics with custom settings:
+        newspaper-explorer analyze topics bertopic \\
+            --source der_tag --group-by page_id \\
+            --n-topics 20 --min-cluster-size 15
+
+    \b
+    Test on subset with larger batches:
+        newspaper-explorer analyze topics bertopic \\
+            --source der_tag --group-by page_id \\
+            --limit 50000 --batch-size 64
+
+    \b
+    Temporal analysis by date:
+        newspaper-explorer analyze topics bertopic \\
+            --source der_tag --group-by date
+
+    Output:
+        results/{source}/topics/{output_name}.parquet
+        results/{source}/topics/{output_name}.json
+    """
+    from newspaper_explorer.analyze.topics.bertopic import BERTopicExtractor
+
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+    )
+
+    click.echo(f"\n{'='*80}")
+    click.echo(f"BERTopic Global Topic Modeling")
+    click.echo(f"{'='*80}\n")
+
+    click.echo(f"Parameters:")
+    click.echo(f"  - Source: {source}")
+    if input_file:
+        click.echo(f"  - Input file: {input_file}")
+    click.echo(f"  - Text column: {text_column}")
+    click.echo(f"  - Embedding model: {embedding_model}")
+    click.echo(f"  - Target topics: {n_topics or 'automatic discovery'}")
+    click.echo(f"  - Min cluster size: {min_cluster_size}")
+    click.echo(f"  - Terms per document: {top_k}")
+    click.echo(f"  - Batch size: {batch_size}")
+    click.echo(f"  - Chunk sentences: {chunk_sentences}")
+    click.echo(f"  - Min text length: {min_text_length} chars")
+    click.echo(f"  - Stopwords: {'disabled' if no_stopwords else 'enabled (German)'}")
+    click.echo(f"  - GPUs: {num_gpus} ({'multi-GPU' if num_gpus > 1 else 'single GPU'})")
+
+    # Parse group_by
+    group_by_list = None
+    if group_by:
+        group_by_list = [g.strip() for g in group_by.split(",")]
+        click.echo(f"  - Group by: {', '.join(group_by_list)}")
+
+    if limit:
+        click.echo(f"  - Limit: {limit:,} rows")
+
+    click.echo()
+
+    try:
+        # Initialize extractor
+        extractor = BERTopicExtractor(
+            source_name=source,
+            input_file=Path(input_file) if input_file else None,
+            text_column=text_column,
+            embedding_model=embedding_model,
+            min_text_length=min_text_length,
+            chunk_sentences=chunk_sentences,
+            use_stopwords=not no_stopwords,
+            num_gpus=num_gpus,
+        )
+
+        # Extract topics
+        click.echo("Extracting topics...\n")
+
+        results_df = extractor.extract_topics(
+            group_by=group_by_list,
+            n_topics=n_topics,
+            min_cluster_size=min_cluster_size,
+            top_k=top_k,
+            limit=limit,
+            batch_size=batch_size,
+        )
+
+        if len(results_df) == 0:
+            click.echo("\nNo results generated - check logs for details", err=True)
+            return
+
+        # Save results
+        output_file = extractor.save_results(results_df, output_name=output_name, top_k=top_k)
+
+        click.echo(f"\n{'='*80}")
+        click.echo(f"✓ Topic extraction complete!")
+        click.echo(f"{'='*80}\n")
+        click.echo(f"Results saved to: {output_file}")
+
+        # Get metadata file path
+        metadata_file = str(output_file).replace(".parquet", ".json")
+        click.echo(f"Metadata saved to: {metadata_file}")
+        click.echo(f"Total documents: {len(results_df):,}")
+
+        # Show sample
+        if len(results_df) > 0:
+            click.echo(f"\nSample document topics (first 3):")
+            click.echo("-" * 80)
+            sample = results_df.head(3)
+            for row in sample.iter_rows(named=True):
+                doc_id = row["doc_id"]
+                topics = row["topics"]
+                topic_probs = row["topic_probs"]
+                topic_terms = row["topic_terms"]
+
+                topic_info = ", ".join(
+                    [f"T{t}({p:.2f})" for t, p in zip(topics[:3], topic_probs[:3])]
+                )
+                click.echo(f"\nDocument: {doc_id}")
+                click.echo(f"  Main topics: {topic_info}")
+                click.echo(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
+                if len(row["scores"]) > 0:
+                    click.echo(
+                        f"  Scores: {', '.join([f'{s:.3f}' for s in row['scores'][:top_k]])}"
+                    )
+
+        click.echo(f"\n{'='*80}\n")
+
+    except FileNotFoundError as e:
+        click.echo(f"\nError: {e}", err=True)
+        click.echo(f"\nTroubleshooting:", err=True)
+        click.echo(
+            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
+        )
+        return
+    except Exception as e:
+        click.echo(f"\nError during BERTopic processing: {e}", err=True)
+        logging.exception("Full error details:")
+        return

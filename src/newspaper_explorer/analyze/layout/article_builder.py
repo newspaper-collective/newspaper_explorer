@@ -5,11 +5,12 @@ This module uses detected headlines as anchors to group following text blocks
 into coherent articles.
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Set
-import polars as pl
 from datetime import datetime
+import polars as pl
 
 from newspaper_explorer.analyze.layout.schemas import (
     Article,
@@ -283,6 +284,8 @@ class ArticleBuilder:
         output_dir: Path,
         source_name: str,
         format: str = "parquet",
+        save_metadata: bool = True,
+        metadata_params: Optional[Dict] = None,
     ):
         """
         Save articles to file.
@@ -292,6 +295,8 @@ class ArticleBuilder:
             output_dir: Output directory
             source_name: Source identifier (e.g., 'der_tag')
             format: Output format ('parquet' or 'json')
+            save_metadata: Whether to save metadata.json file
+            metadata_params: Additional parameters for metadata
         """
         if not articles:
             logger.warning("No articles to save")
@@ -311,8 +316,6 @@ class ArticleBuilder:
             logger.info(f"Saved {len(articles)} articles to {output_path}")
 
         elif format == "json":
-            import json
-
             output_path = output_dir / f"{source_name}_articles.json"
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(articles_data, f, indent=2, ensure_ascii=False)
@@ -320,3 +323,26 @@ class ArticleBuilder:
 
         else:
             raise ValueError(f"Unsupported format: {format}")
+
+        # Save metadata.json
+        if save_metadata:
+            metadata_file = output_dir / f"{source_name}_articles_metadata.json"
+            metadata = {
+                "analysis_type": "layout",
+                "method_type": "article_reconstruction",
+                "model_name": "headline_based_grouping",
+                "model_version": None,
+                "source": source_name,
+                "created_at": datetime.now().isoformat(),
+                "parameters": {
+                    "vertical_threshold": self.vertical_threshold,
+                    "horizontal_threshold": self.horizontal_threshold,
+                    "min_text_length": self.min_text_length,
+                    **(metadata_params or {}),
+                },
+                "total_articles": len(articles),
+                "output_format": format,
+            }
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            logger.info(f"Saved metadata to {metadata_file}")

@@ -134,5 +134,7 @@ module = [
     "keybert",
     "yake",
     "rake_nltk",
+    "bertopic",
+    "sklearn",
 ]
 ignore_missing_imports = true

@@ -16,9 +16,11 @@ Usage:
     newspaper-explorer analyze layout build-articles --source der_tag --year 1902
 """
 
+import json
 import logging
 import click
 from pathlib import Path
+from datetime import datetime
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
@@ -283,6 +285,54 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
             click.echo(f"\nSaved {len(all_detections)} detections to: {output_file}")
 
         df.write_parquet(output_file, compression="zstd")
+
+        # Save or update metadata.json
+        metadata_file = output_dir / "metadata.json"
+        if metadata_file.exists() and resume:
+            # Load existing metadata and update
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            # Update stats
+            metadata["total_pages"] = len(df["page_id"].unique())
+            metadata["total_detections"] = len(df)
+            metadata["updated_at"] = datetime.now().isoformat()
+        else:
+            # Create new metadata
+            metadata = {
+                "analysis_type": "layout",
+                "method_type": "yolov11",
+                "model_name": f"yolo11{model_size[0]}_doc_layout",  # e.g., yolo11m_doc_layout
+                "model_version": "DocLayNet",
+                "source": source,
+                "created_at": datetime.now().isoformat(),
+                "parameters": {
+                    "model_size": model_size,
+                    "device": device,
+                    "batch_size": batch_size,
+                    "conf_threshold": conf_threshold,
+                    "year_filter": year,
+                    "classes": [
+                        "Caption",
+                        "Footnote",
+                        "Formula",
+                        "List-item",
+                        "Page-footer",
+                        "Page-header",
+                        "Picture",
+                        "Section-header",
+                        "Table",
+                        "Text",
+                        "Title",
+                    ],
+                },
+                "total_pages": len(df["page_id"].unique()),
+                "total_detections": len(df),
+                "resume_enabled": resume,
+            }
+
+        with open(metadata_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        click.echo(f"Saved metadata to: {metadata_file}")
     else:
         click.echo("\nNo detections to save", err=True)
 
@@ -833,6 +883,26 @@ def match_headlines(source, year, overlap_threshold, text_data):
 
         df = pl.DataFrame(headlines_data)
         df.write_parquet(output_path)
+
+        # Save metadata.json
+        metadata_file = output_dir / f"{source}_headlines_metadata.json"
+        metadata = {
+            "analysis_type": "layout",
+            "method_type": "headline_matching",
+            "model_name": "coordinate_overlap",
+            "model_version": None,
+            "source": source,
+            "created_at": datetime.now().isoformat(),
+            "parameters": {
+                "overlap_threshold": overlap_threshold,
+                "text_data": text_data or "raw",
+                "year_filter": year,
+            },
+            "total_pages": len(detection_files),
+            "total_headlines": len(all_headlines),
+        }
+        with open(metadata_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     click.echo(f"\n{'='*60}")
     click.echo("Headline Matching Complete!")

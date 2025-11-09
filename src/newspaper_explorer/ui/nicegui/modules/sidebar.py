@@ -41,16 +41,23 @@ async def create_sidebar(state):
                         # Newspaper title
                         ui.label(stats["newspaper_title"]).classes("text-weight-bold text-body1")
 
-                        # Years and language
-                        with ui.row().classes("items-center gap-1 q-mt-xs no-wrap"):
-                            ui.icon("calendar_month", size="sm").classes(
-                                "text-grey-7 flex-shrink-0"
-                            )
-                            ui.label(stats["years_available"]).classes("text-caption text-grey-7")
+                        # Language and years in one row
+                        with ui.row().classes("items-center gap-2 q-mt-xs no-wrap"):
+                            with ui.row().classes("items-center gap-1 no-wrap"):
+                                ui.icon("language", size="sm").classes("text-grey-7 flex-shrink-0")
+                                ui.label(stats["language"].upper()).classes(
+                                    "text-caption text-grey-7"
+                                )
 
-                        with ui.row().classes("items-center gap-1 no-wrap"):
-                            ui.icon("language", size="sm").classes("text-grey-7 flex-shrink-0")
-                            ui.label(stats["language"].upper()).classes("text-caption text-grey-7")
+                            ui.label("•").classes("text-grey-5")
+
+                            with ui.row().classes("items-center gap-1 no-wrap"):
+                                ui.icon("calendar_month", size="sm").classes(
+                                    "text-grey-7 flex-shrink-0"
+                                )
+                                ui.label(stats["years_available"]).classes(
+                                    "text-caption text-grey-7"
+                                )
 
                         # Provider
                         if stats["source_provider"]:

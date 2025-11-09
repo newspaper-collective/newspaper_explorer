@@ -28,6 +28,11 @@ plotly>=5.17.0
 pandas>=2.0.0
 neo4j>=5.0.0
 
+# UI Dependencies
+nicegui>=1.4.0
+wordcloud>=1.9.0
+matplotlib>=3.7.0
+
 # Development Dependencies
 # Install with: pip install -e ".[dev]"
 # Or: pip install -r requirements.txt -r requirements-dev.txt

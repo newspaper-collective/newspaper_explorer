@@ -20,6 +20,7 @@ Example:
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -37,6 +38,14 @@ from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_metadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -469,11 +478,13 @@ class KeyBERTExtractor:
             use_mmr: Use Maximal Marginal Relevance for diversity
 
         Returns:
-            DataFrame with columns: doc_id, keywords, scores
+            DataFrame with columns: doc_id, source_id, issue_id, page_id, text_block_id, keywords, scores
 
         Note:
             Scores are cosine similarity (0-1, higher = more relevant)
         """
+        start_time = time.time()
+
         if not self.input_file.exists():
             raise FileNotFoundError(
                 f"Input file not found: {self.input_file}\n"
@@ -610,7 +621,31 @@ class KeyBERTExtractor:
 
             results = single_gpu_results
 
+        # Convert to DataFrame
         results_df = pl.DataFrame(results)
+
+        # Extract foreign keys from doc_ids
+        logger.info("Extracting foreign keys from doc_ids...")
+        doc_ids_list = results_df["doc_id"].to_list()
+        foreign_keys = [extract_foreign_keys(doc_id) for doc_id in doc_ids_list]
+
+        # Add foreign key columns
+        results_df = results_df.with_columns(
+            [
+                pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
+                pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
+                pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
+                pl.Series(
+                    "text_block_id",
+                    [fk.get("text_block_id", fk.get("line_id", "")) for fk in foreign_keys],
+                ),
+            ]
+        )
+
+        # Store timing info for save_results
+        self._last_extraction_time = time.time() - start_time
+        self._last_input_df = df
+
         logger.info(f"Extracted keywords for {len(results_df)} documents")
 
         return results_df
@@ -619,25 +654,95 @@ class KeyBERTExtractor:
         self,
         results_df: pl.DataFrame,
         output_name: str = "keybert_keywords",
+        top_k: Optional[int] = None,
     ) -> Path:
         """
-        Save results to parquet file.
+        Save results to parquet file with metadata.
 
         Args:
             results_df: Results DataFrame
-            output_name: Output filename (without extension)
+            output_name: Output filename (without extension, default: "keywords")
+            top_k: Number of keywords (for metadata, optional)
 
         Returns:
             Path to saved file
         """
-        output_dir = self.config.results_dir / self.source_name / "keywords"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Creating metadata...")
 
-        output_file = output_dir / f"{output_name}.parquet"
-        results_df.write_parquet(output_file)
+        # Calculate statistics
+        total_keywords = sum(len(kw_list) for kw_list in results_df["keywords"].to_list())
+        avg_keywords = total_keywords / len(results_df) if len(results_df) > 0 else 0
+        avg_score = (
+            sum(
+                sum(scores) / len(scores) if scores else 0
+                for scores in results_df["scores"].to_list()
+            )
+            / len(results_df)
+            if len(results_df) > 0
+            else 0
+        )
 
-        logger.info(f"Saved results to {output_file}")
-        return output_file
+        # Create output statistics
+        output_stats = extract_output_stats(results_df)
+        output_stats.update(
+            {
+                "total_documents": len(results_df),
+                "total_keywords": total_keywords,
+                "avg_keywords_per_doc": round(avg_keywords, 2),
+                "avg_score": round(avg_score, 4),
+            }
+        )
+
+        # Get duration if available from last extraction
+        duration = getattr(self, "_last_extraction_time", None)
+
+        # Get input stats if available
+        input_stats = {}
+        if hasattr(self, "_last_input_df"):
+            input_stats = extract_input_stats(self._last_input_df)
+
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_type="keywords",
+            method_type="keybert",
+            model_name=self.model_name.replace("/", "_").replace("-", "_"),
+            source=self.source_name,
+            parameters={
+                "model_name": self.model_name,
+                "keyphrase_ngram_range": list(self.keyphrase_ngram_range),
+                "diversity": self.diversity,
+                "batch_size": self.batch_size,
+                "max_seq_length": self.max_seq_length,
+                "use_chunking": self.use_chunking,
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+                "use_multi_gpu": self.use_multi_gpu,
+                "num_gpus": self.num_gpus if self.use_multi_gpu else 1,
+                "device": self.device,
+                "top_k": top_k,
+                "text_column": self.text_column,
+                "use_stopwords": self.stopwords is not None,
+            },
+            input_data=input_stats,
+            output_data=output_stats,
+            status="completed",
+            duration_seconds=duration,
+        )
+
+        # Save using unified helper
+        results_base = self.config.results_dir / self.source_name
+        paths = save_analysis_results(
+            results_df=results_df,
+            metadata=metadata,
+            results_base_dir=results_base,
+            results_filename="keywords.parquet",
+        )
+
+        logger.info(f"Saved results to {paths['results_path']}")
+        logger.info(f"Metadata saved to: {paths['metadata_path']}")
+        logger.info(f"Analysis ID: {metadata.analysis_id}")
+
+        return paths["results_path"]
 
 
 def extract_keywords_simple(

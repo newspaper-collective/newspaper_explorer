@@ -1,311 +1,554 @@
-#!/usr/bin/env python3
 """
-Topic modeling script for newspaper pages using BERTopic.
-Processes text files from dump/ directory and generates topic analysis CSV.
-Adapted to work with individual page files rather than aggregated issues.
+BERTopic-based topic modeling for newspaper texts.
+
+Implements BERTopic to discover semantic topics using transformer embeddings
+and extract representative terms from newspaper articles. Unlike LDA which uses
+bag-of-words, BERTopic leverages BERT embeddings for semantic understanding.
+
+This is adapted from the optimized standalone script with improvements:
+- Integration with unified metadata system
+- Foreign key support for linking results
+- Configurable chunking and aggregation strategies
+
+Example:
+    >>> from newspaper_explorer.analyze.topics.bertopic import BERTopicExtractor
+    >>> extractor = BERTopicExtractor(source_name="der_tag")
+    >>>
+    >>> # Extract topics for documents
+    >>> doc_topics = extractor.extract_topics(
+    ...     group_by=["date"],
+    ...     min_topic_size=5,
+    ...     limit=1000
+    ... )
+    >>>
+    >>> # Save with metadata
+    >>> output_path = extractor.save_results(doc_topics, output_name="bertopic_topics")
 """
 
+import logging
+import os
+import time
 from pathlib import Path
-import re
-import pandas as pd
-from tqdm import tqdm
-from collections import defaultdict
+from typing import List, Optional, Dict, Any, Tuple
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
+import polars as pl
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
+from tqdm import tqdm
 
-# ======================== CONFIG ========================
-DUMP_ROOT = Path("/mnt/data/userfiles/westphal/hackathon/dump")
-OUTPUT_DIR = Path("/mnt/data/userfiles/westphal/hackathon/output")
-CSV_OUT = OUTPUT_DIR / "topics_analysis.csv"
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_metadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
+from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.text import split_text_into_sentences, chunk_text
 
-# Ensure output directory exists
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Set up model cache directory
+_MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "sentence_transformers"
+_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = str(_MODELS_DIR)
 
-# BERTopic parameters
-MIN_TOPIC_SIZE = 3  # Minimum number of documents per topic
-N_TOP_TOPICS = 5  # Number of top topics to extract per document group
-MIN_TEXT_LENGTH = 100  # Minimum text length to consider
+logger = logging.getLogger(__name__)
 
 
-# ======================== HELPERS ========================
-def parse_filename(filename: str):
+def _chunk_document_worker(args: Tuple[str, str, int, int]) -> Tuple[str, List[str]]:
     """
-    Parse metadata from filename like: 3074409X_1900-01-02_000_2_H_1_001.txt
-    Returns: (date_str, issue_num, part_num, page_num)
+    Worker function for parallel document chunking.
+
+    Args:
+        args: Tuple of (doc_id, text, chunk_sentences, min_text_length)
+
+    Returns:
+        Tuple of (doc_id, list of chunks)
     """
-    match = re.search(r"(\d{4}-\d{2}-\d{2})_\d+_(\d+)_H_(\d+)_(\d+)", filename)
-    if match:
-        date_str, issue, part, page = match.groups()
-        return date_str, issue, part, page
-    return None, None, None, None
+    doc_id, text, chunk_sentences, min_text_length = args
 
+    if len(text) < min_text_length:
+        return (doc_id, [])
 
-def group_files_by_issue(dump_dir: Path):
-    """
-    Group text files by date and issue number.
-    Returns dict: {(date, issue): [file_paths]}
-    """
-    groups = defaultdict(list)
-
-    for txt_file in sorted(dump_dir.glob("*.txt")):
-        date_str, issue, part, page = parse_filename(txt_file.name)
-        if date_str and issue:
-            groups[(date_str, issue)].append(txt_file)
-
-    return groups
-
-
-def read_and_clean_text(file_path: Path):
-    """Read text file and extract clean content, skipping metadata."""
     try:
-        text = file_path.read_text(encoding="utf-8", errors="ignore")
+        # Split into sentences using spaCy
+        sentences = split_text_into_sentences(text, model="de_core_news_sm")
+    except (ImportError, OSError):
+        # Fallback to simple chunking
+        chunk_size = chunk_sentences * 100
+        chunks = chunk_text(
+            text,
+            max_length=chunk_size,
+            split_symbols=[" ", ",", ".", ";", ":", "!", "?"],
+            split_margin=50,
+        )
+        return (doc_id, [c for c in chunks if len(c) >= min_text_length])
 
-        # Skip the header (Source, Date, Total blocks, separator)
-        lines = text.split("\n")
-        content_lines = []
-        in_content = False
+    # Group sentences into chunks
+    chunks = []
+    for i in range(0, len(sentences), chunk_sentences):
+        chunk = " ".join(sentences[i : i + chunk_sentences])
+        if len(chunk) >= min_text_length:
+            chunks.append(chunk)
 
-        for line in lines:
-            # Skip metadata and block headers
-            if (
-                line.startswith("Source:")
-                or line.startswith("Date:")
-                or line.startswith("Total blocks:")
-                or line.startswith("===")
-                or line.startswith("--- Block")
-                or line.startswith("Position:")
-            ):
-                continue
-
-            # Clean and add non-empty lines
-            clean_line = line.strip()
-            if clean_line:
-                content_lines.append(clean_line)
-
-        return " ".join(content_lines)
-    except Exception as e:
-        print(f"Error reading {file_path}: {e}")
-        return ""
+    return (doc_id, chunks)
 
 
-def aggregate_issue_text(file_paths):
-    """Combine all pages of an issue into one document."""
-    texts = []
-    for fp in sorted(file_paths):
-        text = read_and_clean_text(fp)
-        if len(text) >= MIN_TEXT_LENGTH:
-            texts.append(text)
+class BERTopicExtractor:
+    """
+    Extract topics from newspaper texts using BERTopic.
 
-    return " ".join(texts) if texts else ""
+    BERTopic uses transformer embeddings (BERT) for semantic similarity,
+    then clusters documents and extracts representative words using c-TF-IDF.
 
+    Key features:
+    - Semantic topic discovery (not just word co-occurrence like LDA)
+    - Automatic topic number detection (no need to specify k)
+    - Multilingual support via paraphrase-multilingual models
+    - Document chunking for better topic granularity
 
-def extract_topic_keywords(topic_model, topic_id, top_k=5):
-    """Extract top keywords for a topic."""
-    words_scores = topic_model.get_topic(topic_id)
-    if not words_scores:
-        return []
-    return [word for word, score in words_scores[:top_k]]
+    Workflow:
+        1. Load and aggregate documents (by date, page, issue, etc.)
+        2. Chunk documents for better topic detection
+        3. Generate embeddings and cluster
+        4. Extract topic terms using c-TF-IDF
+        5. Assign topics back to original documents
+    """
 
-
-def fallback_keywords(text, top_k=5):
-    """Simple fallback when no topics can be formed using term frequency."""
-    if not text or len(text) < MIN_TEXT_LENGTH:
-        return []
-
-    cv = CountVectorizer(stop_words=None, ngram_range=(1, 2), min_df=1, max_df=0.95)
-    try:
-        X = cv.fit_transform([text])
-        vocab = cv.get_feature_names_out()
-        counts = X.toarray().sum(axis=0)
-        pairs = sorted(zip(vocab, counts), key=lambda t: t[1], reverse=True)
-        return [w for w, _ in pairs[:top_k]]
-    except Exception:
-        return []
-
-
-# ======================== MAIN PROCESSING ========================
-def main():
-    print("Starting topic modeling on newspaper dump files...")
-    print(f"Input directory: {DUMP_ROOT}")
-    print(f"Output CSV: {CSV_OUT}")
-
-    # Check if dump directory exists
-    if not DUMP_ROOT.exists():
-        raise FileNotFoundError(f"Dump directory not found: {DUMP_ROOT}")
-
-    # Group files by issue
-    print("\nGrouping files by issue...")
-    issue_groups = group_files_by_issue(DUMP_ROOT)
-    print(f"Found {len(issue_groups)} issues")
-
-    if not issue_groups:
-        raise FileNotFoundError("No valid text files found in dump directory")
-
-    # Initialize models
-    print("\nInitializing BERTopic models...")
-    embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-    vectorizer_model = CountVectorizer(stop_words=None, ngram_range=(1, 2), min_df=2)
-
-    # Process each issue
-    rows = []
-
-    for (date_str, issue_num), file_paths in tqdm(
-        issue_groups.items(), desc="Processing issues"
+    def __init__(
+        self,
+        source_name: str,
+        input_file: Optional[Path] = None,
+        text_column: str = "text",
+        embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
+        min_text_length: int = 100,
+        chunk_sentences: int = 5,
+        use_stopwords: bool = True,
+        num_gpus: int = 1,
     ):
-        # Parse date
+        """
+        Initialize BERTopic extractor.
+
+        Args:
+            source_name: Name of the source (e.g., "der_tag")
+            input_file: Custom input parquet file (default: textblocks.parquet)
+            text_column: Name of column containing text
+            embedding_model: SentenceTransformer model name
+            min_text_length: Minimum text length to consider (chars)
+            chunk_sentences: Number of sentences per chunk for topic detection
+            use_stopwords: Use German stopwords for vectorizer (default: True)
+            num_gpus: Number of GPUs to use (1 = single GPU, >1 = multi-GPU, default: 1)
+        """
+        self.source_name = source_name
+        self.text_column = text_column
+        self.min_text_length = min_text_length
+        self.chunk_sentences = chunk_sentences
+        self.num_gpus = num_gpus
+        self.config = get_config()
+
+        # Determine input file
+        if input_file:
+            self.input_file = Path(input_file)
+        else:
+            # Default to textblocks for better coherence
+            source_dir = self.config.data_dir / "raw" / source_name / "text"
+            textblocks_file = source_dir / f"{source_name}_textblocks.parquet"
+            lines_file = source_dir / f"{source_name}_lines.parquet"
+
+            if textblocks_file.exists():
+                self.input_file = textblocks_file
+                logger.info("Using textblocks.parquet (aggregated text blocks)")
+            elif lines_file.exists():
+                self.input_file = lines_file
+                logger.info("Using lines.parquet (line-level data)")
+            else:
+                self.input_file = textblocks_file
+
+        # Get stopwords
+        stopwords = None
+        if use_stopwords:
+            try:
+                from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
+
+                stopwords = list(DE_STOP_WORDS)
+                logger.info(f"Using {len(stopwords)} German stopwords")
+            except ImportError:
+                logger.warning("spaCy not installed, proceeding without stopwords")
+                stopwords = None
+
+        # Initialize models
+        logger.info(f"Loading embedding model: {embedding_model}")
+        self.embedding_model = SentenceTransformer(embedding_model)
+        self.vectorizer_model = CountVectorizer(
+            stop_words=stopwords,
+            ngram_range=(1, 2),
+            min_df=2,
+        )
+
+        logger.info(f"Initialized BERTopic extractor for {source_name}")
+        logger.info(f"Input file: {self.input_file}")
+
+    def _chunk_text(self, text: str) -> List[str]:
+        """
+        Split text into chunks for better topic detection.
+
+        Uses spaCy to split into sentences, then groups N sentences per chunk.
+
+        Args:
+            text: Input text
+
+        Returns:
+            List of text chunks
+        """
         try:
-            year, month, day = date_str.split("-")
-        except:
-            year, month, day = "", "", ""
-
-        # Aggregate all pages into one document
-        full_text = aggregate_issue_text(file_paths)
-
-        if len(full_text) < MIN_TEXT_LENGTH:
-            # Fallback for very short documents
-            keywords = fallback_keywords(full_text, top_k=5)
-            rows.append(
-                {
-                    "year": year,
-                    "month": month,
-                    "day": day,
-                    "issue": issue_num,
-                    "num_pages": len(file_paths),
-                    "topics": "|".join(keywords[:N_TOP_TOPICS]),
-                    "subtopics": "|".join(keywords[:5]),
-                    "method": "fallback",
-                }
+            # Split into sentences using spaCy
+            sentences = split_text_into_sentences(text, model="de_core_news_sm")
+        except (ImportError, OSError) as e:
+            logger.warning(f"Could not use spaCy for sentence splitting: {e}")
+            logger.warning("Falling back to simple chunking")
+            # Fallback to simple chunking if spaCy not available
+            chunk_size = self.chunk_sentences * 100
+            chunks = chunk_text(
+                text,
+                max_length=chunk_size,
+                split_symbols=[" ", ",", ".", ";", ":", "!", "?"],
+                split_margin=50,
             )
-            continue
+            return [c for c in chunks if len(c) >= self.min_text_length]
 
-        # Split into smaller chunks for better topic detection
-        # Using simple sentence splitting
-        sentences = re.split(r"(?<=[.!?])\s+", full_text)
-
-        # Create chunks of ~5 sentences each
+        # Group sentences into chunks
         chunks = []
-        chunk_size = 5
-        for i in range(0, len(sentences), chunk_size):
-            chunk = " ".join(sentences[i : i + chunk_size])
-            if len(chunk) >= MIN_TEXT_LENGTH:
+        for i in range(0, len(sentences), self.chunk_sentences):
+            chunk = " ".join(sentences[i : i + self.chunk_sentences])
+            if len(chunk) >= self.min_text_length:
                 chunks.append(chunk)
 
-        if len(chunks) < MIN_TOPIC_SIZE:
-            # Not enough chunks for topic modeling
-            keywords = fallback_keywords(full_text, top_k=5)
-            rows.append(
-                {
-                    "year": year,
-                    "month": month,
-                    "day": day,
-                    "issue": issue_num,
-                    "num_pages": len(file_paths),
-                    "topics": "|".join(keywords[:N_TOP_TOPICS]),
-                    "subtopics": "|".join(keywords[:5]),
-                    "method": "fallback",
-                }
+        return chunks
+
+    def extract_topics(
+        self,
+        group_by: Optional[List[str]] = None,
+        n_topics: Optional[int] = None,
+        min_cluster_size: int = 10,
+        top_k: int = 5,
+        limit: Optional[int] = None,
+        batch_size: int = 32,
+    ) -> pl.DataFrame:
+        """
+        Extract topics from documents using global BERTopic.
+
+        **Global Topics Approach**:
+        1. Loads all documents and chunks them into sentences
+        2. Embeds all chunks in batches (supports multi-GPU)
+        3. Fits BERTopic ONCE on entire corpus to discover global topics
+        4. Assigns each document to discovered global topics
+
+        This approach enables:
+        - Temporal analysis (same topic space across all documents)
+        - Fast processing (single fit instead of per-document fits)
+        - Better topic quality (learns from entire corpus)
+        - Comparable topics across documents
+
+        Args:
+            group_by: Columns to group by (e.g., ["date"], ["page_id"])
+            n_topics: Target number of topics (None = automatic discovery)
+            min_cluster_size: Minimum chunks per topic cluster
+            top_k: Number of topic terms to return per document
+            limit: Limit number of input rows (for testing)
+            batch_size: Batch size for embedding generation
+
+        Returns:
+            DataFrame with doc_id, topic_terms, scores, topics, topic_probs,
+            and foreign keys
+        """
+        start_time = time.time()
+
+        logger.info("Loading input data...")
+        df = pl.read_parquet(self.input_file)
+
+        if limit:
+            df = df.head(limit)
+            logger.info(f"Limited to {limit} rows")
+
+        # Aggregate by grouping
+        if group_by:
+            logger.info(f"Aggregating by: {group_by}")
+            df = df.with_columns(
+                [pl.concat_str([pl.col(c) for c in group_by], separator="_").alias("doc_id")]
             )
-            continue
-
-        # Perform topic modeling
-        try:
-            topic_model = BERTopic(
-                embedding_model=embedding_model,
-                vectorizer_model=vectorizer_model,
-                min_topic_size=MIN_TOPIC_SIZE,
-                nr_topics=None,
-                calculate_probabilities=False,
-                verbose=False,
+            df_grouped = df.group_by(group_by + ["doc_id"]).agg(
+                [pl.col(self.text_column).str.join(" ").alias("text")]
             )
-
-            topics, _ = topic_model.fit_transform(chunks)
-
-            # Get topic information
-            info = topic_model.get_topic_info()
-            info = info[info["Topic"] != -1].sort_values("Count", ascending=False)
-
-            if info.empty:
-                # No topics found
-                keywords = fallback_keywords(full_text, top_k=5)
-                topic_labels = keywords[:N_TOP_TOPICS]
-                subtopic_keywords = keywords[:5]
-                method = "bertopic_notopics"
+        else:
+            if "page_id" in df.columns:
+                df = df.with_columns([pl.col("page_id").alias("doc_id")])
+            elif "text_block_id" in df.columns:
+                df = df.with_columns([pl.col("text_block_id").alias("doc_id")])
             else:
-                # Extract top topics
-                top_topic_ids = info["Topic"].head(N_TOP_TOPICS).tolist()
-                topic_labels = []
-
-                for tid in top_topic_ids:
-                    keywords = extract_topic_keywords(topic_model, tid, top_k=2)
-                    topic_labels.append(" ".join(keywords))
-
-                # Get subtopics from the most dominant topic
-                dominant_tid = top_topic_ids[0]
-                subtopic_keywords = extract_topic_keywords(
-                    topic_model, dominant_tid, top_k=5
+                df = df.with_columns(
+                    [pl.lit("doc_").add(pl.int_range(pl.len()).cast(str)).alias("doc_id")]
                 )
-                method = "bertopic"
+            df_grouped = df.select(["doc_id", self.text_column])
 
-            rows.append(
+        logger.info(f"Processing {len(df_grouped)} documents")
+
+        # Phase 1: Chunk all documents in parallel
+        logger.info("Phase 1: Chunking all documents in parallel...")
+
+        # Prepare arguments for parallel processing
+        chunk_args = [
+            (row["doc_id"], row[self.text_column] or "", self.chunk_sentences, self.min_text_length)
+            for row in df_grouped.iter_rows(named=True)
+        ]
+
+        # Use multiprocessing for parallel chunking
+        n_workers = max(1, cpu_count() - 1)  # Leave one core free
+        logger.info(f"Using {n_workers} workers for parallel chunking")
+
+        doc_chunks = []  # List of (doc_id, chunk_text)
+        doc_metadata = {}  # doc_id -> doc info
+
+        with Pool(processes=n_workers) as pool:
+            # Process in chunks with progress bar
+            for doc_id, chunks in tqdm(
+                pool.imap(_chunk_document_worker, chunk_args, chunksize=100),
+                total=len(chunk_args),
+                desc="Chunking documents",
+            ):
+                if len(chunks) == 0:
+                    continue
+
+                doc_metadata[doc_id] = {"num_chunks": len(chunks)}
+                for chunk in chunks:
+                    doc_chunks.append((doc_id, chunk))
+
+        if len(doc_chunks) == 0:
+            logger.warning("No chunks generated - all documents too short or invalid")
+            return pl.DataFrame()
+
+        logger.info(f"Generated {len(doc_chunks)} chunks from {len(doc_metadata)} documents")
+
+        # Phase 2: Batch embed all chunks
+        logger.info("Phase 2: Embedding all chunks...")
+        chunk_texts = [chunk for _, chunk in doc_chunks]
+
+        # Multi-GPU encoding if num_gpus > 1
+        if self.num_gpus > 1:
+            logger.info(f"Using multi-GPU encoding with {self.num_gpus} GPUs")
+            # Start multi-process pool for parallel GPU encoding
+            target_devices = [f"cuda:{i}" for i in range(self.num_gpus)]
+            pool = self.embedding_model.start_multi_process_pool(target_devices=target_devices)
+            embeddings = self.embedding_model.encode_multi_process(
+                chunk_texts,
+                pool=pool,
+                batch_size=batch_size,
+            )
+            self.embedding_model.stop_multi_process_pool(pool)
+        else:
+            # Single GPU encoding
+            embeddings = self.embedding_model.encode(
+                chunk_texts,
+                batch_size=batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True,
+            )
+
+        logger.info(f"Generated {len(embeddings)} embeddings")
+
+        # Phase 3: Fit global BERTopic model
+        logger.info("Phase 3: Fitting global BERTopic model...")
+        topic_model = BERTopic(
+            embedding_model=self.embedding_model,
+            vectorizer_model=self.vectorizer_model,
+            min_topic_size=min_cluster_size,
+            nr_topics=n_topics,
+            calculate_probabilities=False,
+            verbose=True,
+        )
+
+        topics, probs = topic_model.fit_transform(chunk_texts, embeddings)
+
+        logger.info("Global topic model fitted successfully")
+
+        # Get topic info
+        topic_info = topic_model.get_topic_info()
+        logger.info(f"Discovered {len(topic_info[topic_info['Topic'] != -1])} topics")
+
+        # Phase 4: Assign topics to documents
+        logger.info("Phase 4: Assigning topics to documents...")
+        results = []
+
+        for doc_id in tqdm(doc_metadata.keys(), desc="Assigning topics"):
+            # Find all chunks for this document
+            doc_chunk_indices = [i for i, (did, _) in enumerate(doc_chunks) if did == doc_id]
+            doc_topics = [topics[i] for i in doc_chunk_indices]
+
+            # Count topic frequencies (excluding -1 outliers)
+            topic_counts = {}
+            for t in doc_topics:
+                if t != -1:
+                    topic_counts[t] = topic_counts.get(t, 0) + 1
+
+            if not topic_counts:
+                # No valid topics for this document
+                continue
+
+            # Sort by frequency
+            sorted_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)
+            top_topics = sorted_topics[:3]  # Top 3 topics
+
+            # Calculate probabilities
+            total = sum(count for _, count in top_topics)
+            topic_ids = [tid for tid, _ in top_topics]
+            topic_probs = [count / total for _, count in top_topics]
+
+            # Get topic terms
+            all_terms = []
+            all_scores = []
+
+            for topic_id, prob in zip(topic_ids, topic_probs):
+                words_scores = topic_model.get_topic(topic_id)
+                if words_scores:
+                    for word, score in words_scores[:top_k]:
+                        all_terms.append(word)
+                        all_scores.append(float(prob * score))
+
+            # Deduplicate and sort
+            term_scores = list(zip(all_terms, all_scores))
+            term_scores.sort(key=lambda x: x[1], reverse=True)
+
+            seen = set()
+            unique_terms = []
+            unique_scores = []
+            for term, score in term_scores:
+                if term not in seen:
+                    seen.add(term)
+                    unique_terms.append(term)
+                    unique_scores.append(score)
+                    if len(unique_terms) >= top_k:
+                        break
+
+            results.append(
                 {
-                    "year": year,
-                    "month": month,
-                    "day": day,
-                    "issue": issue_num,
-                    "num_pages": len(file_paths),
-                    "topics": "|".join(topic_labels),
-                    "subtopics": "|".join(subtopic_keywords),
-                    "method": method,
+                    "doc_id": doc_id,
+                    "topic_terms": unique_terms,
+                    "scores": unique_scores,
+                    "topics": topic_ids,
+                    "topic_probs": topic_probs,
                 }
             )
 
-        except Exception as e:
-            print(f"\nError processing {date_str} issue {issue_num}: {e}")
-            # Fallback
-            keywords = fallback_keywords(full_text, top_k=5)
-            rows.append(
-                {
-                    "year": year,
-                    "month": month,
-                    "day": day,
-                    "issue": issue_num,
-                    "num_pages": len(file_paths),
-                    "topics": "|".join(keywords[:N_TOP_TOPICS]),
-                    "subtopics": "|".join(keywords[:5]),
-                    "method": "error_fallback",
-                }
-            )
+        logger.info(f"Assigned topics to {len(results)} documents")
 
-    # Create and save DataFrame
-    print("\nCreating output CSV...")
-    df = pd.DataFrame(
-        rows,
-        columns=[
-            "year",
-            "month",
-            "day",
-            "issue",
-            "num_pages",
-            "topics",
-            "subtopics",
-            "method",
-        ],
-    )
-    df.sort_values(["year", "month", "day", "issue"], inplace=True)
-    df.to_csv(CSV_OUT, index=False, encoding="utf-8")
+        # Create DataFrame
+        if not results:
+            logger.warning("No results - no documents had valid topics")
+            return pl.DataFrame()
 
-    # Print summary
-    print(f"\n✅ Successfully processed {len(rows)} issues")
-    print(f"   Output saved to: {CSV_OUT}")
-    print(f"\nMethod breakdown:")
-    print(df["method"].value_counts())
-    print(
-        f"\nDate range: {df['year'].min()}-{df['month'].min()}-{df['day'].min()} to "
-        + f"{df['year'].max()}-{df['month'].max()}-{df['day'].max()}"
-    )
+        df_results = pl.DataFrame(results)
 
+        # Add foreign keys
+        logger.info("Extracting foreign keys...")
+        foreign_keys_list = []
+        for doc_id in df_results["doc_id"]:
+            fks = extract_foreign_keys(doc_id)
+            foreign_keys_list.append(fks)
 
-if __name__ == "__main__":
-    main()
+        df_results = df_results.with_columns(
+            [
+                pl.Series("source_id", [fk.get("source_id") for fk in foreign_keys_list]),
+                pl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys_list]),
+                pl.Series("page_id", [fk.get("page_id") for fk in foreign_keys_list]),
+                pl.Series("text_block_id", [fk.get("text_block_id") for fk in foreign_keys_list]),
+            ]
+        )
+
+        # Store for save_results
+        self._last_extraction_time = time.time() - start_time
+        self._last_input_df = df_grouped
+        self._last_topic_model = topic_model
+        self._last_params = {
+            "group_by": group_by,
+            "n_topics": n_topics,
+            "min_cluster_size": min_cluster_size,
+            "top_k": top_k,
+            "limit": limit,
+            "batch_size": batch_size,
+            "embedding_model": self.embedding_model.get_sentence_embedding_dimension(),
+            "min_text_length": self.min_text_length,
+            "chunk_sentences": self.chunk_sentences,
+            "total_chunks": len(doc_chunks),
+            "total_documents": len(doc_metadata),
+        }
+
+        logger.info(f"Extracted topics for {len(df_results)} documents")
+
+        return df_results
+
+    def save_results(
+        self,
+        results_df: pl.DataFrame,
+        output_name: str = "bertopic_topics",
+        top_k: Optional[int] = None,
+    ) -> Path:
+        """
+        Save results to parquet file with metadata.
+
+        Args:
+            results_df: Results DataFrame with topic assignments
+            output_name: Output filename (without extension, default: "bertopic_topics")
+            top_k: Number of terms (for metadata, optional)
+
+        Returns:
+            Path to saved parquet file
+        """
+        # Create metadata
+        params = getattr(self, "_last_params", {})
+        if top_k is not None:
+            params["top_k"] = top_k
+
+        # Extract input/output statistics
+        input_data = {}
+        if hasattr(self, "_last_input_df"):
+            input_data["num_documents"] = len(getattr(self, "_last_input_df", []))
+
+        output_data = extract_output_stats(results_df)
+
+        # Add topic-specific statistics
+        if "topics" in results_df.columns:
+            all_topics = []
+            for topic_list in results_df["topics"]:
+                # topic_list is a Python list, not a Polars Series
+                if isinstance(topic_list, list) and topic_list and topic_list != [-1]:
+                    all_topics.extend(topic_list)
+            output_data["unique_topics_assigned"] = len(set(all_topics))
+            output_data["total_topic_assignments"] = len(all_topics)
+
+        metadata = AnalysisMetadata(
+            analysis_type="topics",
+            method_type="bertopic",
+            model_name=f"bertopic_{params.get('embedding_model', 'unknown')}d",
+            source=self.source_name,
+            parameters=params,
+            input_data=input_data,
+            output_data=output_data,
+            duration_seconds=getattr(self, "_last_extraction_time", None),
+            status="completed",
+        )
+
+        # Save using unified helper
+        results_base = self.config.results_dir / self.source_name
+        paths = save_analysis_results(
+            results_df=results_df,
+            metadata=metadata,
+            results_base_dir=results_base,
+            results_filename="topics.parquet",
+        )
+
+        logger.info(f"Saved results to {paths['results_path']}")
+        logger.info(f"Saved metadata to {paths['metadata_path']}")
+
+        return paths["results_path"]

@@ -77,18 +77,69 @@ def chunk_text(
     return chunks
 
 
-def split_into_sentences(
+def split_text_into_sentences(
+    text: str,
+    model: str = "de_core_news_sm",
+) -> list[str]:
+    """
+    Split a single text into sentences using spaCy for German language processing.
+
+    This is a lightweight function for splitting individual texts. For batch processing
+    of DataFrames, use split_into_sentences_df() instead.
+
+    Args:
+        text: Text to split into sentences
+        model: spaCy model to use (default: "de_core_news_sm")
+               Install it with: python -m spacy download de_core_news_sm
+
+    Returns:
+        List of sentences (strings)
+
+    Example:
+        >>> text = "Das ist der erste Satz. Hier ist der zweite. Und der dritte!"
+        >>> sentences = split_text_into_sentences(text)
+        >>> print(f"Split into {len(sentences)} sentences")
+        >>> # Split into 3 sentences
+
+    Raises:
+        ImportError: If spaCy is not installed
+        OSError: If the specified spaCy model is not installed
+    """
+    try:
+        import spacy
+    except ImportError:
+        raise ImportError(
+            "spaCy is required for sentence splitting. Install it with: pip install spacy"
+        )
+
+    try:
+        nlp = spacy.load(model)
+    except OSError:
+        raise OSError(
+            f"spaCy model '{model}' not found. Install it with: "
+            f"python -m spacy download {model}"
+        )
+
+    # Process text
+    doc = nlp(text)
+
+    # Extract sentences
+    sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+
+    return sentences
+
+
+def split_df_into_sentences(
     df: pl.DataFrame,
     text_column: str = "text",
     model: str = "de_core_news_sm",
     batch_size: int = 1000,
 ) -> pl.DataFrame:
     """
-    Split text into sentences using spaCy for German language processing.
+    Split text in a DataFrame into sentences using spaCy for German language processing.
 
-    This function uses spaCy's German language model to split text into sentences.
-    It processes the data in batches for efficiency and expands each row into
-    multiple rows (one per sentence).
+    This function processes DataFrames in batches for efficiency and expands each row into
+    multiple rows (one per sentence). For splitting individual texts, use split_text_into_sentences().
 
     Args:
         df: Polars DataFrame containing text to split
@@ -108,12 +159,15 @@ def split_into_sentences(
         >>> # First aggregate text blocks
         >>> blocks_df = load_and_aggregate_textblocks("lines.parquet")
         >>> # Then split into sentences
-        >>> sentences_df = split_into_sentences(blocks_df, text_column="text")
+        >>> sentences_df = split_df_into_sentences(blocks_df, text_column="text")
         >>> print(f"Expanded {len(blocks_df)} blocks into {len(sentences_df)} sentences")
 
     Raises:
         ImportError: If spaCy is not installed
         OSError: If the specified spaCy model is not installed
+
+    See Also:
+        split_text_into_sentences: For splitting individual texts (not DataFrames)
     """
     try:
         import spacy

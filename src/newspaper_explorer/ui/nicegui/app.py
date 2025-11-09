@@ -16,6 +16,7 @@ from newspaper_explorer.ui.nicegui.modules.overview import create_overview_tab
 from newspaper_explorer.ui.nicegui.modules.browse import create_browse_tab
 from newspaper_explorer.ui.nicegui.modules.entities import create_entity_tab
 from newspaper_explorer.ui.nicegui.modules.concepts import create_knowledge_graph_tab
+from newspaper_explorer.ui.nicegui.modules.keywords import create_keywords_tab
 from newspaper_explorer.ui.nicegui.modules.images import create_images_tab
 from newspaper_explorer.ui.nicegui.modules.search import create_search_tab
 from newspaper_explorer.ui.nicegui.modules.topics import create_topics_tab
@@ -62,7 +63,8 @@ def setup_and_run(host: str = "0.0.0.0", port: int = 8080, reload: bool = True):
             browse_tab = ui.tab("Browse", icon="calendar_view_month")
             search_tab = ui.tab("Search", icon="search")
             entities_tab = ui.tab("Entities", icon="person")
-            graph_tab = ui.tab("Knowledge Graph", icon="hub")
+            concepts_tab = ui.tab("Concepts", icon="hub")
+            keywords_tab = ui.tab("Keywords", icon="label")
             images_tab = ui.tab("Images", icon="image")
             topics_tab = ui.tab("Topics", icon="topic")
             emotions_tab = ui.tab("Emotions", icon="mood")
@@ -84,9 +86,13 @@ def setup_and_run(host: str = "0.0.0.0", port: int = 8080, reload: bool = True):
             with ui.tab_panel(entities_tab):
                 await create_entity_tab(state)
 
-            # Knowledge Graph tab
-            with ui.tab_panel(graph_tab):
+            # Concepts tab (formerly Knowledge Graph)
+            with ui.tab_panel(concepts_tab):
                 await create_knowledge_graph_tab(state)
+
+            # Keywords tab
+            with ui.tab_panel(keywords_tab):
+                await create_keywords_tab(state)
 
             # Images tab
             with ui.tab_panel(images_tab):

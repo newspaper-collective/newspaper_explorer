@@ -837,10 +837,8 @@ def keybert(
             top_k=top_k, group_by=group_by_list, use_mmr=use_mmr, limit=limit
         )
 
-        # Save results
-        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df_keywords.write_parquet(output_path)
+        # Save results with metadata
+        output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
         click.echo(f"\n✓ Saved keywords to: {output_path}")
         click.echo(f"  Total groups: {len(df_keywords)}")
