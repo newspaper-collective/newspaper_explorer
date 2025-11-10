@@ -141,8 +141,129 @@ class AnalysisMetadata(BaseModel):
         }
 
 
+class PreprocessingMetadata(BaseModel):
+    """
+    Metadata for preprocessing pipeline results.
+
+    Tracks all preprocessing steps applied to text data, enabling:
+    1. Reproducibility of preprocessing pipelines
+    2. Chaining of preprocessing steps (preprocessed input → new preprocessing)
+    3. Full provenance tracking in analysis results
+
+    Example:
+        >>> metadata = PreprocessingMetadata(
+        ...     source="der_tag",
+        ...     steps=["normalize", "lowercase"],
+        ...     parameters={"text_column": "text", "output_column": "text_processed"}
+        ... )
+    """
+
+    # Required core fields
+    source: str = Field(..., description="Source dataset name (e.g., 'der_tag')")
+    steps: List[str] = Field(..., description="List of preprocessing steps applied in order")
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Processing parameters (text_column, batch_size, etc.)",
+    )
+
+    # Auto-generated/optional fields
+    preprocessing_id: Optional[str] = Field(
+        default=None, description="Unique identifier (auto-generated if not provided)"
+    )
+    created_at: str = Field(
+        default_factory=lambda: datetime.now().isoformat(),
+        description="ISO timestamp of creation",
+    )
+    completed_at: Optional[str] = Field(default=None, description="ISO timestamp of completion")
+    duration_seconds: Optional[float] = Field(
+        default=None, description="Processing time in seconds"
+    )
+
+    # Input/output tracking
+    input_data: Dict[str, Any] = Field(
+        default_factory=dict, description="Input dataset information"
+    )
+    output_data: Dict[str, Any] = Field(
+        default_factory=dict, description="Output dataset information"
+    )
+
+    # Chaining support - track previous preprocessing if input was preprocessed
+    previous_preprocessing: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Previous preprocessing metadata if input was already preprocessed",
+    )
+
+    # Status tracking
+    status: str = Field(default="completed", description="Status: completed, failed, in_progress")
+    error_message: Optional[str] = Field(
+        default=None, description="Error details if status is failed"
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Generate preprocessing_id if not provided."""
+        if self.preprocessing_id is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            steps_str = "_".join(self.steps[:3])  # First 3 steps for ID
+            if len(self.steps) > 3:
+                steps_str += f"_plus{len(self.steps) - 3}"
+            self.preprocessing_id = f"{steps_str}_{timestamp}".replace("-", "_")
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        """Validate status field."""
+        allowed = ["completed", "failed", "in_progress"]
+        if v not in allowed:
+            raise ValueError(f"Status must be one of {allowed}, got: {v}")
+        return v
+
+    def get_all_steps(self) -> List[str]:
+        """
+        Get complete list of all steps including previous preprocessing.
+
+        Returns:
+            Flat list of all steps in chronological order
+        """
+        all_steps = []
+        if self.previous_preprocessing:
+            prev_steps = self.previous_preprocessing.get("steps", [])
+            all_steps.extend(prev_steps)
+        all_steps.extend(self.steps)
+        return all_steps
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return self.model_dump()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PreprocessingMetadata":
+        """Create from dictionary."""
+        return cls.model_validate(data)
+
+    class Config:
+        """Pydantic config."""
+
+        json_schema_extra = {
+            "example": {
+                "source": "der_tag",
+                "steps": ["normalize", "lowercase", "remove-stopwords"],
+                "parameters": {
+                    "text_column": "text",
+                    "output_column": "text_processed",
+                    "batch_size": 32,
+                },
+                "preprocessing_id": "normalize_lowercase_remove_stopwords_20251110_120000",
+                "created_at": "2025-11-10T12:00:00.000000",
+                "duration_seconds": 45.2,
+                "status": "completed",
+                "input_data": {"row_count": 100000, "date_range": ["1901-01-08", "1920-12-31"]},
+                "output_data": {"row_count": 98500},
+            }
+        }
+
+
 def save_metadata(
-    metadata: AnalysisMetadata,
+    metadata: Union[AnalysisMetadata, PreprocessingMetadata],
     parquet_path: Path,
     filename: Optional[str] = None,
 ) -> Path:
@@ -150,9 +271,10 @@ def save_metadata(
     Save metadata as JSON alongside parquet file.
 
     Creates a JSON file with the same base name as the parquet file.
+    Supports both AnalysisMetadata and PreprocessingMetadata.
 
     Args:
-        metadata: Metadata object to save
+        metadata: Metadata object to save (AnalysisMetadata or PreprocessingMetadata)
         parquet_path: Path to the parquet file (or its parent directory)
         filename: Optional custom filename for metadata (defaults to matching parquet name)
 
@@ -166,8 +288,11 @@ def save_metadata(
     """
     # Determine output path
     if parquet_path.is_dir():
-        # If directory provided, use analysis_id as base name
-        base_name = filename or f"{metadata.analysis_id}.json"
+        # If directory provided, use ID as base name
+        if isinstance(metadata, AnalysisMetadata):
+            base_name = filename or f"{metadata.analysis_id}.json"
+        else:  # PreprocessingMetadata
+            base_name = filename or f"{metadata.preprocessing_id}.json"
         json_path = parquet_path / base_name
     else:
         # If file provided, replace extension
@@ -187,15 +312,19 @@ def save_metadata(
     return json_path
 
 
-def load_metadata(metadata_path: Union[Path, str]) -> AnalysisMetadata:
+def load_metadata(
+    metadata_path: Union[Path, str],
+) -> Union[AnalysisMetadata, PreprocessingMetadata]:
     """
     Load metadata from JSON file.
+
+    Automatically detects metadata type based on fields present.
 
     Args:
         metadata_path: Path to metadata JSON file
 
     Returns:
-        AnalysisMetadata object
+        AnalysisMetadata or PreprocessingMetadata object
 
     Raises:
         FileNotFoundError: If metadata file doesn't exist
@@ -214,7 +343,14 @@ def load_metadata(metadata_path: Union[Path, str]) -> AnalysisMetadata:
     with open(metadata_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    return AnalysisMetadata.from_dict(data)
+    # Auto-detect metadata type based on fields
+    if "analysis_type" in data:
+        return AnalysisMetadata.from_dict(data)
+    elif "steps" in data:
+        return PreprocessingMetadata.from_dict(data)
+    else:
+        # Fallback to AnalysisMetadata for legacy compatibility
+        return AnalysisMetadata.from_dict(data)
 
 
 def find_metadata_for_parquet(parquet_path: Union[Path, str]) -> Optional[Path]:
@@ -250,23 +386,28 @@ def extract_input_stats(
     df: pl.DataFrame,
     id_column: str = "line_id",
     date_column: str = "date",
+    input_path: Optional[Union[Path, str]] = None,
 ) -> Dict[str, Any]:
     """
     Extract statistics from input DataFrame for metadata.
+
+    If input_path is provided and has associated preprocessing metadata,
+    includes preprocessing information for full provenance tracking.
 
     Args:
         df: Input DataFrame
         id_column: Name of ID column
         date_column: Name of date column
+        input_path: Optional path to input parquet file (for loading preprocessing metadata)
 
     Returns:
-        Dictionary with input statistics
+        Dictionary with input statistics (including preprocessing info if available)
 
     Example:
-        >>> df = pl.read_parquet("data/raw/der_tag/text/lines.parquet")
-        >>> stats = extract_input_stats(df)
-        >>> print(stats["row_count"])
-        100000
+        >>> df = pl.read_parquet("data/processed/der_tag/text/normalize_lowercase_20251110/textblocks.parquet")
+        >>> stats = extract_input_stats(df, input_path="data/processed/...")
+        >>> print(stats["preprocessing"])  # Will include preprocessing metadata if available
+        {'preprocessing_id': 'normalize_lowercase_20251110_120000', 'steps': [...]}
     """
     stats = {
         "row_count": len(df),
@@ -296,6 +437,25 @@ def extract_input_stats(
             from newspaper_explorer.data.utils.ids import identify_id_type
 
             stats["id_type"] = identify_id_type(sample_id)
+
+    # Check for preprocessing metadata if input path provided
+    if input_path:
+        metadata_path = find_metadata_for_parquet(input_path)
+        if metadata_path:
+            try:
+                metadata = load_metadata(metadata_path)
+                if isinstance(metadata, PreprocessingMetadata):
+                    # Include full preprocessing provenance
+                    stats["preprocessing"] = {
+                        "preprocessing_id": metadata.preprocessing_id,
+                        "steps": metadata.get_all_steps(),  # Includes chained steps
+                        "parameters": metadata.parameters,
+                        "created_at": metadata.created_at,
+                        "metadata_path": str(metadata_path),
+                    }
+                    logger.debug(f"Loaded preprocessing metadata: {metadata.preprocessing_id}")
+            except Exception as e:
+                logger.debug(f"Could not load preprocessing metadata from {metadata_path}: {e}")
 
     return stats
 
@@ -419,10 +579,14 @@ def list_analyses(
             except Exception:
                 continue
 
-        # Apply filters
-        if analysis_type and metadata.analysis_type != analysis_type:
-            continue
-        if source and metadata.source != source:
+        # Apply filters (only for AnalysisMetadata)
+        if isinstance(metadata, AnalysisMetadata):
+            if analysis_type and metadata.analysis_type != analysis_type:
+                continue
+            if source and metadata.source != source:
+                continue
+        elif isinstance(metadata, PreprocessingMetadata):
+            # Skip preprocessing metadata in analysis listing
             continue
 
         # Add path info
@@ -431,7 +595,7 @@ def list_analyses(
 
         # Try to find associated parquet
         parquet_path = json_path.with_suffix(".parquet")
-        if not parquet_path.exists():
+        if not parquet_path.exists() and isinstance(metadata, AnalysisMetadata):
             parquet_path = json_path.parent / f"{metadata.analysis_id}.parquet"
         if parquet_path.exists():
             meta_dict["parquet_path"] = str(parquet_path)
@@ -516,6 +680,73 @@ def save_analysis_results(
 
     logger.info(f"Analysis output directory: {output_dir}")
     logger.info(f"Analysis ID: {metadata.analysis_id}")
+
+    return {
+        "output_dir": output_dir,
+        "results_path": results_path,
+        "metadata_path": metadata_path,
+    }
+
+
+def save_preprocessing_results(
+    results_df: pl.DataFrame,
+    metadata: PreprocessingMetadata,
+    processed_base_dir: Path,
+    results_filename: str = "textblocks.parquet",
+) -> Dict[str, Path]:
+    """
+    Save preprocessing results with standardized subdirectory structure.
+
+    Creates structure: {processed_base_dir}/{source}/text/{preprocessing_id}/
+
+    Args:
+        results_df: Preprocessed DataFrame to save
+        metadata: Preprocessing metadata object
+        processed_base_dir: Base processed directory (e.g., config.processed_dir)
+        results_filename: Name for results file (default: textblocks.parquet)
+
+    Returns:
+        Dictionary with paths:
+            - output_dir: Directory containing results
+            - results_path: Path to parquet file
+            - metadata_path: Path to metadata JSON
+
+    Example:
+        >>> from newspaper_explorer.config.base import get_config
+        >>> config = get_config()
+        >>>
+        >>> metadata = PreprocessingMetadata(
+        ...     source="der_tag",
+        ...     steps=["normalize", "lowercase"],
+        ...     parameters={"text_column": "text"}
+        ... )
+        >>>
+        >>> paths = save_preprocessing_results(
+        ...     results_df=df,
+        ...     metadata=metadata,
+        ...     processed_base_dir=config.processed_dir,
+        ... )
+        >>>
+        >>> # Results saved to:
+        >>> # data/processed/der_tag/text/normalize_lowercase_20251110_120000/
+        >>> #   ├── textblocks.parquet
+        >>> #   └── metadata.json
+    """
+    # Create subdirectory structure: {base}/{source}/text/{preprocessing_id}/
+    preprocessing_id = metadata.preprocessing_id or "unknown"
+    output_dir = processed_base_dir / metadata.source / "text" / preprocessing_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save results parquet
+    results_path = output_dir / results_filename
+    results_df.write_parquet(results_path, compression="zstd")
+    logger.info(f"Saved {len(results_df)} rows to {results_path}")
+
+    # Save metadata
+    metadata_path = save_metadata(metadata, results_path)
+
+    logger.info(f"Preprocessing output directory: {output_dir}")
+    logger.info(f"Preprocessing ID: {metadata.preprocessing_id}")
 
     return {
         "output_dir": output_dir,

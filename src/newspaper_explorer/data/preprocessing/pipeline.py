@@ -12,7 +12,10 @@ For direct use of preprocessing functions, import from individual modules:
 """
 
 import logging
-from typing import List
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Union, Any
 
 import polars as pl
 
@@ -40,6 +43,7 @@ from newspaper_explorer.data.preprocessing.linguistic import (
     lemmatize_spacy,
     lemmatize_germalemma,
 )
+from newspaper_explorer.data.utils.metadata import PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -250,3 +254,83 @@ class TextPreprocessor:
 
         logger.info("Preprocessing pipeline complete")
         return df
+
+    def load_previous_metadata(self, input_path: Union[Path, str]) -> Optional[Dict[str, Any]]:
+        """
+        Load preprocessing metadata from input file if it exists.
+
+        Args:
+            input_path: Path to input parquet file
+
+        Returns:
+            Dictionary with previous preprocessing info, or None if not found
+        """
+        from newspaper_explorer.data.utils.metadata import (
+            find_metadata_for_parquet,
+            load_metadata,
+            PreprocessingMetadata,
+        )
+
+        input_path = Path(input_path)
+        metadata_path = find_metadata_for_parquet(input_path)
+
+        if metadata_path:
+            try:
+                metadata = load_metadata(metadata_path)
+                if isinstance(metadata, PreprocessingMetadata):
+                    logger.info(
+                        f"Found previous preprocessing: {metadata.preprocessing_id} "
+                        f"({len(metadata.steps)} steps)"
+                    )
+                    return metadata.to_dict()
+            except Exception as e:
+                logger.debug(f"Could not load preprocessing metadata: {e}")
+
+        return None
+
+    def create_metadata(
+        self,
+        source: str,
+        steps: List[str],
+        parameters: Dict[str, Any],
+        input_df: pl.DataFrame,
+        output_df: pl.DataFrame,
+        duration_seconds: float,
+        previous_preprocessing: Optional[Dict[str, Any]] = None,
+    ) -> PreprocessingMetadata:
+        """
+        Create preprocessing metadata for saving alongside results.
+
+        Args:
+            source: Source dataset name
+            steps: List of preprocessing steps applied
+            parameters: Processing parameters
+            input_df: Input DataFrame (for statistics)
+            output_df: Output DataFrame (for statistics)
+            duration_seconds: Processing time
+            previous_preprocessing: Previous preprocessing metadata if input was preprocessed
+
+        Returns:
+            PreprocessingMetadata object ready to save
+        """
+        from newspaper_explorer.data.utils.metadata import (
+            PreprocessingMetadata,
+            extract_input_stats,
+            extract_output_stats,
+        )
+
+        metadata = PreprocessingMetadata(
+            source=source,
+            steps=steps,
+            parameters=parameters,
+            input_data=extract_input_stats(input_df),
+            output_data=extract_output_stats(output_df),
+            duration_seconds=duration_seconds,
+            previous_preprocessing=previous_preprocessing,
+            status="completed",
+            completed_at=datetime.now().isoformat(),
+            preprocessing_id=None,  # Will be auto-generated
+            error_message=None,  # Not needed for completed status
+        )
+
+        return metadata

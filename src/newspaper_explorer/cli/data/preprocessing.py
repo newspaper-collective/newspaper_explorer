@@ -138,8 +138,10 @@ def register_preprocessing_commands(data_group):
               --steps normalize-transnormer --num-gpus 4 --batch-size 128
         """
         import polars as pl
+        import time
 
         from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
+        from newspaper_explorer.data.utils.metadata import save_preprocessing_results
         from newspaper_explorer.utils.sources import get_source_paths, load_source_config
 
         # Setup logging
@@ -157,7 +159,7 @@ def register_preprocessing_commands(data_group):
             if input:
                 input_path = Path(input)
             else:
-                # Auto-detect from source
+                # Auto-detect from source - use latest textblocks
                 config_data = load_source_config(source)
                 source_name = config_data.dataset_name
                 input_path = (
@@ -171,35 +173,22 @@ def register_preprocessing_commands(data_group):
                 )
                 raise click.Abort()
 
-            # Determine output path
+            # Output is now auto-generated in subdirectory structure (ignore --output if provided)
             if output:
-                output_path = Path(output)
-            else:
-                # Auto-generate based on steps
-                config_data = load_source_config(source)
-                source_name = config_data.dataset_name
-
-                # Create descriptive suffix
-                if len(step_list) <= 2:
-                    suffix = "_".join(step_list)
-                else:
-                    suffix = "processed"
-
-                output_path = (
-                    Path("data")
-                    / "processed"
-                    / source_name
-                    / "text"
-                    / f"textblocks_{suffix}.parquet"
+                click.echo(
+                    "\nNote: --output is deprecated. Output will be saved in subdirectory structure.",
+                    err=True,
                 )
 
             click.echo(f"\nInput:  {input_path}")
-            click.echo(f"Output: {output_path}")
 
             # Load data
             click.echo(f"\nLoading data...")
+            start_time = time.time()
             df = pl.read_parquet(input_path)
             click.echo(f"Loaded {len(df):,} rows")
+
+            input_df = df  # Keep reference for metadata
 
             # Sample if requested
             if sample and sample < len(df):
@@ -212,9 +201,19 @@ def register_preprocessing_commands(data_group):
                 click.echo(f"Available columns: {', '.join(df.columns)}")
                 raise click.Abort()
 
+            # Check for previous preprocessing metadata
+            preprocessor = TextPreprocessor(text_column=text_column)
+            previous_preprocessing = preprocessor.load_previous_metadata(input_path)
+
+            if previous_preprocessing:
+                prev_steps = previous_preprocessing.get("steps", [])
+                click.echo(f"\nFound previous preprocessing with {len(prev_steps)} steps:")
+                click.echo(f"  {', '.join(prev_steps)}")
+                click.echo(f"  Will chain new steps to existing preprocessing")
+
             # Run preprocessing
             click.echo("\nStarting preprocessing pipeline...")
-            preprocessor = TextPreprocessor(text_column=text_column)
+            processing_start = time.time()
 
             df = preprocessor.pipeline(
                 df,
@@ -225,6 +224,8 @@ def register_preprocessing_commands(data_group):
                 num_gpus=num_gpus,
                 use_cache=not no_cache,
             )
+
+            duration = time.time() - processing_start
 
             # Show sample output
             click.echo("\n" + "=" * 60)
@@ -238,10 +239,32 @@ def register_preprocessing_commands(data_group):
             click.echo(f"Original:  {original_text[:200]}...")
             click.echo(f"Processed: {processed_text[:200]}...")
 
-            # Save output
-            click.echo(f"\nSaving to: {output_path}")
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            df.write_parquet(output_path, compression="zstd")
+            # Create preprocessing metadata
+            metadata = preprocessor.create_metadata(
+                source=source,
+                steps=step_list,
+                parameters={
+                    "text_column": text_column,
+                    "output_column": output_column,
+                    "batch_size": batch_size,
+                    "num_beams": num_beams,
+                    "num_gpus": num_gpus,
+                    "use_cache": not no_cache,
+                    "sample": sample,
+                },
+                input_df=input_df,
+                output_df=df,
+                duration_seconds=duration,
+                previous_preprocessing=previous_preprocessing,
+            )
+
+            # Save with new subdirectory structure
+            click.echo("\nSaving results...")
+            paths = save_preprocessing_results(
+                results_df=df,
+                metadata=metadata,
+                processed_base_dir=config.data_dir / "processed",
+            )
 
             # Show statistics
             click.echo("\n" + "=" * 60)
@@ -251,14 +274,21 @@ def register_preprocessing_commands(data_group):
             click.echo(f"Input column: {text_column}")
             click.echo(f"Output column: {output_column}")
             click.echo(f"Steps applied: {len(step_list)}")
+            if previous_preprocessing:
+                all_steps = metadata.get_all_steps()
+                click.echo(f"Total steps (including previous): {len(all_steps)}")
+            click.echo(f"Processing time: {duration:.1f}s")
 
-            file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            click.echo(f"\nFile saved: {output_path}")
-            click.echo(f"File size: {file_size_mb:.1f} MB")
+            file_size_mb = paths["results_path"].stat().st_size / (1024 * 1024)
+            click.echo(f"\nPreprocessing ID: {metadata.preprocessing_id}")
+            click.echo(f"\nOutput directory: {paths['output_dir']}")
+            click.echo(f"  Data:     {paths['results_path'].name}")
+            click.echo(f"  Metadata: {paths['metadata_path'].name}")
+            click.echo(f"  File size: {file_size_mb:.1f} MB")
 
             click.echo("\nTip: Load the preprocessed data with:")
             click.echo("   import polars as pl")
-            click.echo(f"   df = pl.read_parquet('{output_path}')")
+            click.echo(f"   df = pl.read_parquet('{paths['results_path']}')")
 
             click.echo("\n" + "=" * 60)
 

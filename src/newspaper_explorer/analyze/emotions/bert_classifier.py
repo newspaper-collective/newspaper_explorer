@@ -635,6 +635,10 @@ class EmotionPredictor:
             output_data=output_stats,
             status="completed",
             duration_seconds=duration_seconds,
+            analysis_id=None,  # Will be auto-generated
+            model_version=None,
+            completed_at=None,
+            error_message=None,
         )
 
         # Save metadata
@@ -860,6 +864,10 @@ class EmotionPredictor:
             output_data=output_stats,
             status="completed",
             duration_seconds=duration_seconds,
+            analysis_id=None,  # Will be auto-generated
+            model_version=None,
+            completed_at=None,
+            error_message=None,
         )
 
         # Save metadata

@@ -16,7 +16,7 @@
 - permalink to pages in issue browser to jump to them from other tabs
 - page samples not reactive slightly buggy
 - add drop shadows all around to flat elements
-
+- support preprocessing metadata
 ### Data Issues
 - Images need fixing too
 - 1900 issue mets file is needded
