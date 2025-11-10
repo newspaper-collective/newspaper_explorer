@@ -158,7 +158,7 @@ async def create_sidebar(state):
                         # Available Analysis Results
                         analysis_results = state.get_analysis_results()
                         if analysis_results:
-                            ui.label("Available Analysis:").classes(
+                            ui.label("Available Analysis Results:").classes(
                                 "text-caption text-weight-medium q-mb-xs q-mt-sm"
                             )
                             for analysis_type, info in analysis_results.items():

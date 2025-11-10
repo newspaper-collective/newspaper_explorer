@@ -89,15 +89,6 @@ class AnalysisMetadata(BaseModel):
     status: str = Field(default="completed", description="Status: completed, failed, in_progress")
     error_message: Optional[str] = Field(None, description="Error details if status is failed")
 
-    # Environment tracking
-    software_version: Optional[str] = Field(None, description="Version of newspaper_explorer")
-    environment: Dict[str, Any] = Field(
-        default_factory=dict, description="Environment info (GPU, Python, etc.)"
-    )
-
-    # Additional context
-    notes: Optional[str] = Field(None, description="Optional human-readable notes")
-
     def model_post_init(self, __context: Any) -> None:
         """Generate analysis_id if not provided."""
         if self.analysis_id is None:

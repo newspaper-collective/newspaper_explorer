@@ -17,7 +17,8 @@ from newspaper_explorer.ui.nicegui.modules.browse import create_browse_tab
 from newspaper_explorer.ui.nicegui.modules.entities import create_entity_tab
 from newspaper_explorer.ui.nicegui.modules.concepts import create_knowledge_graph_tab
 from newspaper_explorer.ui.nicegui.modules.keywords import create_keywords_tab
-from newspaper_explorer.ui.nicegui.modules.images import create_images_tab
+from newspaper_explorer.ui.nicegui.modules.layout import create_layout_tab
+from newspaper_explorer.ui.nicegui.modules.pictures import create_pictures_tab
 from newspaper_explorer.ui.nicegui.modules.search import create_search_tab
 from newspaper_explorer.ui.nicegui.modules.topics import create_topics_tab
 from newspaper_explorer.ui.nicegui.modules.emotions import create_emotions_tab
@@ -65,7 +66,8 @@ def setup_and_run(host: str = "0.0.0.0", port: int = 8080, reload: bool = True):
             entities_tab = ui.tab("Entities", icon="person")
             concepts_tab = ui.tab("Concepts", icon="hub")
             keywords_tab = ui.tab("Keywords", icon="label")
-            images_tab = ui.tab("Images", icon="image")
+            layout_tab = ui.tab("Layout", icon="dashboard")
+            pictures_tab = ui.tab("Pictures", icon="image")
             topics_tab = ui.tab("Topics", icon="topic")
             emotions_tab = ui.tab("Emotions", icon="mood")
 
@@ -94,9 +96,13 @@ def setup_and_run(host: str = "0.0.0.0", port: int = 8080, reload: bool = True):
             with ui.tab_panel(keywords_tab):
                 await create_keywords_tab(state)
 
-            # Images tab
-            with ui.tab_panel(images_tab):
-                await create_images_tab(state)
+            # Layout tab
+            with ui.tab_panel(layout_tab):
+                await create_layout_tab(state)
+
+            # Pictures tab
+            with ui.tab_panel(pictures_tab):
+                await create_pictures_tab(state)
 
             # Topics tab
             with ui.tab_panel(topics_tab):

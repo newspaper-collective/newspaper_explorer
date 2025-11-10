@@ -450,7 +450,7 @@ async def create_browse_tab(state):
                                             with (
                                                 ui.card()
                                                 .classes("hover:shadow-lg cursor-pointer")
-                                                .props("flat bordered")
+                                                .props("bordered elevated")
                                                 .style(
                                                     "border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;"
                                                 )

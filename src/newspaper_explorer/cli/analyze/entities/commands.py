@@ -182,7 +182,7 @@ def gliner(
             num_gpus=num_gpus,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata']['analysis_id']}")
+        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 
@@ -350,7 +350,7 @@ def gliner2(
             id_column=id_col,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata']['analysis_id']}")
+        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 
@@ -483,7 +483,7 @@ def llm(
             id_column=id_col,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata']['analysis_id']}")
+        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 

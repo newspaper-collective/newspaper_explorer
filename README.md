@@ -28,6 +28,25 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
 ---
 
+## Web Interface
+
+A modern web interface provides intuitive access to analysis results and exploration tools. Launch with `newspaper-explorer ui start`.
+
+<details>
+<summary>📸 View screenshots from the web interface</summary>
+
+### Overview Dashboard
+![Overview Dashboard](docs/ui/screenshots/01_overview.png)
+*Screenshot: Main dashboard providing an overview of available datasets and analysis results*
+
+### Browse and Explore
+![Browse Interface](docs/ui/screenshots/02_browse.png)
+*Screenshot: Browse and explore newspaper pages with filtering and search capabilities*
+
+</details>
+
+---
+
 ## Hackathon Demo: Streamlit UI
 
 During the two-day hackathon, we built a Streamlit-based web interface to showcase the first results of our various analysis approaches on the "Der Tag" dataset. These screenshots demonstrate the exploratory analysis capabilities we tested.

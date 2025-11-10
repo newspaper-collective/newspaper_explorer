@@ -228,13 +228,13 @@ def get_top_entities(df: pl.DataFrame, limit: int = 10) -> pl.DataFrame:
         limit: Number of top entities to return
 
     Returns:
-        Polars DataFrame with columns: Entity, Type, Count
+        Polars DataFrame with columns: Entity, entity_type, Count
     """
     if df is None or len(df) == 0:
-        return pl.DataFrame({"Entity": [], "Type": [], "Count": []})
+        return pl.DataFrame({"Entity": [], "entity_type": [], "Count": []})
 
     if "entity_text" not in df.columns or "entity_type" not in df.columns:
-        return pl.DataFrame({"Entity": [], "Type": [], "Count": []})
+        return pl.DataFrame({"Entity": [], "entity_type": [], "Count": []})
 
     # Group by entity and type, count occurrences
     top_entities = (
@@ -244,8 +244,8 @@ def get_top_entities(df: pl.DataFrame, limit: int = 10) -> pl.DataFrame:
         .head(limit)
     )
 
-    # Rename columns to standard format for display
-    return top_entities.rename({"entity_text": "Entity", "entity_type": "Type"})
+    # Rename columns to standard format for display (keep entity_type as-is for compatibility)
+    return top_entities.rename({"entity_text": "Entity"})
 
 
 def create_wordcloud_image(

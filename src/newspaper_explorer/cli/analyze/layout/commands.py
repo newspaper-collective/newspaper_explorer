@@ -18,6 +18,7 @@ Usage:
 
 import json
 import logging
+import time
 import click
 from pathlib import Path
 from datetime import datetime
@@ -29,6 +30,12 @@ from newspaper_explorer.analyze.layout.detection import LayoutDetector
 from newspaper_explorer.analyze.layout.headline_matcher import HeadlineMatcher
 from newspaper_explorer.analyze.layout.article_builder import ArticleBuilder
 from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
+from newspaper_explorer.data.utils.metadata import (
+    AnalysisMetadata,
+    save_analysis_results,
+    extract_input_stats,
+    extract_output_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +164,14 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
 
     click.echo(f"✓ Found {len(image_paths)} images")
 
+    # Generate analysis_id for this run
+    model_short = f"yolo11{model_size[0]}"  # nano -> yolo11n, medium -> yolo11m
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    analysis_id = f"{model_short}_doclaynet_{timestamp}"
+
     # Check for existing results and implement resume
-    output_dir = config.results_dir / source / "layout"
-    output_file = output_dir / f"{source}_layout_detections.parquet"
+    output_dir = config.results_dir / source / "layout" / analysis_id
+    output_file = output_dir / "layout.parquet"
 
     processed_pages = set()
     if resume and output_file.exists():
@@ -218,11 +230,15 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
         device=device,
         batch_size=batch_size,
         conf_threshold=conf_threshold,
+        source_name=source,  # Pass source name for proper ID generation
     )
 
     # Run detection
     click.echo("\nDetecting layout elements...")
     # Don't pass page_ids - let detector generate unique IDs from paths
+
+    # Start timing
+    start_time = time.time()
 
     # Temporarily suppress detector's INFO logs to avoid interfering with tqdm
     detector_logger = logging.getLogger("newspaper_explorer.analyze.layout.detection")
@@ -244,95 +260,112 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
         # Restore original log level
         detector_logger.setLevel(original_level)
 
-    # Save results to single Parquet file
-    output_dir = config.results_dir / source / "layout"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    import polars as pl
+    # Calculate duration
+    duration = time.time() - start_time
+    completed_at = datetime.now().isoformat()
 
     # Flatten all detections into rows
+    import polars as pl
+
     all_detections = []
+    skipped_count = 0
+
     for page_layout in results:
         for det in page_layout.detections:
-            all_detections.append(
-                {
-                    "detection_id": det.detection_id,
-                    "page_id": det.page_id,
-                    "source_id": det.source_id,
-                    "issue_id": det.issue_id,
-                    "class_name": det.class_name,
-                    "confidence": det.confidence,
-                    "bbox_x1": det.bbox.x1,
-                    "bbox_y1": det.bbox.y1,
-                    "bbox_x2": det.bbox.x2,
-                    "bbox_y2": det.bbox.y2,
-                    "bbox_width": det.bbox.width,
-                    "bbox_height": det.bbox.height,
-                    "image_path": page_layout.image_path,
-                }
-            )
+            # Skip detections with problematic data
+            # (None values or malformed source_ids that can't be reliably typed)
+            try:
+                # Ensure source_id is consistently typed (string or None, not mixed)
+                source_id = str(det.source_id) if det.source_id is not None else None
+                issue_id = str(det.issue_id) if det.issue_id is not None else None
 
-    # Save as Parquet (append if resume mode)
+                all_detections.append(
+                    {
+                        "detection_id": det.detection_id,
+                        "page_id": det.page_id,
+                        "source_id": source_id,
+                        "issue_id": issue_id,
+                        "class_name": det.class_name,
+                        "confidence": det.confidence,
+                        "bbox_x1": det.bbox.x1,
+                        "bbox_y1": det.bbox.y1,
+                        "bbox_x2": det.bbox.x2,
+                        "bbox_y2": det.bbox.y2,
+                        "bbox_width": det.bbox.width,
+                        "bbox_height": det.bbox.height,
+                        "image_path": page_layout.image_path,
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"Skipping detection with problematic data: {e}")
+                skipped_count += 1
+
+    if skipped_count > 0:
+        click.echo(f"⚠ Skipped {skipped_count} detections with incomplete data", err=True)
+
+    # Create DataFrame and save with metadata
     if all_detections:
         df = pl.DataFrame(all_detections)
 
+        # If resuming, merge with existing data
         if resume and output_file.exists():
-            # Append to existing file
             existing_df = pl.read_parquet(output_file)
             df = pl.concat([existing_df, df])
-            click.echo(f"\nAppended {len(all_detections)} new detections to: {output_file}")
-        else:
-            click.echo(f"\nSaved {len(all_detections)} detections to: {output_file}")
+            click.echo(f"\nAppended {len(all_detections)} new detections")
 
-        df.write_parquet(output_file, compression="zstd")
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_id=analysis_id,
+            analysis_type="layout",
+            method_type="yolov11",
+            model_name=f"yolo11{model_size[0]}_doc_layout",
+            model_version="DocLayNet",
+            source=source,
+            completed_at=completed_at,
+            duration_seconds=duration,
+            parameters={
+                "model_size": model_size,
+                "device": device,
+                "batch_size": batch_size,
+                "conf_threshold": conf_threshold,
+                "year_filter": year,
+                "classes": [
+                    "Caption",
+                    "Footnote",
+                    "Formula",
+                    "List-item",
+                    "Page-footer",
+                    "Page-header",
+                    "Picture",
+                    "Section-header",
+                    "Table",
+                    "Text",
+                    "Title",
+                ],
+            },
+            input_data={
+                "num_images": len(image_paths),
+                "year_filter": year,
+            },
+            output_data={
+                "num_pages": df["page_id"].n_unique(),
+                "num_detections": len(df),
+                "detections_by_class": df.group_by("class_name")
+                .agg(pl.len().alias("count"))
+                .to_dicts(),
+            },
+        )
 
-        # Save or update metadata.json
-        metadata_file = output_dir / "metadata.json"
-        if metadata_file.exists() and resume:
-            # Load existing metadata and update
-            with open(metadata_file, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-            # Update stats
-            metadata["total_pages"] = len(df["page_id"].unique())
-            metadata["total_detections"] = len(df)
-            metadata["updated_at"] = datetime.now().isoformat()
-        else:
-            # Create new metadata
-            metadata = {
-                "analysis_type": "layout",
-                "method_type": "yolov11",
-                "model_name": f"yolo11{model_size[0]}_doc_layout",  # e.g., yolo11m_doc_layout
-                "model_version": "DocLayNet",
-                "source": source,
-                "created_at": datetime.now().isoformat(),
-                "parameters": {
-                    "model_size": model_size,
-                    "device": device,
-                    "batch_size": batch_size,
-                    "conf_threshold": conf_threshold,
-                    "year_filter": year,
-                    "classes": [
-                        "Caption",
-                        "Footnote",
-                        "Formula",
-                        "List-item",
-                        "Page-footer",
-                        "Page-header",
-                        "Picture",
-                        "Section-header",
-                        "Table",
-                        "Text",
-                        "Title",
-                    ],
-                },
-                "total_pages": len(df["page_id"].unique()),
-                "total_detections": len(df),
-                "resume_enabled": resume,
-            }
+        # Save using standard pattern
+        results_dict = save_analysis_results(
+            results_df=df,
+            metadata=metadata,
+            results_base_dir=config.results_dir / source,
+        )
 
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-        click.echo(f"Saved metadata to: {metadata_file}")
+        click.echo(f"\nSaved {len(df)} detections to: {results_dict['results_path']}")
+        click.echo(f"Saved metadata to: {results_dict['metadata_path']}")
+        click.echo(f"Analysis ID: {analysis_id}")
     else:
         click.echo("\nNo detections to save", err=True)
 

@@ -26,6 +26,7 @@ class AppState:
         self.image_indexer: Optional[ImageIndexer] = None
         self.entities_df = None
         self.keywords_df = None
+        self.layout_df = None  # Layout detection results
         self.start_date = date(1900, 1, 1)
         self.end_date = date(2024, 12, 31)
         self.current_image_page = 1
@@ -56,6 +57,9 @@ class AppState:
 
         # Load keywords if available
         self.load_keywords()
+
+        # Load layout if available
+        self.load_layout()
 
     def get_available_entity_files(self) -> list:
         """
@@ -314,6 +318,128 @@ class AppState:
         # For now, return all keywords
         # TODO: Implement date filtering if doc_id contains parseable date info
         return self.keywords_df
+
+    def get_available_layout_files(self) -> list:
+        """
+        Get list of available layout detection result files for the current source.
+        Scans subdirectories for layout.parquet with layout.json.
+
+        Returns:
+            List of tuples (display_name, file_path, metadata_dict) for each available layout file
+        """
+        if not self.selected_source:
+            return []
+
+        layout_dir = Path(self.config.results_dir) / self.selected_source / "layout"
+        if not layout_dir.exists():
+            return []
+
+        result_files = []
+
+        # Scan subdirectories for layout.parquet and layout.json
+        for subdir in layout_dir.iterdir():
+            if not subdir.is_dir():
+                continue
+
+            parquet_file = subdir / "layout.parquet"
+            metadata_file = subdir / "layout.json"
+
+            if not parquet_file.exists():
+                continue
+
+            # Try to create display name from metadata
+            import json
+
+            display_name = subdir.name
+            metadata = {}
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+
+                    # Create nice display name from metadata
+                    model = metadata.get("model_name", "")
+                    created = metadata.get("created_at", "")
+                    num_detections = metadata.get("output_data", {}).get("num_detections", 0)
+
+                    if created:
+                        # Extract date part
+                        date_part = created.split("T")[0] if "T" in created else created[:10]
+                    else:
+                        date_part = ""
+
+                    if model and date_part:
+                        display_name = f"{model} ({date_part}) - {num_detections} detections"
+                    elif model:
+                        display_name = f"{model} - {num_detections} detections"
+                except:
+                    pass
+
+            result_files.append((display_name, str(parquet_file), metadata))
+
+        # Sort by display name (most recent first due to timestamp in name)
+        result_files.sort(key=lambda x: x[0], reverse=True)
+        return result_files
+
+    def load_layout(self, file_path: Optional[str] = None):
+        """
+        Load layout detection data from parquet file.
+
+        Args:
+            file_path: Path to layout parquet file
+        """
+        if not self.selected_source:
+            return None
+
+        # Use provided path or look for first available result
+        if file_path is None:
+            available = self.get_available_layout_files()
+            if not available:
+                self.layout_df = None
+                return None
+            file_path = available[0][1]  # Use first (most recent) available file
+
+        path = Path(file_path)
+        if not path.exists():
+            self.layout_df = None
+            return None
+
+        # Load parquet file
+        try:
+            self.layout_df = pl.read_parquet(str(path))
+
+            # Extract date from page_id (format: {source}_{YYYY-MM-DD}_{issue}_{daily}_{page})
+            self.layout_df = self.layout_df.with_columns(
+                [
+                    pl.col("page_id")
+                    .str.extract(r"_(\d{4}-\d{2}-\d{2})_", 1)
+                    .str.to_date("%Y-%m-%d")
+                    .cast(pl.Datetime)
+                    .alias("date")
+                ]
+            )
+
+        except Exception as e:
+            print(f"Error loading layout file {path}: {e}")
+            import traceback
+
+            traceback.print_exc()
+            self.layout_df = None
+
+        return self.layout_df
+
+    def get_filtered_layout(self):
+        """Get layout detections filtered by current date range"""
+        if self.layout_df is None:
+            return pl.DataFrame()
+
+        # Polars filtering
+        filtered = self.layout_df.filter(
+            (pl.col("date") >= datetime.combine(self.start_date, datetime.min.time()))
+            & (pl.col("date") <= datetime.combine(self.end_date, datetime.max.time()))
+        )
+
+        return filtered
 
     def get_source_stats(self) -> dict:
         """Get statistics about the current source (lightweight version for sidebar)"""

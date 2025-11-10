@@ -8,14 +8,18 @@
 - spacy models?
 - yolo, spacy, hf cache dir move to .env
 - unify sample/limit cmd
+- do bertopic year by year
 
 ### UI Issues
 - use image index consitently
 - datamanager tab?
 - permalink to pages in issue browser to jump to them from other tabs
+- page samples not reactive slightly buggy
+- add drop shadows all around to flat elements
 
 ### Data Issues
 - Images need fixing too
+- 1900 issue mets file is needded
 
 - **Data integrity: Mixed issues in same directory**
   - 12 directories have ALTO files from multiple issues mixed together (0.09% of data)

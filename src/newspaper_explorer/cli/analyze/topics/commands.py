@@ -450,6 +450,12 @@ def lda(
     show_default=True,
 )
 @click.option(
+    "--umap-sample-pages",
+    type=int,
+    default=None,
+    help="Fit UMAP on first N pages of each issue (e.g., 3) to reduce memory usage by 10-100x",
+)
+@click.option(
     "--output-name",
     type=str,
     default="bertopic_topics",
@@ -475,6 +481,7 @@ def bertopic(
     chunk_sentences: int,
     no_stopwords: bool,
     num_gpus: int,
+    umap_sample_pages: int,
     output_name: str,
     limit: int,
 ):
@@ -520,6 +527,12 @@ def bertopic(
         newspaper-explorer analyze topics bertopic \\
             --source der_tag --group-by date
 
+    \b
+    Large corpus with memory optimization (fit UMAP on first 3 pages):
+        newspaper-explorer analyze topics bertopic \\
+            --source der_tag --group-by page_id \\
+            --umap-sample-pages 3
+
     Output:
         results/{source}/topics/{output_name}.parquet
         results/{source}/topics/{output_name}.json
@@ -550,6 +563,10 @@ def bertopic(
     click.echo(f"  - Min text length: {min_text_length} chars")
     click.echo(f"  - Stopwords: {'disabled' if no_stopwords else 'enabled (German)'}")
     click.echo(f"  - GPUs: {num_gpus} ({'multi-GPU' if num_gpus > 1 else 'single GPU'})")
+    if umap_sample_pages:
+        click.echo(
+            f"  - UMAP sampling: first {umap_sample_pages} pages/issue (memory optimization)"
+        )
 
     # Parse group_by
     group_by_list = None
@@ -585,6 +602,7 @@ def bertopic(
             top_k=top_k,
             limit=limit,
             batch_size=batch_size,
+            umap_sample_pages=umap_sample_pages,
         )
 
         if len(results_df) == 0:

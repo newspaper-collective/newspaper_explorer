@@ -26,7 +26,9 @@ from newspaper_explorer.data.utils.ids import (
     generate_detection_id,
     extract_issue_id_from_page_id,
     parse_page_id,
+    generate_page_id,
 )
+from newspaper_explorer.data.utils.images import ImageIndexer
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +74,10 @@ def _extract_detections_from_result(det_res, page_id: str, image_path: str) -> L
         try:
             # Parse page_id to extract source and issue
             page_components = parse_page_id(page_id)
-            source_id = page_components.source
+            source_id = str(page_components.source) if page_components.source is not None else None
             issue_id = extract_issue_id_from_page_id(page_id)
         except Exception as e:
-            logger.warning(f"Could not parse page_id {page_id}: {e}")
+            logger.debug(f"Could not parse page_id {page_id}: {e}")
 
         for idx, (box, conf, cls) in enumerate(zip(boxes, confidences, classes)):
             cls_idx = int(cls)
@@ -123,6 +125,7 @@ class LayoutDetector:
         conf_threshold: float = 0.2,
         imgsz: int = 1280,
         batch_size: int = 8,
+        source_name: Optional[str] = None,
     ):
         """
         Initialize the LayoutDetector.
@@ -136,6 +139,8 @@ class LayoutDetector:
             conf_threshold: Confidence threshold for detections
             imgsz: Image size for prediction (default: 1280, as per training)
             batch_size: Batch size for inference
+            source_name: Source name (e.g., 'der_tag') for proper ID generation.
+                        If provided, uses image index to generate globally consistent IDs.
 
         Note: Parallel image preloading (70% faster) is always enabled.
         """
@@ -144,6 +149,9 @@ class LayoutDetector:
         self.imgsz = imgsz
         self.batch_size = batch_size
         self.model_size = model_size
+        self.source_name = source_name
+        self.source_id = None  # Will be set from image indexer
+        self.image_index = None
 
         # Define model files
         model_files = {
@@ -190,6 +198,25 @@ class LayoutDetector:
 
         self.model = YOLO(self.model_path)
 
+        # Load or create image index if source_name provided
+        if self.source_name:
+            logger.info(f"Loading image index for source: {self.source_name}")
+            indexer = ImageIndexer(self.source_name)
+
+            # Store source_id from indexer (may be ZDB ID or source_name)
+            self.source_id = indexer.source_id
+
+            # Try to load existing index
+            self.image_index = indexer.load_index()
+
+            # If no index exists, create one
+            if self.image_index is None:
+                logger.info(f"No image index found for {self.source_name}, creating one...")
+                self.image_index = indexer.create_index()
+                logger.info(f"Created image index with {len(self.image_index)} images")
+            else:
+                logger.info(f"Loaded image index with {len(self.image_index)} images")
+
         logger.info(
             f"LayoutDetector initialized: model={model_size}, device={device}, "
             f"batch_size={batch_size}, conf_threshold={conf_threshold}"
@@ -197,18 +224,62 @@ class LayoutDetector:
 
     def _generate_page_id(self, image_path: Path) -> str:
         """
-        Generate unique page ID from image path.
+        Generate page_id from image path with fallback to path-based ID.
 
-        Extracts relative path structure to ensure global uniqueness.
-        Example: images/1900/01/02/01/max_7.jpg -> 1900_01_02_01_max_7
+        If source_name and image index are available, generates proper
+        globally consistent IDs using the ID generation system.
+        Otherwise falls back to path-based IDs.
 
         Args:
             image_path: Path to the image file
 
         Returns:
-            Globally unique page identifier
+            page_id string
         """
-        # Find "images" directory in path
+        # If we have source_id and image index, use proper ID generation
+        if self.source_id and self.image_index is not None:
+            try:
+                # Get relative path from images directory
+                parts = image_path.parts
+                images_idx = parts.index("images")
+                rel_path = Path(*parts[images_idx + 1 :])
+                rel_path_str = str(rel_path)
+
+                # Look up in image index
+                matches = self.image_index.filter(self.image_index["image_path"] == rel_path_str)
+
+                if len(matches) > 0:
+                    row = matches.row(0, named=True)
+                    # Generate proper page_id using global ID function with source_id
+                    from datetime import datetime
+
+                    # Skip rows with invalid data (None values, malformed data)
+                    if not all(
+                        [
+                            row.get("date"),
+                            row.get("issue_number"),
+                            row.get("daily_issue_number"),
+                            row.get("page_number"),
+                        ]
+                    ):
+                        logger.debug(f"Skipping image with incomplete metadata: {rel_path_str}")
+                        raise ValueError("Incomplete metadata")
+
+                    date = datetime.strptime(row["date"], "%Y-%m-%d")
+                    page_id = generate_page_id(
+                        source=self.source_id,  # Use source_id (may be ZDB ID)
+                        date=date,
+                        issue_number=row["issue_number"],
+                        daily_issue_number=row["daily_issue_number"],
+                        page_number=row["page_number"],
+                    )
+                    return page_id
+                else:
+                    logger.debug(f"Image not found in index: {rel_path_str}")
+            except Exception as e:
+                logger.debug(f"Failed to generate page_id from index: {e}")
+
+        # Fallback: Use path-based ID (old method)
         parts = image_path.parts
         try:
             images_idx = parts.index("images")

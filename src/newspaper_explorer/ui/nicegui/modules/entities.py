@@ -232,14 +232,11 @@ async def create_entity_tab(state):
                         with ui.tab_panel(type_tabs[entity_type]):
                             # Get top entities for this type
                             type_df = df.filter(
-                                (
-                                    pl.col("type") if "type" in df.columns else pl.col("Type")
-                                ).str.to_lowercase()
-                                == entity_type.lower()
+                                pl.col("entity_type").str.to_lowercase() == entity_type.lower()
                             )
 
                             # Group by entity and count
-                            entity_col = "Entity" if "Entity" in type_df.columns else "entity"
+                            entity_col = "Entity" if "Entity" in type_df.columns else "entity_text"
                             top_for_type = (
                                 type_df.group_by(entity_col)
                                 .agg(pl.count().alias("Count"))
@@ -423,25 +420,23 @@ async def create_entity_tab(state):
 
             # Filter by type if not "All Types"
             if selected_type != "All Types" and selected_type:
-                type_col = "type" if "type" in df.columns else "Type"
                 filtered_df = filtered_df.filter(
-                    pl.col(type_col).str.to_lowercase() == selected_type.lower()
+                    pl.col("entity_type").str.to_lowercase() == selected_type.lower()
                 )
 
             # Filter by search term if provided
             if search_term:
-                entity_col = "Entity" if "Entity" in filtered_df.columns else "entity"
+                entity_col = "Entity" if "Entity" in filtered_df.columns else "entity_text"
                 filtered_df = filtered_df.filter(
                     pl.col(entity_col).str.to_lowercase().str.contains(search_term.lower())
                 )
 
             # Group by entity and count occurrences
-            entity_col = "Entity" if "Entity" in filtered_df.columns else "entity"
-            type_col = "type" if "type" in filtered_df.columns else "Type"
+            entity_col = "Entity" if "Entity" in filtered_df.columns else "entity_text"
             date_col = "date" if "date" in filtered_df.columns else "Date"
 
             entity_stats = (
-                filtered_df.group_by([entity_col, type_col])
+                filtered_df.group_by([entity_col, "entity_type"])
                 .agg(
                     [
                         pl.count().alias("count"),
@@ -465,7 +460,7 @@ async def create_entity_tab(state):
                             with ui.card().classes("w-full"):
                                 with ui.card_section():
                                     # Entity type badge (moved above entity name)
-                                    entity_type = row[type_col]
+                                    entity_type = row["entity_type"]
                                     entity_color = get_entity_type_color(entity_type)
                                     with ui.row().classes("w-full justify-start q-mb-xs"):
                                         if entity_color:
@@ -515,7 +510,6 @@ async def create_entity_tab(state):
                                     def create_detail_dialog(entity_name, entity_type):
                                         def show_details():
                                             # Get all occurrences of this entity
-                                            type_col = "type" if "type" in df.columns else "Type"
                                             date_col = "date" if "date" in df.columns else "Date"
 
                                             entity_occurrences = filtered_df.filter(
@@ -671,7 +665,7 @@ async def create_entity_tab(state):
                                         icon="info",
                                         on_click=create_detail_dialog(
                                             row[entity_col],
-                                            row[type_col],
+                                            row["entity_type"],
                                         ),
                                     ).props("flat size=sm").classes("w-full q-mt-sm")
                 else:

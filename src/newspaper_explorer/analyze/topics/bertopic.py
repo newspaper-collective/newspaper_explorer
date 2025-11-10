@@ -33,6 +33,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
+import numpy as np
 import polars as pl
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
@@ -236,6 +237,7 @@ class BERTopicExtractor:
         top_k: int = 5,
         limit: Optional[int] = None,
         batch_size: int = 32,
+        umap_sample_pages: Optional[int] = None,
     ) -> pl.DataFrame:
         """
         Extract topics from documents using global BERTopic.
@@ -259,6 +261,10 @@ class BERTopicExtractor:
             top_k: Number of topic terms to return per document
             limit: Limit number of input rows (for testing)
             batch_size: Batch size for embedding generation
+            umap_sample_pages: If set, fit UMAP on first N pages of each issue
+                              (e.g., 3 = first 3 pages). Reduces memory usage
+                              by 10-100x while maintaining topic quality.
+                              Transforms all embeddings after fit.
 
         Returns:
             DataFrame with doc_id, topic_terms, scores, topics, topic_probs,
@@ -360,16 +366,75 @@ class BERTopicExtractor:
 
         # Phase 3: Fit global BERTopic model
         logger.info("Phase 3: Fitting global BERTopic model...")
-        topic_model = BERTopic(
-            embedding_model=self.embedding_model,
-            vectorizer_model=self.vectorizer_model,
-            min_topic_size=min_cluster_size,
-            nr_topics=n_topics,
-            calculate_probabilities=False,
-            verbose=True,
-        )
 
-        topics, probs = topic_model.fit_transform(chunk_texts, embeddings)
+        # Prepare sampling strategy if requested
+        sample_indices = None
+        if umap_sample_pages is not None:
+            logger.info(f"Using smart sampling: first {umap_sample_pages} pages of each issue")
+
+            # Build mapping: chunk_idx -> doc_id
+            chunk_to_doc = [doc_id for doc_id, _ in doc_chunks]
+
+            # Get page_number for each doc_id from original data
+            doc_to_page = {}
+            if "page_number" in df.columns:
+                # Extract page numbers per doc_id
+                for row in df.select(["doc_id", "page_number"]).unique().iter_rows(named=True):
+                    doc_id = row["doc_id"]
+                    page_num = row.get("page_number")
+                    if page_num is not None and doc_id not in doc_to_page:
+                        doc_to_page[doc_id] = page_num
+
+                # Filter chunks by page number
+                sample_indices = [
+                    idx
+                    for idx, doc_id in enumerate(chunk_to_doc)
+                    if doc_to_page.get(doc_id, 999) <= umap_sample_pages
+                ]
+
+                logger.info(
+                    f"Sampled {len(sample_indices):,} chunks from first {umap_sample_pages} pages "
+                    f"({len(sample_indices)/len(embeddings)*100:.1f}% of {len(embeddings):,} total chunks)"
+                )
+                logger.info(f"Memory reduction: {len(embeddings)/max(len(sample_indices), 1):.1f}x")
+            else:
+                logger.warning("No page_number column found - falling back to random sampling")
+                sample_size = min(500_000, len(embeddings))
+                sample_indices = np.random.choice(
+                    len(embeddings), sample_size, replace=False
+                ).tolist()
+                logger.info(f"Random sampled {len(sample_indices):,} chunks")
+
+        # Fit UMAP on sample if requested, otherwise on all embeddings
+        if sample_indices is not None and len(sample_indices) < len(embeddings):
+            sample_texts = [chunk_texts[i] for i in sample_indices]
+            sample_embeddings = embeddings[sample_indices]
+
+            topic_model = BERTopic(
+                embedding_model=self.embedding_model,
+                vectorizer_model=self.vectorizer_model,
+                min_topic_size=min_cluster_size,
+                nr_topics=n_topics,
+                calculate_probabilities=False,
+                verbose=True,
+            )
+
+            logger.info(f"Fitting UMAP on {len(sample_embeddings):,} sampled embeddings...")
+            topics_sample, _ = topic_model.fit_transform(sample_texts, sample_embeddings)
+
+            logger.info(f"Transforming all {len(embeddings):,} embeddings with fitted model...")
+            topics, probs = topic_model.transform(chunk_texts, embeddings)
+        else:
+            topic_model = BERTopic(
+                embedding_model=self.embedding_model,
+                vectorizer_model=self.vectorizer_model,
+                min_topic_size=min_cluster_size,
+                nr_topics=n_topics,
+                calculate_probabilities=False,
+                verbose=True,
+            )
+
+            topics, probs = topic_model.fit_transform(chunk_texts, embeddings)
 
         logger.info("Global topic model fitted successfully")
 

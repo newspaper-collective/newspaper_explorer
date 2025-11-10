@@ -1,0 +1,94 @@
+{
+  "analysis_type": "entities",
+  "method_type": "gliner",
+  "model_name": "small-v2_1",
+  "source": "der_tag",
+  "parameters": {
+    "model": "small-v2.1",
+    "threshold": 0.2,
+    "batch_size": 16,
+    "labels": [
+      "person",
+      "organization",
+      "location"
+    ],
+    "min_text_length": 10,
+    "max_text_length": 1000,
+    "chunking": "enabled",
+    "text_column": "text",
+    "id_column": "text_block_id",
+    "num_gpus": 1
+  },
+  "analysis_id": "gliner_small_v2_1_20251109_230602",
+  "model_version": null,
+  "created_at": "2025-11-09T23:06:02.450810",
+  "completed_at": null,
+  "duration_seconds": 12.129506349563599,
+  "input_data": {
+    "row_count": 23975727,
+    "columns": [
+      "text_block_id",
+      "text",
+      "line_count",
+      "avg_x",
+      "avg_y",
+      "min_x",
+      "min_y",
+      "max_x",
+      "max_y",
+      "filename",
+      "newspaper_title",
+      "year",
+      "month",
+      "day"
+    ],
+    "schema": {
+      "text_block_id": "String",
+      "text": "String",
+      "line_count": "UInt32",
+      "avg_x": "Float64",
+      "avg_y": "Float64",
+      "min_x": "Int64",
+      "min_y": "Int64",
+      "max_x": "Int64",
+      "max_y": "Int64",
+      "filename": "String",
+      "newspaper_title": "String",
+      "year": "Int64",
+      "month": "Int64",
+      "day": "Int64"
+    },
+    "id_column": "text_block_id",
+    "id_type": "text_block_id"
+  },
+  "output_data": {
+    "row_count": 3606,
+    "columns": [
+      "line_id",
+      "source_id",
+      "issue_id",
+      "page_id",
+      "text_block_id",
+      "entity_text",
+      "entity_type",
+      "confidence",
+      "detection_count"
+    ],
+    "schema": {
+      "line_id": "String",
+      "source_id": "String",
+      "issue_id": "String",
+      "page_id": "String",
+      "text_block_id": "String",
+      "entity_text": "String",
+      "entity_type": "String",
+      "confidence": "Float64",
+      "detection_count": "UInt32"
+    }
+  },
+  "status": "completed",
+  "error_message": null,
+  "software_version": null,
+  "environment": {},
+  "notes": null
+}

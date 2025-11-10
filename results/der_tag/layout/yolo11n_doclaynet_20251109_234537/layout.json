@@ -1,0 +1,63 @@
+{
+  "analysis_type": "layout",
+  "method_type": "yolov11",
+  "model_name": "yolo11n_doc_layout",
+  "source": "der_tag",
+  "parameters": {
+    "model_size": "nano",
+    "device": "cuda:0",
+    "batch_size": 32,
+    "conf_threshold": 0.2,
+    "year_filter": 1910,
+    "classes": [
+      "Caption",
+      "Footnote",
+      "Formula",
+      "List-item",
+      "Page-footer",
+      "Page-header",
+      "Picture",
+      "Section-header",
+      "Table",
+      "Text",
+      "Title"
+    ]
+  },
+  "analysis_id": "yolo11n_doclaynet_20251109_234537",
+  "model_version": "DocLayNet",
+  "created_at": "2025-11-09T23:45:38.841516",
+  "completed_at": "2025-11-09T23:45:38.838999",
+  "duration_seconds": 0.7182791233062744,
+  "input_data": {
+    "num_images": 10,
+    "year_filter": 1910
+  },
+  "output_data": {
+    "num_pages": 10,
+    "num_detections": 221,
+    "detections_by_class": [
+      {
+        "class_name": "Section-header",
+        "count": 38
+      },
+      {
+        "class_name": "Text",
+        "count": 158
+      },
+      {
+        "class_name": "Picture",
+        "count": 20
+      },
+      {
+        "class_name": "Table",
+        "count": 3
+      },
+      {
+        "class_name": "Page-header",
+        "count": 2
+      }
+    ]
+  },
+  "status": "completed",
+  "error_message": null
+}
