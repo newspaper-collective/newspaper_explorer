@@ -30,7 +30,7 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
 ## Web Interface
 
-A modern web interface provides intuitive access to analysis results and exploration tools. Launch with `newspaper-explorer ui start`.
+A modern web interface provides intuitive access to analysis results and exploration tools. Launch with `newspaper-explorer ui start`. The interface is currently work in progress.
 
 <details>
 <summary>📸 View screenshots from the web interface</summary>
