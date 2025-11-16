@@ -242,10 +242,12 @@ def dehyphenate_lines(
     hyphen_mask = df.select(
         pl.col(output_column).str.strip_chars_end().str.ends_with("-")
     ).to_series()
-    
+
     hyphen_indices = [i for i, has_hyphen in enumerate(hyphen_mask) if has_hyphen]
-    logger.info(f"Found {len(hyphen_indices):,} lines ending with hyphens (out of {len(df):,} total)")
-    
+    logger.info(
+        f"Found {len(hyphen_indices):,} lines ending with hyphens (out of {len(df):,} total)"
+    )
+
     if not hyphen_indices:
         logger.info("No line-break hyphens found")
         return df
@@ -267,7 +269,7 @@ def dehyphenate_lines(
         # Bounds check
         if i >= len(df) - 1:
             continue
-        
+
         # Fast array access instead of df[i]
         current_block = blocks[i]
         next_block = blocks[i + 1]
@@ -276,7 +278,9 @@ def dehyphenate_lines(
         # If not same block, check if we're at the last line of current block
         if not same_block:
             # Quick check: is there any line after i+1 with same block?
-            has_more_in_block = any(blocks[j] == current_block for j in range(i + 2, min(i + 10, len(blocks))))
+            has_more_in_block = any(
+                blocks[j] == current_block for j in range(i + 2, min(i + 10, len(blocks)))
+            )
             if has_more_in_block:
                 continue
 
@@ -286,24 +290,24 @@ def dehyphenate_lines(
         y_distance = abs(next_y - current_y)
         if y_distance > max_y_distance:
             continue
-        
+
         # ADDITIONAL CHECK: Verify next line is actually BELOW current line
         # (not above or at same level - this catches ordering issues)
         if next_y <= current_y:
             continue
-        
+
         # ADDITIONAL CHECK: Verify horizontal alignment
         # Lines should start at similar x positions (within reason)
         current_x = x_coords[i]
         next_x = x_coords[i + 1]
         x_distance = abs(next_x - current_x)
-        
+
         # Allow some horizontal variation but not too much
         # (columns, indentation, etc. should be roughly aligned)
         max_x_distance = 200  # pixels - adjust based on typical column width
         if x_distance > max_x_distance:
             continue
-        
+
         # ADDITIONAL CHECK: Check if next line starts far to the right
         # (might be a different column or continuation mark)
         current_width = widths[i]
@@ -342,15 +346,15 @@ def dehyphenate_lines(
         joined_word = word_part1 + first_word
 
         # VALIDATION CHECKS to prevent bad merges:
-        
+
         # 1. Skip if first word is all caps (likely a heading/title)
         if first_word.isupper() and len(first_word) > 2:
             continue
-        
+
         # 2. Skip if word parts are identical (repetition, not continuation)
         if word_part1.lower() == first_word.lower().rstrip(",-.:;!?"):
             continue
-        
+
         # 3. Skip if capitalization suggests separate words
         # (lowercase + Capitalized = probably two words)
         if word_part1 and word_part1[-1].islower() and first_word and first_word[0].isupper():
@@ -389,19 +393,21 @@ def dehyphenate_lines(
 
         modifications.append({"index": i, "text": new_current_text})
         modifications.append({"index": i + 1, "text": new_next_text})
-        
+
         # Save example for review (first 100)
         if len(merge_examples) < 100:
-            merge_examples.append({
-                "line_index": i,
-                "word_part1": word_part1,
-                "word_part2": first_word,
-                "joined_word": joined_word,
-                "line1_before": current_text.strip(),
-                "line2_before": next_text.strip(),
-                "line1_after": new_current_text.strip(),
-                "line2_after": new_next_text.strip(),
-            })
+            merge_examples.append(
+                {
+                    "line_index": i,
+                    "word_part1": word_part1,
+                    "word_part2": first_word,
+                    "joined_word": joined_word,
+                    "line1_before": current_text.strip(),
+                    "line2_before": next_text.strip(),
+                    "line1_after": new_current_text.strip(),
+                    "line2_after": new_next_text.strip(),
+                }
+            )
 
     # Apply modifications
     if modifications:
@@ -416,13 +422,15 @@ def dehyphenate_lines(
 
         # Update dataframe with modified texts
         df = df.with_columns([pl.Series(output_column, texts)])
-        
+
         # Log sample merges for review
         if merge_examples:
             logger.info(f"\nSample merges (showing first {len(merge_examples)}):")
             for i, ex in enumerate(merge_examples[:10], 1):  # Show first 10 in log
                 logger.info(f"\n  {i}. Line {ex['line_index']}:")
-                logger.info(f"     Merged: '{ex['word_part1']}-' + '{ex['word_part2']}' → '{ex['joined_word']}'")
+                logger.info(
+                    f"     Merged: '{ex['word_part1']}-' + '{ex['word_part2']}' → '{ex['joined_word']}'"
+                )
                 logger.info(f"     Before: '{ex['line1_before']}'")
                 logger.info(f"             '{ex['line2_before']}'")
                 logger.info(f"     After:  '{ex['line1_after']}'")
