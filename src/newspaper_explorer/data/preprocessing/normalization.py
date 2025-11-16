@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 # CONSERVATIVE: Only fix clear OCR errors, preserve semantic distinctions
 UNICODE_TRANSLATION_CONSERVATIVE = {
+    # Historical character normalization
+    0x017F: "s",  # ſ long s → short s (common in historical German texts)
     # Remove problematic hyphens/spaces
     0x00AD: None,  # soft hyphen (invisible, remove)
     0x2011: "-",  # non-breaking hyphen → regular hyphen

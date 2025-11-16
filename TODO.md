@@ -48,3 +48,12 @@
 Transkribus OCR -> Problem with alto-export
 
 - validate xml files
+
+
+- combine results with/in knowdledge graph
+
+- keywords ui broken
+
+- unify results output
+
+- sort dataset by filename when loading

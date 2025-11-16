@@ -19,9 +19,11 @@ Example:
 """
 
 import logging
+import multiprocessing as mp
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import polars as pl
 import yake
@@ -31,13 +33,70 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import (
     AnalysisMetadata,
-    save_metadata,
     save_analysis_results,
     extract_input_stats,
     extract_output_stats,
 )
 
 logger = logging.getLogger(__name__)
+
+
+from typing import Union, Sequence
+
+def _worker_extract_yake(
+    args: Tuple[List[Tuple[str, str]], int, str, int, float, str, int],
+) -> List[Dict[str, Union[str, List[str], List[float]]]]:
+    """
+    Worker function for multiprocessing YAKE extraction.
+
+    Args:
+        args: Tuple of (batch_data, top_k, language, max_ngram_size,
+                       deduplication_threshold, deduplication_algo, window_size)
+
+    Returns:
+        List of result dictionaries
+    """
+    (
+        batch_data,
+        top_k,
+        language,
+        max_ngram_size,
+        dedup_threshold,
+        dedup_algo,
+        window_size,
+    ) = args
+
+    # Initialize YAKE for this worker
+    kw_extractor = yake.KeywordExtractor(
+        lan=language,
+        n=max_ngram_size,
+        dedupLim=dedup_threshold,
+        dedupFunc=dedup_algo,
+        windowsSize=window_size,
+        top=top_k,
+    )
+
+    results = []
+
+    for doc_id, text in batch_data:
+        if not text or not isinstance(text, str) or len(text.strip()) < 10:
+            results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+            continue
+
+        try:
+            # Extract keywords
+            extracted = kw_extractor.extract_keywords(text)
+
+            if extracted:
+                keywords = [kw for kw, score in extracted]
+                scores = [float(score) for kw, score in extracted]
+                results.append({"doc_id": doc_id, "keywords": keywords, "scores": scores})
+            else:
+                results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+        except Exception:
+            results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+
+    return results
 
 
 class YAKEExtractor:
@@ -122,14 +181,18 @@ class YAKEExtractor:
         top_k: int = 10,
         limit: Optional[int] = None,
         group_by: Optional[List[str]] = None,
+        batch_size: int = 1000,
+        num_workers: Optional[int] = None,
     ) -> pl.DataFrame:
         """
-        Extract keywords from documents.
+        Extract keywords from documents with batching and multiprocessing.
 
         Args:
             top_k: Number of top keywords per document
             limit: Limit number of documents to process
             group_by: Columns to group by (aggregates text)
+            batch_size: Number of documents per batch (default: 1000)
+            num_workers: Number of worker processes (default: CPU count - 1)
 
         Returns:
             DataFrame with columns: doc_id, source_id, issue_id, page_id, text_block_id, keywords, scores
@@ -151,6 +214,11 @@ class YAKEExtractor:
         if limit:
             df = df.head(limit)
             logger.info(f"Limited to {limit} rows")
+
+        # Auto-aggregate by page if no grouping specified and using textblocks
+        if group_by is None and "page_id" in df.columns:
+            logger.info("Auto-aggregating text blocks by page for keyword extraction")
+            group_by = ["page_id"]
 
         # Group if requested
         if group_by:
@@ -174,63 +242,80 @@ class YAKEExtractor:
         else:
             doc_ids = [f"doc_{i}" for i in range(len(texts))]
 
-        # Initialize YAKE keyword extractor
-        kw_extractor = yake.KeywordExtractor(
-            lan=self.language,
-            n=self.max_ngram_size,
-            dedupLim=self.deduplication_threshold,
-            dedupFunc=self.deduplication_algo,
-            windowsSize=self.window_size,
-            top=top_k,
-        )
+        # Determine number of workers
+        if num_workers is None:
+            num_workers = max(1, mp.cpu_count() - 1)
 
-        # Extract keywords
         logger.info(f"Extracting keywords from {len(texts)} documents...")
+        logger.info(f"Using {num_workers} workers with batch size {batch_size}")
+
+        # Prepare data for processing
+        doc_text_pairs = list(zip(doc_ids, texts))
+
+        # Split into batches
+        batches = [
+            doc_text_pairs[i : i + batch_size] for i in range(0, len(doc_text_pairs), batch_size)
+        ]
+
+        logger.info(f"Processing {len(batches)} batches...")
+
+        # Process batches
         results = []
 
-        for doc_id, text in tqdm(zip(doc_ids, texts), total=len(texts), desc="Extracting keywords"):
-            if not text or not isinstance(text, str) or len(text.strip()) < 10:
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keywords": [],
-                        "scores": [],
-                    }
-                )
-                continue
+        if num_workers == 1:
+            # Single-process mode
+            kw_extractor = yake.KeywordExtractor(
+                lan=self.language,
+                n=self.max_ngram_size,
+                dedupLim=self.deduplication_threshold,
+                dedupFunc=self.deduplication_algo,
+                windowsSize=self.window_size,
+                top=top_k,
+            )
 
-            try:
-                # Extract keywords (returns list of (keyword, score) tuples)
-                extracted = kw_extractor.extract_keywords(text)
+            for batch in tqdm(batches, desc="Processing batches"):
+                for doc_id, text in batch:
+                    if not text or not isinstance(text, str) or len(text.strip()) < 10:
+                        results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+                        continue
 
-                if extracted:
-                    keywords = [kw for kw, score in extracted]
-                    scores = [float(score) for kw, score in extracted]
-
-                    results.append(
-                        {
-                            "doc_id": doc_id,
-                            "keywords": keywords,
-                            "scores": scores,
-                        }
+                    try:
+                        extracted = kw_extractor.extract_keywords(text)
+                        if extracted:
+                            keywords = [kw for kw, score in extracted]
+                            scores = [float(score) for kw, score in extracted]
+                            results.append(
+                                {"doc_id": doc_id, "keywords": keywords, "scores": scores}
+                            )
+                        else:
+                            results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+                    except Exception as e:
+                        logger.warning(f"Failed for {doc_id}: {e}")
+                        results.append({"doc_id": doc_id, "keywords": [], "scores": []})
+        else:
+            # Multi-process mode
+            with mp.Pool(processes=num_workers) as pool:
+                # Prepare arguments for each batch
+                worker_args = [
+                    (
+                        batch,
+                        top_k,
+                        self.language,
+                        self.max_ngram_size,
+                        self.deduplication_threshold,
+                        self.deduplication_algo,
+                        self.window_size,
                     )
-                else:
-                    results.append(
-                        {
-                            "doc_id": doc_id,
-                            "keywords": [],
-                            "scores": [],
-                        }
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to extract keywords for {doc_id}: {e}")
-                results.append(
-                    {
-                        "doc_id": doc_id,
-                        "keywords": [],
-                        "scores": [],
-                    }
-                )
+                    for batch in batches
+                ]
+
+                # Process batches in parallel with progress bar
+                for batch_results in tqdm(
+                    pool.imap(_worker_extract_yake, worker_args),
+                    total=len(batches),
+                    desc="Processing batches",
+                ):
+                    results.extend(batch_results)
 
         # Convert to DataFrame
         results_df = pl.DataFrame(results)
@@ -255,17 +340,35 @@ class YAKEExtractor:
 
         logger.info(f"Extracted keywords for {len(results_df)} documents")
 
-        # Add grouping columns if they exist
+        # Add grouping columns if they exist (avoid duplicates with foreign keys)
         if group_by:
-            # Merge back grouping columns
-            group_data = df.select(group_by)
-            group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
-            results_df = results_df.join(group_data, on="doc_id", how="left")
+            # Merge back grouping columns, but skip if they're already in foreign keys
+            fk_columns = {"source_id", "issue_id", "page_id", "text_block_id"}
+            new_group_cols = [col for col in group_by if col not in fk_columns]
+            if new_group_cols:
+                group_data = df.select(new_group_cols)
+                group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
+                results_df = results_df.join(group_data, on="doc_id", how="left")
 
         # Output structure: doc_id, source_id, issue_id, page_id, text_block_id,
         # keywords, scores, + any user-specified grouping columns
 
-        # Store timing info for save_results
+        # Store parameters and timing info for save_results
+        input_metadata_file = str(self.input_file).replace(".parquet", ".json")
+        self._last_params = {
+            "top_k": top_k,
+            "limit": limit,
+            "group_by": group_by,
+            "language": self.language,
+            "max_ngram_size": self.max_ngram_size,
+            "deduplication_threshold": self.deduplication_threshold,
+            "deduplication_algo": self.deduplication_algo,
+            "window_size": self.window_size,
+            "input": {
+                "parquet": str(self.input_file),
+                "metadata": input_metadata_file,
+            },
+        }
         self._last_extraction_time = time.time() - start_time
         self._last_input_df = df
 
@@ -322,13 +425,10 @@ class YAKEExtractor:
         if hasattr(self, "_last_input_df"):
             input_stats = extract_input_stats(self._last_input_df)
 
-        # Create metadata
-        metadata = AnalysisMetadata(
-            analysis_type="keywords",
-            method_type="yake",
-            model_name="yake",
-            source=self.source_name,
-            parameters={
+        # Get extraction parameters if available
+        params = getattr(self, "_last_params", {})
+        params.update(
+            {
                 "algorithm": "YAKE (Yet Another Keyword Extractor)",
                 "language": self.language,
                 "max_ngram_size": self.max_ngram_size,
@@ -337,11 +437,26 @@ class YAKEExtractor:
                 "window_size": self.window_size,
                 "top_k": top_k,
                 "text_column": self.text_column,
-            },
+            }
+        )
+
+        # Create metadata with properly formatted timestamps
+        completed_at = datetime.now().isoformat()
+
+        metadata = AnalysisMetadata(
+            analysis_id=None,  # Will be auto-generated
+            analysis_type="keywords",
+            method_type="yake",
+            model_name="yake",
+            model_version="3.0.0",  # yake package version
+            source=self.source_name,
+            parameters=params,
             input_data=input_stats,
             output_data=output_stats,
             status="completed",
             duration_seconds=duration,
+            completed_at=completed_at,
+            error_message=None,
         )
 
         # Save using unified helper

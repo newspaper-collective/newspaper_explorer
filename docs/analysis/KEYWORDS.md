@@ -18,14 +18,14 @@ Each method uses a distinct default filename to prevent overwriting when running
 ## Topic Modeling
 
 For **topic modeling** (discovering latent themes across your corpus), see:
-- **[LDA Topic Modeling](TOPICS.md)** - Uses `analyze topics lda` commands
+- **[Topic Modeling](TOPICS.md)** - Uses `analyze topics` commands
 
 ## Methodology Note
 
 This package distinguishes between **keyword extraction** (this page) and **topic modeling** (separate):
 
 - **Keyword Extractors** (TF-IDF, RAKE, YAKE, KeyBERT): Extract salient words/phrases representing document content
-- **Topic Modeling** (LDA, BERTopic): Discovers latent themes across the corpus
+- **Topic Modeling**: Discovers latent themes across the corpus (see [TOPICS.md](TOPICS.md))
 
 Commands reflect this distinction:
 - `newspaper-explorer analyze keywords` - Extract keywords
@@ -117,69 +117,46 @@ newspaper-explorer analyze keywords tfidf \
     --group-by newspaper_title,year
 ```
 
-## Preprocessing Integration
+## Input Data & Preprocessing
 
-The TF-IDF extractor integrates with the existing preprocessing pipeline for better results.
+TF-IDF does **not** automatically apply preprocessing. You control the input text via `--input-file` and `--text-column`.
 
-### Default Preprocessing
+### Using Raw Text (Default)
 
-By default, applies basic cleaning:
-- Normalize whitespace
-- Convert to lowercase
-- Remove punctuation
+By default, uses raw OCR text from the parsed data:
 
 ```bash
 newspaper-explorer analyze keywords tfidf --source der_tag
-# Automatically applies: normalize-whitespace, lowercase, remove-punctuation
+# Uses: data/raw/der_tag/text/textblocks.parquet, column 'text'
 ```
 
-### Custom Preprocessing
+The only built-in text processing is **stopword removal** via sklearn's TfidfVectorizer (German stopwords by default, disable with `--no-stopwords`).
 
-Specify your own preprocessing steps:
+### Using Preprocessed Text (Recommended)
 
-```bash
-newspaper-explorer analyze keywords tfidf \
-    --source der_tag \
-    --preprocessing normalize,lowercase,remove-stopwords
-```
-
-Available steps (from `data.preprocessing` module):
-- `normalize` - Normalize historical German characters
-- `normalize-whitespace` - Normalize whitespace
-- `lowercase` - Convert to lowercase
-- `remove-punctuation` - Remove punctuation
-- `remove-stopwords` - Remove German stopwords
-- `remove-diacritics` - Remove diacritics/accents
-- `normalize-transnormer` - Neural normalization (requires GPU)
-- `normalize-dtacab` - DTA-CAB normalization (requires API)
-
-### Use Already Preprocessed Text
-
-If you've already run preprocessing:
+For better results with historical newspapers, preprocess your data first:
 
 ```bash
-# First, preprocess the data
+# Step 1: Preprocess the data
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase,remove-stopwords
+    --steps lemmatize,normalize-whitespace,lowercase \
+    --output-name preprocessed
 
-# Then use the preprocessed file
+# Step 2: Extract keywords from preprocessed text
 newspaper-explorer analyze keywords tfidf \
     --source der_tag \
-    --input-file data/processed/der_tag/textblocks_normalized.parquet \
-    --text-column text_normalized \
-    --no-preprocessing
+    --input-file data/processed/der_tag/text/preprocessed.parquet \
+    --text-column text_processed
 ```
 
-### Skip Preprocessing (Raw Text)
+**Recommended preprocessing steps for TF-IDF:**
+- `normalize-whitespace` - Clean up spacing issues
+- `lowercase` - Normalize case for consistent matching
+- `lemmatize` - Group related word forms (e.g., "war", "waren", "gewesen" → "sein")
+- `normalize-historical` - Standardize historical German orthography
 
-To analyze raw OCR text:
-
-```bash
-newspaper-explorer analyze keywords tfidf \
-    --source der_tag \
-    --no-preprocessing
-```
+For detailed preprocessing documentation, see [Preprocessing Guide](../data/preprocessing/PREPROCESSING.md).
 
 ## Parameters
 
@@ -208,17 +185,16 @@ newspaper-explorer analyze keywords tfidf \
 - `--no-stopwords`: Disable built-in German stopwords
 - `--stopwords`: Add custom stopwords (comma-separated)
 
-### Preprocessing
+### Performance
 
-- `--preprocessing`: Comma-separated steps (e.g., "normalize,lowercase")
-- `--no-preprocessing`: Skip all preprocessing
+- `--num-workers`: Number of CPU workers for parallel extraction (default: auto-detect)
 
 ### Other
 
 - `--output-name`: Output filename (default: "tfidf_keywords")
 - `--limit`: Limit rows for testing
 
-**Output**: Saves to `results/{source}/keywords/tfidf_keywords.parquet` + `tfidf_keywords.json` (metadata)
+**Output**: Saves to `results/{source}/keywords/{analysis_id}/keywords.parquet` + `metadata.json`
 
 ## Examples
 
@@ -271,13 +247,20 @@ newspaper-explorer analyze keywords tfidf \
 
 Process only 1000 rows to test parameters quickly.
 
-### Example 5: Advanced Preprocessing Pipeline
+### Example 5: Using Preprocessed Text
 
 ```bash
-# Use neural normalization for historical text
+# First, preprocess the data
+newspaper-explorer data preprocess \
+    --source der_tag \
+    --steps normalize-historical,lemmatize,lowercase \
+    --output-name preprocessed
+
+# Then extract keywords from preprocessed text
 newspaper-explorer analyze keywords tfidf \
     --source der_tag \
-    --preprocessing normalize-transnormer,lowercase,remove-stopwords \
+    --input-file data/processed/der_tag/text/preprocessed.parquet \
+    --text-column text_processed \
     --group-by year \
     --top-k 25
 ```
@@ -294,7 +277,7 @@ extractor = TFIDFExtractor(
     custom_stopwords=["zeitung", "ausgabe"],
 )
 
-# Extract keywords per page
+# Extract keywords per page (default: uses raw text)
 results = extractor.extract_keywords(
     document_level="page",
     top_k=10,
@@ -307,12 +290,29 @@ yearly_keywords = extractor.extract_keywords(
     group_by=["year"],
     top_k=20,
     ngram_range=(1, 2),
-    preprocessing_steps=["normalize", "lowercase", "remove-punctuation"],
 )
 
 # Save results
 output_file = extractor.save_results(yearly_keywords, output_name="yearly_keywords")
 print(f"Saved to: {output_file}")
+```
+
+**Using Preprocessed Text:**
+
+```python
+from pathlib import Path
+from newspaper_explorer.analyze.keywords.tf_idf import TFIDFExtractor
+
+# Point to preprocessed data
+extractor = TFIDFExtractor(
+    source_name="der_tag",
+    input_file=Path("data/processed/der_tag/text/preprocessed.parquet"),
+    text_column="text_processed",  # Use preprocessed column
+    use_stopwords=True,
+)
+
+# Extract keywords
+results = extractor.extract_keywords(top_k=10)
 ```
 
 ### Single Document Analysis
@@ -428,13 +428,22 @@ Captures phrases like "erste weltkrieg" that are more meaningful than individual
 
 ### 4. Preprocess Historical Text
 
-For historical German newspapers:
+For better results with historical German newspapers, preprocess first:
 
 ```bash
---preprocessing normalize,lowercase,remove-punctuation
+# Step 1: Preprocess
+newspaper-explorer data preprocess \
+    --source der_tag \
+    --steps normalize-historical,lemmatize,lowercase
+
+# Step 2: Use preprocessed text
+newspaper-explorer analyze keywords tfidf \
+    --source der_tag \
+    --input-file data/processed/der_tag/text/preprocessed.parquet \
+    --text-column text_processed
 ```
 
-The `normalize` step handles historical spelling variations.
+Historical normalization handles spelling variations (e.g., "thaeler" → "taler").
 
 ### 5. Test with --limit First
 
@@ -454,14 +463,15 @@ Filter newspaper-specific common words that aren't meaningful keywords.
 
 ## Performance
 
-- **Lines.parquet**: Fast, supports page-level analysis
-- **Textblocks.parquet**: Faster (fewer rows), but no page-level
-- **Preprocessing**: Adds overhead but improves quality
+- **Lines.parquet**: Supports page-level analysis (more rows, slower)
+- **Textblocks.parquet**: Fewer rows, faster processing
+- **Preprocessed data**: Loading overhead but better quality results
 - **Large corpora**: Use --limit for testing, then run full extraction
+- **Parallel processing**: Use --num-workers to control CPU usage
 
-Typical speeds (2023 CPU):
-- ~1000 documents/second (page-level, basic preprocessing)
-- ~5000 documents/second (textblock-level, no preprocessing)
+Typical speeds (modern CPU):
+- ~1000-2000 documents/second (page-level)
+- ~3000-5000 documents/second (textblock-level)
 
 ## Troubleshooting
 
@@ -886,7 +896,7 @@ While LDA's topic terms *can* be used like keywords, they are fundamentally diff
 → Use **YAKE** - statistical feature-based extraction
 
 **"What themes exist across the corpus?"**
-→ Use **LDA** - discovers latent topics
+→ Use **Topic Modeling** - discovers latent topics (see [TOPICS.md](TOPICS.md))
 
 ### By Text Characteristics
 
@@ -895,27 +905,23 @@ While LDA's topic terms *can* be used like keywords, they are fundamentally diff
 - ✅ RAKE (phrase extraction)
 - ⚠️ YAKE (may struggle with limited context)
 - ❌ KeyBERT (needs sufficient semantic context)
-- ❌ LDA (needs larger documents)
 
 **Long documents (> 1000 words)**:
 - ✅ All methods work well
 - ⚡ TF-IDF, RAKE, YAKE for speed
 - ✅ KeyBERT for semantic depth
-- ✅ LDA for thematic structure
 
 **Domain-specific vocabulary**:
 - ✅✅ RAKE - extracts technical multi-word terms
 - ✅ TF-IDF - finds distinctive domain terms
 - ✅ KeyBERT - understands domain concepts (with domain-tuned model)
 - ⚠️ YAKE - good but less specialized
-- ❌ LDA - requires topic-level corpus structure
 
 **Multilingual/Historical German**:
 - ✅ KeyBERT with multilingual models
 - ✅ TF-IDF (language-agnostic)
 - ✅ RAKE with German stopwords
 - ✅ YAKE with language="de"
-- ⚠️ LDA (sensitive to spelling variations)
 
 ### By Computational Resources
 
@@ -924,19 +930,17 @@ While LDA's topic terms *can* be used like keywords, they are fundamentally diff
 - ✅✅ RAKE - fast rule-based
 - ✅ YAKE - efficient statistical
 - ❌ KeyBERT - requires more memory, slow on CPU
-- ❌ LDA - memory intensive for large corpora
 
 **Good resources (GPU, > 16GB RAM)**:
 - ✅ All methods work well
 - ⚡ KeyBERT benefits significantly from GPU
-- ✅ LDA can handle larger corpora
 
 ### By Analysis Type
 
 **Exploratory analysis**:
 1. Start with **TF-IDF** (fast overview)
 2. Check **RAKE** (see phrase patterns)
-3. Try **LDA** (discover themes)
+3. Try **Topic Modeling** (discover themes - see [TOPICS.md](TOPICS.md))
 
 **Semantic analysis**:
 1. Use **KeyBERT** (semantic understanding)
@@ -947,7 +951,7 @@ While LDA's topic terms *can* be used like keywords, they are fundamentally diff
 2. Add **RAKE** (multi-word queries)
 
 **Discourse analysis**:
-1. Use **LDA** (thematic structure)
+1. Use **Topic Modeling** (thematic structure - see [TOPICS.md](TOPICS.md))
 2. Supplement with **TF-IDF** (distinctive vocabulary per theme)
 
 ## Combining Methods
@@ -965,10 +969,6 @@ newspaper-explorer analyze keywords rake --source der_tag --top-k 10
 
 # 3. Semantic keywords
 newspaper-explorer analyze keywords keybert --source der_tag --top-k 10
-
-# 4. Topic structure
-newspaper-explorer analyze keywords lda --source der_tag --mode train --num-topics 20
-newspaper-explorer analyze keywords lda --source der_tag --mode documents --num-topics 20
 ```
 
 Then **compare results**:
@@ -976,7 +976,8 @@ Then **compare results**:
 - **TF-IDF only**: Distinctive but perhaps not conceptually deep
 - **KeyBERT only**: Semantically relevant but perhaps not statistically distinctive
 - **RAKE only**: Domain-specific terminology
-- **LDA topics**: Broader thematic structure
+
+For **topic structure** across documents, see [Topic Modeling](TOPICS.md).
 
 ### Example: Historical Newspaper Analysis
 
@@ -984,7 +985,7 @@ For 1900-1920 German newspapers:
 
 1. **TF-IDF by year** → Track distinctive vocabulary evolution
 2. **RAKE by year** → Identify emerging multi-word concepts
-3. **LDA (20 topics)** → Discover major discourse themes
+3. **Topic Modeling** → Discover major discourse themes (see [TOPICS.md](TOPICS.md))
 4. **KeyBERT per significant event** → Deep semantic analysis of key moments
 
 ## Digital Humanities Considerations
@@ -1007,7 +1008,6 @@ When publishing DH research:
 ### Reproducibility
 
 All commands in this documentation are **fully reproducible**:
-- Fixed random seeds in LDA
 - Documented parameters
 - Version-controlled source configurations
 - Transparent preprocessing

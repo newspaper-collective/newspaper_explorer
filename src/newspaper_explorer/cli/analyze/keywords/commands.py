@@ -455,13 +455,12 @@ def rake(
             num_workers=num_workers,
         )
 
-        # Save results
-        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df_keywords.write_parquet(output_path)
+        # Save results with metadata
+        click.echo("\nSaving results...")
+        output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
         click.echo(f"\n✓ Saved keyphrases to: {output_path}")
-        click.echo(f"  Total groups: {len(df_keywords)}")
+        click.echo(f"  Total documents: {len(df_keywords)}")
         click.echo(f"  Columns: {df_keywords.columns}")
 
     except FileNotFoundError as e:
@@ -527,6 +526,19 @@ def rake(
     help="Threshold for removing similar keywords (0-1, higher=less deduplication)",
 )
 @click.option(
+    "--batch-size",
+    type=int,
+    default=1000,
+    help="Number of documents per batch for parallel processing",
+    show_default=True,
+)
+@click.option(
+    "--num-workers",
+    type=int,
+    default=None,
+    help="Number of worker processes (default: CPU count - 1)",
+)
+@click.option(
     "--output-name",
     type=str,
     default="yake_keywords",
@@ -541,6 +553,8 @@ def yake(
     language: str,
     max_ngram_size: int,
     deduplication_threshold: float,
+    batch_size: int,
+    num_workers: int,
     output_name: str,
 ):
     """
@@ -592,6 +606,11 @@ def yake(
     click.echo(f"Language: {language}")
     click.echo(f"Max n-gram size: {max_ngram_size}")
     click.echo(f"Deduplication threshold: {deduplication_threshold}")
+    click.echo(f"Batch size: {batch_size}")
+    if num_workers:
+        click.echo(f"Workers: {num_workers}")
+    else:
+        click.echo("Workers: auto-detect (CPU count - 1)")
 
     try:
         # Initialize extractor
@@ -609,15 +628,19 @@ def yake(
 
         # Extract keywords
         click.echo("\nExtracting keywords...")
-        df_keywords = extractor.extract_keywords(top_k=top_k, group_by=group_by_list)
+        df_keywords = extractor.extract_keywords(
+            top_k=top_k,
+            group_by=group_by_list,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
 
-        # Save results
-        output_path = config.results_dir / source / "keywords" / f"{output_name}.parquet"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        df_keywords.write_parquet(output_path)
+        # Save results with metadata
+        click.echo("\nSaving results...")
+        output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
         click.echo(f"\n✓ Saved keywords to: {output_path}")
-        click.echo(f"  Total groups: {len(df_keywords)}")
+        click.echo(f"  Total documents: {len(df_keywords)}")
         click.echo(f"  Columns: {df_keywords.columns}")
 
     except FileNotFoundError as e:

@@ -19,8 +19,9 @@ Example:
 import logging
 import multiprocessing as mp
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import polars as pl
 from rake_nltk import Rake
@@ -30,7 +31,6 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import (
     AnalysisMetadata,
-    save_metadata,
     save_analysis_results,
     extract_input_stats,
     extract_output_stats,
@@ -55,7 +55,7 @@ def _worker_extract_batch(
 
     # Initialize RAKE for this worker
     rake = Rake(
-        stopwords=stopwords,
+        stopwords=set(stopwords) if stopwords else None,
         min_length=min_length,
         max_length=max_length,
     )
@@ -174,7 +174,7 @@ class RAKEExtractor:
 
         # Initialize RAKE with German stopwords
         self.rake = Rake(
-            stopwords=stopwords,
+            stopwords=set(stopwords) if stopwords else None,
             min_length=min_phrase_length,
             max_length=max_phrase_length,
         )
@@ -187,65 +187,14 @@ class RAKEExtractor:
     def _get_stopwords(
         self, use_stopwords: bool, custom_stopwords: Optional[List[str]]
     ) -> List[str]:
-        """Get German stopwords list."""
-        stopwords = []
+        """Get German stopwords list from SpaCy."""
+        stopwords: List[str] = []
 
         if use_stopwords:
-            try:
-                from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
+            from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 
-                stopwords = list(DE_STOP_WORDS)
-                logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
-            except ImportError:
-                logger.warning(
-                    "SpaCy not installed, using basic German stopwords. "
-                    "Install with: pip install -e '.[nlp]' for better stopword list"
-                )
-                # Basic German stopwords
-                stopwords = [
-                    "der",
-                    "die",
-                    "das",
-                    "und",
-                    "in",
-                    "zu",
-                    "den",
-                    "ist",
-                    "von",
-                    "mit",
-                    "auf",
-                    "für",
-                    "als",
-                    "an",
-                    "im",
-                    "dem",
-                    "ein",
-                    "eine",
-                    "nicht",
-                    "auch",
-                    "sich",
-                    "wird",
-                    "oder",
-                    "aus",
-                    "werden",
-                    "bei",
-                    "nach",
-                    "um",
-                    "am",
-                    "des",
-                    "durch",
-                    "einem",
-                    "einer",
-                    "bis",
-                    "sind",
-                    "war",
-                    "nur",
-                    "noch",
-                    "kann",
-                    "hat",
-                    "wir",
-                    "sie",
-                ]
+            stopwords = list(DE_STOP_WORDS)
+            logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
 
         # Add custom stopwords
         if custom_stopwords:
@@ -295,7 +244,7 @@ class RAKEExtractor:
                     {
                         "doc_id": doc_id,
                         "keyphrases": list(phrases),
-                        "scores": [float(s) for s in scores],
+                        "scores": list(scores),
                     }
                 )
             else:
@@ -344,6 +293,11 @@ class RAKEExtractor:
         if limit:
             df = df.head(limit)
             logger.info(f"Limited to {limit} rows")
+
+        # Auto-aggregate by page if no grouping specified and using textblocks
+        if group_by is None and "page_id" in df.columns:
+            logger.info("Auto-aggregating text blocks by page for keyword extraction")
+            group_by = ["page_id"]
 
         # Group if requested
         if group_by:
@@ -441,17 +395,34 @@ class RAKEExtractor:
 
         logger.info(f"Extracted keyphrases for {len(results_df)} documents")
 
-        # Add grouping columns if they exist
+        # Add grouping columns if they exist (avoid duplicates with foreign keys)
         if group_by:
-            # Merge back grouping columns
-            group_data = df.select(group_by)
-            group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
-            results_df = results_df.join(group_data, on="doc_id", how="left")
+            # Merge back grouping columns, but skip if they're already in foreign keys
+            fk_columns = {"source_id", "issue_id", "page_id", "text_block_id"}
+            new_group_cols = [col for col in group_by if col not in fk_columns]
+            if new_group_cols:
+                group_data = df.select(new_group_cols)
+                group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
+                results_df = results_df.join(group_data, on="doc_id", how="left")
 
         # Output structure: doc_id, source_id, issue_id, page_id, text_block_id,
         # keywords, scores, + any user-specified grouping columns
 
-        # Store timing info for save_results
+        # Store parameters and timing info for save_results
+        input_metadata_file = str(self.input_file).replace(".parquet", ".json")
+        self._last_params = {
+            "top_k": top_k,
+            "limit": limit,
+            "group_by": group_by,
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "min_phrase_length": self.min_phrase_length,
+            "max_phrase_length": self.max_phrase_length,
+            "input": {
+                "parquet": str(self.input_file),
+                "metadata": input_metadata_file,
+            },
+        }
         self._last_extraction_time = time.time() - start_time
         self._last_input_df = df
 
@@ -508,23 +479,35 @@ class RAKEExtractor:
         if hasattr(self, "_last_input_df"):
             input_stats = extract_input_stats(self._last_input_df)
 
-        # Create metadata
-        metadata = AnalysisMetadata(
-            analysis_type="keywords",
-            method_type="rake",
-            model_name="rake_nltk",
-            source=self.source_name,
-            parameters={
+        # Get extraction parameters if available
+        params = getattr(self, "_last_params", {})
+        params.update(
+            {
                 "algorithm": "RAKE (Rapid Automatic Keyword Extraction)",
                 "min_phrase_length": self.min_phrase_length,
                 "max_phrase_length": self.max_phrase_length,
                 "top_k": top_k,
                 "text_column": self.text_column,
-            },
+            }
+        )
+
+        # Create metadata with properly formatted timestamps
+        completed_at = datetime.now().isoformat()
+
+        metadata = AnalysisMetadata(
+            analysis_id=None,  # Will be auto-generated
+            analysis_type="keywords",
+            method_type="rake",
+            model_name="rake_nltk",
+            model_version="1.0.0",  # rake_nltk package
+            source=self.source_name,
+            parameters=params,
             input_data=input_stats,
             output_data=output_stats,
             status="completed",
             duration_seconds=duration,
+            completed_at=completed_at,
+            error_message=None,
         )
 
         # Save using unified helper

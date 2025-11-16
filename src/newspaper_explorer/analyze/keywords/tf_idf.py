@@ -19,9 +19,10 @@ Example:
 
 import logging
 import time
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from datetime import datetime
 from multiprocessing import Pool, cpu_count
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import polars as pl
@@ -32,10 +33,9 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import (
     AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
     extract_input_stats,
     extract_output_stats,
+    save_analysis_results,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,9 @@ def _extract_keywords_batch(args):
     """
     batch_start, batch_end, batch_dense, top_k = args
     feature_names = _FEATURE_NAMES  # Use shared feature names
+
+    if feature_names is None:
+        raise RuntimeError("Worker not properly initialized - feature_names is None")
 
     results = []
     num_docs = batch_dense.shape[0]
@@ -179,87 +182,11 @@ class TFIDFExtractor:
         stopwords = []
 
         if use_stopwords:
-            try:
-                from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
+            from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 
-                # Convert SpaCy's set to list
-                stopwords = list(DE_STOP_WORDS)
-                logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
-
-            except ImportError:
-                logger.warning(
-                    "SpaCy not installed, using basic German stopwords. "
-                    "Install with: pip install -e '.[nlp]' for better stopword list"
-                )
-                # Fallback to basic stopwords if SpaCy not available
-                stopwords = [
-                    "der",
-                    "die",
-                    "das",
-                    "und",
-                    "in",
-                    "zu",
-                    "den",
-                    "ist",
-                    "von",
-                    "mit",
-                    "auf",
-                    "für",
-                    "als",
-                    "an",
-                    "im",
-                    "dem",
-                    "ein",
-                    "eine",
-                    "nicht",
-                    "auch",
-                    "sich",
-                    "wird",
-                    "oder",
-                    "aus",
-                    "werden",
-                    "bei",
-                    "nach",
-                    "aber",
-                    "noch",
-                    "wie",
-                    "sind",
-                    "hat",
-                    "zum",
-                    "zur",
-                    "war",
-                    "durch",
-                    "nur",
-                    "über",
-                    "vor",
-                    "es",
-                    "so",
-                    "am",
-                    "bis",
-                    "dass",
-                    "daß",
-                    "wenn",
-                    "sein",
-                    "kann",
-                    "mehr",
-                    "diese",
-                    "dieser",
-                    "einem",
-                    "einen",
-                    "einer",
-                    "eines",
-                    "haben",
-                    "gegen",
-                    "doch",
-                    "alle",
-                    "schon",
-                    "was",
-                    "wir",
-                    "ihm",
-                    "ihr",
-                    "sie",
-                    "sie",
-                ]
+            # Convert SpaCy's set to list
+            stopwords = list(DE_STOP_WORDS)
+            logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
 
         if custom_stopwords:
             stopwords.extend(custom_stopwords)  # type: ignore
@@ -586,6 +513,11 @@ class TFIDFExtractor:
             "min_df": min_df,
             "max_df": max_df,
             "ngram_range": ngram_range,
+            "top_k": top_k,
+            "input": {
+                "parquet": str(self.input_file),
+                "metadata": str(self.input_file).replace(".parquet", ".json"),
+            },
         }
 
         return results_df
@@ -646,22 +578,28 @@ class TFIDFExtractor:
         params.update(
             {
                 "algorithm": "TF-IDF (Term Frequency-Inverse Document Frequency)",
-                "top_k": top_k,
+                "top_k": top_k if top_k is not None else params.get("top_k"),
                 "text_column": self.text_column,
             }
         )
 
-        # Create metadata
+        # Create metadata with properly formatted timestamps
+        completed_at = datetime.now().isoformat()
+
         metadata = AnalysisMetadata(
+            analysis_id=None,  # Will be auto-generated
             analysis_type="keywords",
             method_type="tfidf",
             model_name="sklearn_tfidfvectorizer",
+            model_version="1.3.0",  # sklearn version
             source=self.source_name,
             parameters=params,
             input_data=input_stats,
             output_data=output_stats,
             status="completed",
             duration_seconds=duration,
+            completed_at=completed_at,
+            error_message=None,
         )
 
         # Save using unified helper
@@ -731,7 +669,9 @@ def extract_keywords_from_document(
     # Filter zero scores
     filtered = [(k, s) for k, s in zip(keywords, keyword_scores) if s > 0]
     if filtered:
-        keywords, keyword_scores = zip(*filtered)
+        keywords_tuple, scores_tuple = zip(*filtered)
+        keywords = list(keywords_tuple)
+        keyword_scores = list(scores_tuple)
 
     return {
         "keywords": list(keywords),
