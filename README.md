@@ -238,9 +238,27 @@ Coming soon - LLM-based topic extraction and clustering for thematic analysis.
 **See**: [Topics Guide](docs/analysis/TOPICS.md)
 
 ### Keyword Extraction
-Coming soon - Statistical and semantic keyword extraction for document summarization.
+Extract important keywords and phrases using five complementary methods:
 
-**See**: [Keywords Guide](docs/analysis/KEYWORDS.md)
+- **TF-IDF** - Statistical term frequency-inverse document frequency
+- **RAKE** - Rapid Automatic Keyword Extraction for multi-word keyphrases
+- **YAKE** - Yet Another Keyword Extractor using statistical text features
+- **KeyBERT** - BERT-based semantic keyword extraction with embeddings
+- **LLM** - Semantic keyword extraction with context understanding
+
+All methods support:
+- **Auto page-level aggregation**: Automatically groups text blocks by page for coherent extraction
+- **Multi-processing/GPU**: Parallel processing for large datasets (TF-IDF, RAKE, YAKE, KeyBERT)
+- **Configurable grouping**: Extract keywords per page, per issue, or per text block via `--group-by`
+- **Consistent output**: Unified metadata structure with nested input tracking
+
+**CLI**: `newspaper-explorer analyze keywords {tfidf,rake,yake,keybert,llm} --source <name>`
+
+**Performance**: 
+- RAKE and YAKE use `--num-workers` (default: CPU count - 1) and `--batch-size` (default: 1000)
+- KeyBERT uses GPU acceleration automatically if available (`--device cuda` or `--device cpu`)
+
+**See**: [Keywords Guide](docs/analysis/KEYWORDS.md) for method comparisons, parameter tuning, and Python API usage.
 
 ### LLM Integration
 Flexible LLM client with structured prompts and response validation:
