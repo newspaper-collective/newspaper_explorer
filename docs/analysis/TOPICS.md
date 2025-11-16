@@ -3,39 +3,63 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Core Components](#core-components)
-4. [CLI Commands](#cli-commands)
-5. [Python API](#python-api)
-6. [Method Comparison](#method-comparison)
-7. [Performance & Configuration](#performance--configuration)
-8. [Data Schemas](#data-schemas)
-9. [Complete Workflows](#complete-workflows)
-10. [Analyzing Results](#analyzing-results)
-11. [Integration with Other Analyses](#integration-with-other-analyses)
-12. [Troubleshooting](#troubleshooting)
+2. [Sampling Strategies for Large Corpora](#sampling-strategies-for-large-corpora) ⭐ NEW
+3. [Architecture](#architecture)
+4. [Core Components](#core-components)
+5. [CLI Commands](#cli-commands)
+6. [Python API](#python-api)
+7. [Method Comparison](#method-comparison)
+8. [Performance & Configuration](#performance--configuration)
+9. [Data Schemas](#data-schemas)
+10. [Complete Workflows](#complete-workflows)
+11. [Analyzing Results](#analyzing-results)
+12. [Integration with Other Analyses](#integration-with-other-analyses)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-The topic modeling module provides two methods for discovering themes and topics in newspaper texts:
+The topic modeling module provides three methods for discovering themes and topics in newspaper texts:
 
 **Methods**:
 1. **LDA** - Latent Dirichlet Allocation (classic probabilistic topic modeling)
 2. **BERTopic** - BERT-based semantic topic modeling with **global topics** approach
+3. **FASTopic** - Fast, Adaptive, Stable, and Transferable topic modeling (NEW ⭐)
 
 **Key Features**:
-- ✅ **Two modeling approaches**: LDA (traditional) and BERTopic (semantic with global topics)
+- ✅ **Three modeling approaches**: LDA (traditional), BERTopic (semantic with global topics), FASTopic (optimal transport)
 - ✅ **Global topics architecture**: Single fit on entire corpus for unified topic space
 - ✅ **Temporal analysis**: Track topics over time with consistent topic definitions
 - ✅ **4-phase optimized pipeline**: Parallel chunking + Multi-GPU embedding + Global clustering
+- ✅ **Flexible sampling**: Page filtering, year filtering, random sampling for massive datasets
 - ✅ **Flexible grouping**: Analyze topics at page, issue, date, or custom levels
 - ✅ **Sentence chunking**: BERTopic intelligently chunks text using spaCy
 - ✅ **Stopword removal**: German stopword filtering via spaCy
 - ✅ **Model caching**: Automatic model downloads and caching
 - ✅ **Resume functionality**: Skip already-processed documents
 - ✅ **Metadata tracking**: Full provenance with timing and parameters
+---
+
+## Sampling Strategies for Large Corpora
+
+**Quick overview of sampling strategies**:
+
+1. **Page filtering**: `--filter-pages 1,2,3` - Only process first 3 pages per issue
+2. **Year filtering**: `--years 1900,1901` - Process specific years only
+3. **Random sampling**: `--sample-size 100000` - Sample N documents for exploration
+4. **UMAP sampling**: `--umap-sample-pages 3` - Fit UMAP on subset, transform all
+5. **Combined approach**: Use multiple strategies for maximum memory efficiency
+
+**Recommended for 60M+ lines**: Process year-by-year with page filtering:
+```bash
+newspaper-explorer analyze topics bertopic \
+    --source der_tag \
+    --group-by page_id \
+    --years 1900 \
+    --filter-pages 1,2,3 \
+    --umap-sample-pages 3
+```
 
 ---
 

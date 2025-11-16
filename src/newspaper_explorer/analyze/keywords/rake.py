@@ -86,7 +86,7 @@ def _worker_extract_batch(
                 {
                     "doc_id": doc_id,
                     "keyphrases": list(phrases),
-                    "scores": [float(s) for s in scores],
+                    "scores": list(scores),  # RAKE scores are already numeric
                 }
             )
         else:
@@ -447,6 +447,9 @@ class RAKEExtractor:
             group_data = df.select(group_by)
             group_data = group_data.with_columns(pl.Series("doc_id", doc_ids))
             results_df = results_df.join(group_data, on="doc_id", how="left")
+
+        # Output structure: doc_id, source_id, issue_id, page_id, text_block_id,
+        # keywords, scores, + any user-specified grouping columns
 
         # Store timing info for save_results
         self._last_extraction_time = time.time() - start_time

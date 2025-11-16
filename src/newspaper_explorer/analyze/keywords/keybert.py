@@ -642,6 +642,10 @@ class KeyBERTExtractor:
             ]
         )
 
+        # Output structure: doc_id, source_id, issue_id, page_id, text_block_id,
+        # keywords, scores
+        # Note: KeyBERT doesn't support grouping columns yet
+
         # Store timing info for save_results
         self._last_extraction_time = time.time() - start_time
         self._last_input_df = df

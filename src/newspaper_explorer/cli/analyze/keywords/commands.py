@@ -85,16 +85,6 @@ def keywords_group():
     help="Additional stopwords (comma-separated)",
 )
 @click.option(
-    "--preprocessing",
-    type=str,
-    help="Preprocessing steps (comma-separated, e.g., 'normalize,lowercase,remove-punctuation'). Default: basic cleaning.",
-)
-@click.option(
-    "--no-preprocessing",
-    is_flag=True,
-    help="Skip all preprocessing (use raw text)",
-)
-@click.option(
     "--num-workers",
     type=int,
     help="Number of CPU workers for parallel extraction (default: auto-detect)",
@@ -119,8 +109,6 @@ def tfidf(
     ngram_range: str,
     no_stopwords: bool,
     stopwords: str,
-    preprocessing: str,
-    no_preprocessing: bool,
     num_workers: int,
     output_name: str,
     limit: int,
@@ -135,6 +123,12 @@ def tfidf(
     Words with high TF-IDF scores are frequent in a document but rare overall,
     making them good keywords.
 
+    Preprocessing:
+    - TF-IDF does NOT apply preprocessing - users must provide either raw or
+      preprocessed data via --input-file and --text-column.
+    - For preprocessed text, use: newspaper-explorer data preprocess
+      Then specify: --text-column text_processed
+
     Document Levels:
     - page: One document per newspaper page (RECOMMENDED - best balance)
     - date: One document per publication date (RECOMMENDED - for trends)
@@ -144,8 +138,14 @@ def tfidf(
     Examples:
 
     \b
-    Extract keywords per page (recommended):
+    Extract keywords from raw text per page:
         newspaper-explorer analyze keywords tfidf --source der_tag
+
+    \b
+    Extract keywords from preprocessed text:
+        newspaper-explorer analyze keywords tfidf --source der_tag \\
+            --input-file data/processed/der_tag/text/preprocessed.parquet \\
+            --text-column text_processed
 
     \b
     Extract keywords per date:
@@ -156,17 +156,6 @@ def tfidf(
     Custom grouping by year with bigrams:
         newspaper-explorer analyze keywords tfidf --source der_tag \\
             --group-by year --ngram-range 1,2 --top-k 15
-
-    \b
-    Use normalized text with advanced preprocessing:
-        newspaper-explorer analyze keywords tfidf --source der_tag \\
-            --input-file data/processed/der_tag/textblocks_normalized.parquet \\
-            --text-column text_normalized --preprocessing normalize,lowercase
-
-    \b
-    Skip preprocessing (use raw text):
-        newspaper-explorer analyze keywords tfidf --source der_tag \\
-            --no-preprocessing
 
     Output:
         Saves to: results/{source}/keywords/{output_name}.parquet
@@ -227,17 +216,6 @@ def tfidf(
     else:
         click.echo("Stopwords: enabled (German)")
 
-    # Parse preprocessing steps
-    if no_preprocessing:
-        preprocessing_steps = []  # type: ignore
-        click.echo("Preprocessing: disabled (raw text)")
-    elif preprocessing:
-        preprocessing_steps = [s.strip() for s in preprocessing.split(",")]
-        click.echo(f"Preprocessing: {', '.join(preprocessing_steps)}")
-    else:
-        preprocessing_steps = None  # Use defaults
-        click.echo("Preprocessing: default (whitespace, lowercase, punctuation)")
-
     if limit:
         click.echo(f"Limit: {limit:,} rows")
 
@@ -262,7 +240,6 @@ def tfidf(
             min_df=min_df,
             max_df=max_df,
             ngram_range=ngram_tuple,
-            preprocessing_steps=preprocessing_steps,
             num_workers=num_workers,
             limit=limit,
         )
@@ -330,6 +307,18 @@ def tfidf(
     help="Source name (e.g., 'der_tag')",
 )
 @click.option(
+    "--input-file",
+    type=click.Path(exists=True),
+    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+)
+@click.option(
+    "--text-column",
+    type=str,
+    default="text",
+    help="Name of text column to process",
+    show_default=True,
+)
+@click.option(
     "--group-by",
     type=str,
     multiple=True,
@@ -379,6 +368,8 @@ def tfidf(
 )
 def rake(
     source: str,
+    input_file: Optional[str],
+    text_column: str,
     group_by: Optional[tuple[str, ...]],
     top_k: int,
     min_length: int,
@@ -445,6 +436,8 @@ def rake(
         # Initialize extractor
         extractor = RAKEExtractor(
             source_name=source,
+            input_file=Path(input_file) if input_file else None,
+            text_column=text_column,
             min_phrase_length=min_length,
             max_phrase_length=max_length,
             use_stopwords=use_stopwords,
@@ -491,6 +484,18 @@ def rake(
     help="Source name (e.g., 'der_tag')",
 )
 @click.option(
+    "--input-file",
+    type=click.Path(exists=True),
+    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+)
+@click.option(
+    "--text-column",
+    type=str,
+    default="text",
+    help="Name of text column to process",
+    show_default=True,
+)
+@click.option(
     "--group-by",
     type=str,
     multiple=True,
@@ -529,6 +534,8 @@ def rake(
 )
 def yake(
     source: str,
+    input_file: Optional[str],
+    text_column: str,
     group_by: Optional[tuple[str, ...]],
     top_k: int,
     language: str,
@@ -590,6 +597,8 @@ def yake(
         # Initialize extractor
         extractor = YAKEExtractor(
             source_name=source,
+            input_file=Path(input_file) if input_file else None,
+            text_column=text_column,
             language=language,
             max_ngram_size=max_ngram_size,
             deduplication_threshold=deduplication_threshold,
@@ -629,6 +638,18 @@ def yake(
     type=str,
     required=True,
     help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--input-file",
+    type=click.Path(exists=True),
+    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+)
+@click.option(
+    "--text-column",
+    type=str,
+    default="text",
+    help="Name of text column to process",
+    show_default=True,
 )
 @click.option(
     "--group-by",
@@ -729,6 +750,8 @@ def yake(
 )
 def keybert(
     source: str,
+    input_file: Optional[str],
+    text_column: str,
     group_by: Optional[tuple[str, ...]],
     top_k: int,
     model: str,
@@ -816,6 +839,8 @@ def keybert(
         click.echo("\nLoading BERT model (this may take a moment)...")
         extractor = KeyBERTExtractor(
             source_name=source,
+            input_file=Path(input_file) if input_file else None,
+            text_column=text_column,
             model_name=model,
             keyphrase_ngram_range=(min_ngram, max_ngram),
             diversity=diversity,

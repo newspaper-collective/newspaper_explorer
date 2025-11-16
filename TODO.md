@@ -10,6 +10,8 @@
 - unify sample/limit cmd
 - do bertopic year by year
 
+- normalization output always named textblocks
+
 ### UI Issues
 - use image index consitently
 - datamanager tab?

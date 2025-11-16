@@ -596,6 +596,10 @@ class GLiNEREntityExtractor:
             output_data=extract_output_stats(results_df),
             duration_seconds=duration,
             status="completed",
+            analysis_id=None,  # Will be auto-generated
+            model_version=None,
+            completed_at=None,
+            error_message=None,
         )
 
         # Save results using unified helper

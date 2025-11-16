@@ -33,10 +33,10 @@ The preprocessing module provides a comprehensive pipeline for cleaning and norm
 - ✅ **Preserve traceability**: All foreign keys (IDs) maintained throughout pipeline
 
 **Preprocessing Categories**:
-1. **Normalization** - Modernize historical text (ſ→s, Königinn→Königin)
-2. **Cleaning** - Whitespace, lowercase, diacritics
-3. **Filtering** - Remove punctuation, numbers, stopwords, OCR artifacts
-4. **Linguistic** - Dehyphenation, lemmatization
+1. **Normalization** - Transform text to standard form (Unicode, diacritics, historical characters, spelling)
+2. **Cleaning** - Remove noise (whitespace, case)
+3. **Filtering** - Remove content (punctuation, numbers, stopwords, OCR artifacts)
+4. **Linguistic** - Language-aware processing (dehyphenation, lemmatization)
 
 ---
 
@@ -47,8 +47,8 @@ The preprocessing module provides a comprehensive pipeline for cleaning and norm
 ```
 src/newspaper_explorer/data/preprocessing/
 ├── pipeline.py              # Main TextPreprocessor class
-├── normalization.py         # Historical text normalization (3 methods)
-├── cleaning.py              # Basic text cleaning operations
+├── normalization.py         # Text normalization (Unicode, diacritics, historical chars, spelling)
+├── cleaning.py              # Text cleaning (whitespace, case)
 ├── filtering.py             # Content filtering and removal
 └── linguistic.py            # Linguistic processing (dehyphenate, lemmatize)
 
@@ -57,7 +57,8 @@ cli/data/
 
 docs/data/preprocessing/
 ├── PREPROCESSING.md         # This comprehensive guide
-└── NORMALIZATION.md         # Detailed normalization documentation
+├── NORMALIZATION.md         # Detailed normalization documentation
+└── METADATA.md              # Metadata system documentation
 ```
 
 ### Integration with Data Pipeline
@@ -68,27 +69,32 @@ Download → Parse ALTO/METS → Polars DataFrame
                               PREPROCESSING
                   (Sequential pipeline - steps chain together)
                                     ↓
-                            ┌───────────────┐  Choose ONE:
-                            │ Normalization │  - normalize (simple)
-                            │   (optional)  │  - normalize-dtacab
-                            └───────┬───────┘  - normalize-transnormer
+                            ┌───────────────┐  Unicode & Characters:
+                            │ Normalization │  - normalize-unicode (NFKC, quotes, spaces)
+                            │   (optional)  │  - remove-diacritics (ä→a, ö→o)
+                            └───────┬───────┘  
+                                    ↓          Historical German Spelling:
+                                    ↓          - normalize (simple: ſ→s, ß→ss)
+                                    ↓          - normalize-dtacab (API, slow)
+                                    ↓          - normalize-transnormer (neural, fast)
                                     ↓        
                             ┌───────────────┐  Use any/all:
-                            │   Cleaning    │  - remove-diacritics
-                            │   (optional)  │  - normalize-whitespace
-                            └───────┬───────┘  - lowercase
+                            │   Cleaning    │  - normalize-whitespace
+                            │   (optional)  │  - lowercase
+                            └───────┬───────┘
                                     ↓          
                             ┌───────────────┐  Use any/all:
-                            │   Filtering   │  - filter-length  
-                            │   (optional)  │  - remove-punctuation
-                            └───────┬───────┘  - clean-ocr
+                            │   Filtering   │  - filter-length
+                            │   (optional)  │  - filter-word-count
+                            └───────┬───────┘  - remove-punctuation
                                     ↓          - remove-numbers
                                     ↓          - remove-stopwords
+                                    ↓          - clean-ocr
                                     ↓          
-                            ┌───────────────┐  Choose ONE lemmatizer:
-                            │  Linguistic   │  - lemmatize-spacy
-                            │   (optional)  │  - lemmatize
-                            └───────┬───────┘  - dehyphenate
+                            ┌───────────────┐  Linguistic processing:
+                            │  Linguistic   │  - dehyphenate (remove line-breaks)
+                            │   (optional)  │  - lemmatize-spacy (fast)
+                            └───────┬───────┘  - lemmatize (thorough)
                                     ↓          
                                     ↓          
                               Original text
@@ -156,15 +162,16 @@ Original text → normalize → temp1 → lowercase → temp2 → remove-stopwor
 
 The preprocessing steps fall into four categories that can all work together:
 
-**1. Normalization** (choose ONE):
-- `normalize` - Simple character replacement
-- `normalize-transnormer` - Neural normalization 
-- `normalize-dtacab` - API normalization
+**1. Normalization** (use any/all, order matters):
+- `normalize-unicode` - Unicode normalization (NFKC, quotes, spaces, control chars) - **RECOMMENDED FIRST STEP**
+- `remove-diacritics` - Remove accents (ä→a, ö→o, ü→u)
+- `normalize` - Simple historical German (ſ→s, ß→ss)
+- `normalize-transnormer` - Neural historical German normalization (spelling modernization)
+- `normalize-dtacab` - API historical German normalization (slower, academic-grade)
 
 **2. Cleaning** (use any/all):
-- `normalize-whitespace` - Fix spacing
-- `lowercase` - Case normalization
-- `remove-diacritics` - ASCII conversion
+- `normalize-whitespace` - Collapse/normalize whitespace
+- `lowercase` - Convert to lowercase
 
 **3. Filtering** (use any/all):
 - `remove-punctuation` - Remove punctuation
@@ -174,15 +181,20 @@ The preprocessing steps fall into four categories that can all work together:
 - `filter-word-count` - Filter by word count
 - `clean-ocr` - Remove OCR artifacts
 
-**4. Linguistic** (choose ONE lemmatizer + optional dehyphenation):
-- `dehyphenate` - Remove line-break hyphens (language-aware)
-- `lemmatize-spacy` - Fast lemmatization
-- `lemmatize` - Thorough lemmatization
+**4. Linguistic** (use any/all):
+- `dehyphenate` - Remove line-break hyphens (language-aware with pyphen)
+- `lemmatize-spacy` - Fast lemmatization (spaCy)
+- `lemmatize` - Thorough lemmatization (GermaLemma)
 
-**Note on dehyphenate**: While it removes hyphens (similar to cleaning), it's in the linguistic module because it uses language-specific dictionaries (pyphen) to distinguish line-break hyphens from legitimate compound-word hyphens.
+**Key Insights**:
+- **normalize-unicode** should typically be **FIRST** - it handles OCR artifacts and standardizes characters
+- **Normalization methods are complementary**: `normalize-unicode` handles Unicode/OCR issues, while `normalize`/`normalize-transnormer`/`normalize-dtacab` handle historical spelling
+- **dehyphenate** is in Linguistic (not Cleaning) because it uses language-specific dictionaries to distinguish line-break hyphens from compound-word hyphens
+- All steps can be chained in any order, but recommended order: normalize-unicode → historical normalization → cleaning → filtering → linguistic
 
-**Available Steps**:
-- `normalize` - Simple character normalization (ſ→s, ẞ→SS)
+**Available Steps (Complete List)**:
+- `normalize-unicode` - Unicode normalization (NFKC + character translation)
+- `normalize` - Simple character normalization (ſ→s, ẞ→SS, ß→ss)
 - `normalize-transnormer` - Neural normalization with Transnormer
 - `normalize-dtacab` - API normalization with DTA-CAB
 - `remove-diacritics` - Remove accents (ä→a, ö→o)
@@ -200,11 +212,57 @@ The preprocessing steps fall into four categories that can all work together:
 
 ### 2. Normalization Module
 
-**Purpose**: Modernize historical German text using three different methods.
+**Purpose**: Transform text to standard form - handles Unicode issues, diacritics, and historical German spelling.
+
+**Location**: `src/newspaper_explorer/data/preprocessing/normalization.py`
 
 **Methods**:
 
-#### 2.1 Simple Normalization
+#### 2.1 Unicode Normalization
+- **Function**: `normalize_unicode()`
+- **Speed**: ⚡⚡ Fast (Python built-ins)
+- **Quality**: ★★★★★ Essential
+- **Use case**: **ALWAYS FIRST** - handles OCR artifacts, unifies quotes/spaces
+
+```python
+from newspaper_explorer.data.preprocessing.normalization import normalize_unicode
+
+# Conservative mode (default): preserves semantic punctuation
+df = normalize_unicode(df, input_column="text", output_column="text_unicode")
+
+# Aggressive mode: unifies all dashes (good for NLP)
+df = normalize_unicode(df, input_column="text", aggressive=True)
+```
+
+**Transformations**:
+- NFKC normalization
+- Unifies quotation marks („"" → ")
+- Normalizes various space types → regular space
+- Removes soft hyphens, zero-width chars
+- Removes OCR artifacts (bullets, boxes)
+- Optional: strips control characters
+
+**Two modes**:
+- **Conservative** (default): Preserves en dash, em dash (semantic meaning)
+- **Aggressive**: Unifies all dashes → hyphen (better for NLP)
+
+#### 2.2 Diacritic Removal
+- **Function**: `remove_diacritics()`
+- **Speed**: ⚡⚡ Fast (unidecode)
+- **Quality**: ★★★☆☆ Lossy but useful
+- **Use case**: ASCII normalization, searchability
+
+```python
+from newspaper_explorer.data.preprocessing.normalization import remove_diacritics
+
+df = remove_diacritics(df, input_column="text", output_column="text_no_diacritics")
+```
+
+**Transformations**:
+- ä → a, ö → o, ü → u
+- é → e, à → a, etc.
+
+#### 2.3 Simple Historical German
 - **Function**: `simple()`
 - **Speed**: ⚡ Instant (regex replacement)
 - **Quality**: ★★☆☆☆ Basic
@@ -213,7 +271,7 @@ The preprocessing steps fall into four categories that can all work together:
 ```python
 from newspaper_explorer.data.preprocessing.normalization import simple
 
-df = simple(df, text_column="text", output_column="text_normalized")
+df = simple(df, input_column="text", output_column="text_simple")
 ```
 
 **Transformations**:
@@ -221,23 +279,22 @@ df = simple(df, text_column="text", output_column="text_normalized")
 - `ẞ` → `SS` (capital sharp s)
 - `ß` → `ss` (sharp s)
 
-#### 2.2 Transnormer (Neural)
+#### 2.4 Transnormer (Neural Historical German)
 - **Function**: `transnormer()`
 - **Speed**: ⚡⚡⚡ Medium-Fast (GPU: 100-500 sent/sec, CPU: 10-100 sent/sec)
 - **Quality**: ★★★★★ Excellent (98.88% accuracy)
-- **Use case**: High-quality normalization at scale
+- **Use case**: High-quality spelling modernization at scale
 
 ```python
 from newspaper_explorer.data.preprocessing.normalization import transnormer
 
 df = transnormer(
     df,
-    text_column="text",
-    output_column="text_normalized",
+    input_column="text",
+    output_column="text_transnormer",
     model="19c",           # or "18-19c" for 1700-1899
     batch_size=32,         # Increase for faster processing
     num_beams=4,           # Decrease for faster processing
-    device="cuda",         # or "cpu"
     num_gpus=1,            # Multi-GPU parallel processing
     use_cache=True,        # Enable resume functionality
 )
@@ -278,7 +335,9 @@ df = dta_cab(
 
 ### 3. Cleaning Module
 
-**Purpose**: Basic text cleaning operations.
+**Purpose**: Remove noise from text (whitespace, case).
+
+**Location**: `src/newspaper_explorer/data/preprocessing/cleaning.py`
 
 **Functions**:
 
@@ -286,11 +345,56 @@ df = dta_cab(
 ```python
 from newspaper_explorer.data.preprocessing.cleaning import normalize_whitespace
 
+# Default: Collapse ALL whitespace (spaces, tabs, newlines) to single space
 df = normalize_whitespace(df, input_column="text", output_column="text_clean")
+# "Hello    world\n\ttab  " → "Hello world tab"
+
+# Preserve newlines: Collapse spaces/tabs but keep line breaks
+df = normalize_whitespace(
+    df,
+    input_column="text",
+    output_column="text_clean",
+    keep_newlines=True
+)
+# "Hello    world\n\ttab  " → "Hello world\ntab"
 ```
-- Replaces all consecutive whitespace with single space
-- Removes leading/trailing whitespace
-- Handles tabs, newlines, carriage returns
+
+**Two modes:**
+
+1. **Default (keep_newlines=False):**
+   - Collapses ALL whitespace (spaces, tabs, newlines) to single space
+   - Removes leading/trailing whitespace
+   - **Use for:** Aggregated text blocks, NLP tasks, topic modeling
+   - Example: Paragraph-level or document-level analysis
+
+2. **Newline-preserving (keep_newlines=True):**
+   - Collapses multiple spaces/tabs to single space
+   - KEEPS newlines intact, removes spaces around them
+   - Normalizes `\r\n` and `\r` to `\n`
+   - **Use for:** Line-by-line processing, preserving text structure
+   - Example: Poetry, structured documents, visual layout preservation
+
+**When to use which:**
+- **Aggregated text** (text blocks, articles): Use default (removes newlines)
+- **Line-level analysis** (OCR output, structured text): Use `keep_newlines=True`
+- **Topic modeling, embeddings**: Use default (newlines are noise)
+- **Preserving layout** (poetry, tables): Use `keep_newlines=True`
+
+**Practical example:**
+```python
+# Newspaper text with inconsistent spacing and line breaks
+text = """Der Kaiser    reiste gestern
+nach   Berlin.     
+
+    Die Verhandlungen   über
+den Friedensvertrag    dauern an."""
+
+# Default mode → single line for analysis
+# "Der Kaiser reiste gestern nach Berlin. Die Verhandlungen über den Friedensvertrag dauern an."
+
+# Newline-preserving → structured text
+# "Der Kaiser reiste gestern\nnach Berlin.\n\nDie Verhandlungen über\nden Friedensvertrag dauern an."
+```
 
 #### 3.2 Lowercase Conversion
 ```python
@@ -300,16 +404,6 @@ df = lowercase(df, input_column="text", output_column="text_lower")
 ```
 - Converts all characters to lowercase
 - Useful for case-insensitive analysis
-
-#### 3.3 Diacritic Removal
-```python
-from newspaper_explorer.data.preprocessing.cleaning import remove_diacritics
-
-df = remove_diacritics(df, input_column="text", output_column="text_ascii")
-```
-- Converts accented characters to ASCII equivalents
-- `ä→a`, `ö→o`, `ü→u`, `é→e`, etc.
-- Uses unidecode library
 
 ### 4. Filtering Module
 

@@ -1,20 +1,26 @@
 """
-Historical German text normalization methods.
+Text normalization methods.
 
-Provides specialized normalization for historical German newspaper texts:
-- Basic character mapping (ſ→s, ß→ss)
+Provides comprehensive normalization for historical German newspaper texts:
+- Unicode normalization (NFKC, character translation, control chars)
+- Diacritic removal (ä→a, ö→o, ü→u)
+- Historical German character mapping (ſ→s, ß→ss)
 - Transnormer neural normalization (transformer-based)
 - DTA-CAB API normalization (web service)
 """
 
-import os
-import json
 import hashlib
 import logging
+import os
+import unicodedata
 from pathlib import Path
 from typing import Optional, Union
 
 import polars as pl
+from tqdm import tqdm
+
+# Import text chunking utility
+from newspaper_explorer.data.utils.text import chunk_text
 
 # Set Hugging Face cache directory to avoid filling up home directory
 # Use project's .cache directory for model downloads
@@ -24,8 +30,229 @@ os.environ["HF_HOME"] = str(_project_root / ".cache" / "huggingface")
 logger = logging.getLogger(__name__)
 
 
-# Import text chunking utility
-from newspaper_explorer.data.utils.text import chunk_text
+# Character translation maps for Unicode normalization
+# Two modes: conservative (default) and aggressive
+
+# CONSERVATIVE: Only fix clear OCR errors, preserve semantic distinctions
+UNICODE_TRANSLATION_CONSERVATIVE = {
+    # Remove problematic hyphens/spaces
+    0x00AD: None,  # soft hyphen (invisible, remove)
+    0x2011: "-",  # non-breaking hyphen → regular hyphen
+    # NOTE: KEEP - (hyphen), – (en dash), — (em dash) - these have semantic meaning!
+    # Unify quotation marks (less controversial)
+    0x201E: '"',  # „ German opening quote
+    0x201C: '"',  # " German closing quote (left double quotation mark)
+    0x201C: '"',  # " left double quote
+    0x201D: '"',  # " right double quote
+    0x00AB: '"',  # « left-pointing double angle quote
+    0x00BB: '"',  # » right-pointing double angle quote
+    0x201A: "'",  # ‚ single low-9 quote
+    0x2018: "'",  # ' left single quote
+    0x2019: "'",  # ' right single quote
+    # Normalize various space types to regular space
+    0x00A0: 32,  # non-breaking space
+    0x202F: 32,  # narrow no-break space
+    0x2000: 32,  # en quad
+    0x2001: 32,  # em quad
+    0x2002: 32,  # en space
+    0x2003: 32,  # em space
+    0x2004: 32,  # three-per-em space
+    0x2005: 32,  # four-per-em space
+    0x2006: 32,  # six-per-em space
+    0x2007: 32,  # figure space
+    0x2008: 32,  # punctuation space
+    0x2009: 32,  # thin space
+    0x200A: 32,  # hair space
+    # Remove zero-width and invisible characters
+    0x200B: None,  # zero-width space
+    0x200C: None,  # zero-width non-joiner
+    0x200D: None,  # zero-width joiner
+    0x2060: None,  # word joiner
+    0xFEFF: None,  # zero-width no-break space (BOM)
+    # Remove OCR artifacts (bullets, boxes, etc.)
+    0x2022: None,  # • bullet
+    0x25AA: None,  # ▪ black small square
+    0x2023: None,  # ‣ triangular bullet
+    0x25E6: None,  # ◦ white bullet
+    0x25A0: None,  # ■ black square
+    0x25FC: None,  # ◼ black medium square
+    0x25AE: None,  # ▮ black vertical rectangle
+    0x261E: None,  # ☞ white right pointing index
+}
+
+# AGGRESSIVE: Unify all dashes (good for NLP/topic modeling, loses nuance)
+UNICODE_TRANSLATION_AGGRESSIVE = {
+    **UNICODE_TRANSLATION_CONSERVATIVE,
+    # Add aggressive dash normalization
+    0x2013: "-",  # – en dash → hyphen
+    0x2014: "-",  # — em dash → hyphen
+    0x2212: "-",  # − minus sign → hyphen
+}
+
+
+def _strip_control_characters(text: str, keep_newlines: bool = False) -> str:
+    """
+    Remove Unicode control and format characters.
+
+    Args:
+        text: Input text
+        keep_newlines: If True, preserves newlines and tabs
+
+    Returns:
+        Text with control characters removed
+    """
+    if keep_newlines:
+        # Keep newlines and tabs
+        return "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
+    else:
+        # Remove all control characters
+        return "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
+
+
+def normalize_unicode(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    keep_newlines: bool = False,
+    strip_control_chars: bool = True,
+    aggressive: bool = False,
+) -> pl.DataFrame:
+    """
+    Normalize Unicode characters for OCR text.
+
+    Recommended as the FIRST STEP in preprocessing pipelines.
+    Handles common OCR issues while preserving semantic distinctions.
+
+    Two modes available:
+
+    **Conservative mode (default, aggressive=False):**
+    - Preserves semantic punctuation (en dash, em dash)
+    - "1914–1918" stays as "1914–1918" (en dash for ranges)
+    - "Der Kaiser — so berichtet" stays with em dash (emphasis)
+    - Good for: historical analysis, quotations, entity extraction
+
+    **Aggressive mode (aggressive=True):**
+    - Unifies all dashes to hyphen: – → -, — → -, − → -
+    - "1914–1918" becomes "1914-1918"
+    - Good for: topic modeling, embeddings, NLP where nuance doesn't matter
+
+    Both modes perform:
+    1. NFKC Unicode normalization (compatibility decomposition + composition)
+    2. Character translation:
+       - Unifies quotation marks („", "", «») → standard quotes (")
+       - Normalizes various space types → regular space
+       - Removes soft hyphens and zero-width characters
+       - Removes OCR artifacts (bullets, boxes, etc.)
+    3. Strips Unicode control/format characters (optional)
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_unicode)
+        keep_newlines: If True, preserves newlines and tabs (default: False)
+        strip_control_chars: If True, removes control characters (default: True)
+        aggressive: If True, unifies all dashes to hyphen (default: False)
+
+    Returns:
+        DataFrame with normalized Unicode text
+
+    Example:
+        >>> # Conservative (default): preserves semantic dashes
+        >>> df = normalize_unicode(df)
+        >>> # "1914–1918" → "1914–1918" (en dash kept)
+        >>> # „Quoted text" → "Quoted text"
+        >>>
+        >>> # Aggressive: unifies all dashes
+        >>> df = normalize_unicode(df, aggressive=True)
+        >>> # "1914–1918" → "1914-1918" (en dash → hyphen)
+    """
+    if output_column is None:
+        output_column = f"{input_column}_unicode"
+
+    # Choose translation map based on mode
+    translation_map = (
+        UNICODE_TRANSLATION_AGGRESSIVE if aggressive else UNICODE_TRANSLATION_CONSERVATIVE
+    )
+    mode_name = "aggressive" if aggressive else "conservative"
+
+    logger.info(f"Normalizing Unicode ({mode_name}): {input_column} → {output_column}")
+
+    def normalize_text(text: str) -> str:
+        """Apply Unicode normalization to a single text."""
+        if not text:
+            return text
+
+        # 1. NFKC normalization (compatibility decomposition + canonical composition)
+        text = unicodedata.normalize("NFKC", text)
+
+        # 2. Apply character translation map
+        text = text.translate(translation_map)
+
+        # 3. Strip control characters if requested
+        if strip_control_chars:
+            text = _strip_control_characters(text, keep_newlines=keep_newlines)
+
+        return text
+
+    # Apply normalization to all texts with progress bar
+    texts = df[input_column].to_list()
+    normalized_texts = [
+        normalize_text(text) for text in tqdm(texts, desc="Normalizing Unicode", leave=False)
+    ]
+
+    df = df.with_columns([pl.Series(output_column, normalized_texts)])
+
+    logger.info(f"Unicode normalized for {len(df):,} rows")
+    return df
+
+
+def remove_diacritics(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+) -> pl.DataFrame:
+    """
+    Remove diacritics from text using unidecode.
+
+    Converts accented characters to their ASCII equivalents:
+    - ä → a, ö → o, ü → u
+    - é → e, à → a, etc.
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_no_diacritics)
+
+    Returns:
+        DataFrame with diacritics removed
+
+    Example:
+        >>> df = remove_diacritics(df)
+        >>> # "Münchner Straße" → "Munchner Strasse"
+
+    Note:
+        Requires unidecode package: pip install unidecode
+    """
+    try:
+        from unidecode import unidecode
+    except ImportError:
+        raise ImportError(
+            "unidecode is required for diacritic removal. " "Install with: pip install unidecode"
+        )
+
+    if output_column is None:
+        output_column = f"{input_column}_no_diacritics"
+
+    logger.info(f"Removing diacritics: {input_column} → {output_column}")
+
+    # Apply unidecode to each text
+    texts = df[input_column].to_list()
+    processed = [unidecode(str(text)) if text else "" for text in texts]
+
+    df = df.with_columns([pl.Series(output_column, processed)])
+
+    logger.info(f"Removed diacritics from {len(df):,} rows")
+    return df
 
 
 def _process_chunks_on_gpu(
@@ -65,25 +292,30 @@ def _process_chunks_on_gpu(
         List of (index, normalized_text) tuples if result_queue is None, else None
     """
     import torch
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
     from tqdm import tqdm
+    from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
+    from transformers.models.auto.tokenization_auto import AutoTokenizer
 
     # Load model on this device
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model_obj = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
 
+    # Get generation config before compilation (torch.compile loses type info)
+    gen_config = model_obj.generation_config
+
     # Try to use torch.compile for faster inference (PyTorch 2.0+)
     if hasattr(torch, "compile"):
         try:
             logger.info(f"Compiling model on {device} with torch.compile() for faster inference...")
-            model_obj = torch.compile(model_obj, mode="reduce-overhead")
+            # Store original type before compilation for type checking
+            compiled_model = torch.compile(model_obj, mode="reduce-overhead")
+            # Keep reference to compiled model but preserve original type hint
+            model_obj = compiled_model  # type: ignore[assignment]
             logger.info(f"Model compilation complete on {device}")
         except Exception as e:
             logger.warning(
                 f"Could not compile model on {device}: {e}. Continuing without compilation."
             )
-
-    gen_config = model_obj.generation_config
     gen_config.num_beams = num_beams
     gen_config.max_new_tokens = max_new_tokens
 
@@ -127,7 +359,7 @@ def _process_chunks_on_gpu(
 
         # Generate
         with torch.no_grad():
-            outputs = model_obj.generate(
+            outputs = model_obj.generate(  # type: ignore[attr-defined]
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
                 generation_config=gen_config,
@@ -149,7 +381,7 @@ def _process_chunks_on_gpu(
 
 def simple(
     df: pl.DataFrame,
-    text_column: str = "text",
+    input_column: str = "text",
     output_column: Optional[str] = None,
 ) -> pl.DataFrame:
     """
@@ -162,20 +394,20 @@ def simple(
 
     Args:
         df: Input DataFrame
-        text_column: Column containing text to process
-        output_column: Name for output column (default: {text_column}_normalized)
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_simple)
 
     Returns:
         DataFrame with normalized text column
     """
     if output_column is None:
-        output_column = f"{text_column}_normalized"
+        output_column = f"{input_column}_simple"
 
-    logger.info(f"Normalizing historical characters: {text_column} → {output_column}")
+    logger.info(f"Normalizing historical characters: {input_column} → {output_column}")
 
     df = df.with_columns(
         [
-            pl.col(text_column)
+            pl.col(input_column)
             .str.replace_all("ẞ", "SS")
             .str.replace_all("ß", "ss")
             .str.replace_all("ſs", "ss")
@@ -190,8 +422,7 @@ def simple(
 
 def transnormer(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     model: str = "19c",
     batch_size: int = 32,
@@ -219,8 +450,7 @@ def transnormer(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_transnormer)
         model: Model to use. Options:
                - "19c": For text from 1780-1899 (transnormer-19c-beta-v02)
@@ -255,8 +485,6 @@ def transnormer(
         is interrupted, already-normalized chunks will be read from cache
         when you re-run, avoiding redundant GPU computation.
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_transnormer"
 
@@ -264,8 +492,8 @@ def transnormer(
 
     try:
         import torch
-        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-        from transformers import GenerationConfig
+        from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
+        from transformers.models.auto.tokenization_auto import AutoTokenizer
     except ImportError:
         raise ImportError(
             "Transnormer normalization requires 'transformers' and 'torch'.\n"
@@ -364,7 +592,7 @@ def transnormer(
     all_chunks = []
     cached_results = {}  # chunk_idx -> normalized_text
 
-    for row_idx, text in enumerate(texts):
+    for row_idx, text in tqdm(enumerate(texts), total=len(texts), desc="Chunking & checking cache"):
         if not text or not text.strip():
             # Empty text - keep as single chunk
             all_chunks.append(" ")
@@ -424,7 +652,7 @@ def transnormer(
             # Already set, ignore
             pass
 
-        from multiprocessing import Process, Queue, Barrier
+        from multiprocessing import Barrier, Process, Queue
 
         # Create a barrier to synchronize GPU processes
         # All GPUs will wait until all have loaded their models
@@ -434,7 +662,7 @@ def transnormer(
         num_uncached = len(chunks_to_process_list)
         chunks_per_gpu = (num_uncached + num_gpus - 1) // num_gpus
         processes = []
-        result_queue = Queue()
+        result_queue: Queue[list[tuple[int, str]]] = Queue()
 
         for gpu_id in range(num_gpus):
             start_idx = gpu_id * chunks_per_gpu
@@ -495,9 +723,12 @@ def transnormer(
         logger.info(f"Loading Transnormer model (this may take a while on first run)")
         logger.info("Normalizing chunks in batches...")
 
+        # Convert device to string if it's an int (e.g., 0 -> "cuda:0")
+        device_str = f"cuda:{device}" if isinstance(device, int) else device
+
         # Call worker function directly (no multiprocessing) - only for uncached chunks
         processing_results = _process_chunks_on_gpu(
-            device=device,
+            device=device_str,
             chunks=chunks_to_process_list,
             chunk_indices=chunk_indices_to_process,
             model_name=model_name,
@@ -512,6 +743,8 @@ def transnormer(
 
         # Merge processing results with cached results
         logger.info("Merging results with cache...")
+        if processing_results is None:
+            processing_results = []
         for chunk_idx, normalized in processing_results:
             cached_results[chunk_idx] = normalized
             # Save new result to cache
@@ -540,8 +773,7 @@ def transnormer(
 
 def dta_cab(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     batch_size: int = 100,
     timeout: int = 30,
@@ -563,8 +795,7 @@ def dta_cab(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_dtacab)
         batch_size: Number of texts to process in each batch
         timeout: Request timeout in seconds
@@ -575,8 +806,6 @@ def dta_cab(
     Returns:
         DataFrame with DTA-CAB normalized text column
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_dtacab"
 

@@ -238,6 +238,10 @@ class BERTopicExtractor:
         limit: Optional[int] = None,
         batch_size: int = 32,
         umap_sample_pages: Optional[int] = None,
+        filter_pages: Optional[List[int]] = None,
+        years: Optional[List[int]] = None,
+        sample_size: Optional[int] = None,
+        random_seed: int = 42,
     ) -> pl.DataFrame:
         """
         Extract topics from documents using global BERTopic.
@@ -254,6 +258,22 @@ class BERTopicExtractor:
         - Better topic quality (learns from entire corpus)
         - Comparable topics across documents
 
+        **Sampling Strategies for Large Corpora**:
+
+        For massive datasets (>10M lines), use sampling to reduce memory:
+
+        1. **Page filtering**: `filter_pages=[1, 2, 3]` - Only process first 3 pages
+        2. **Year filtering**: `years=[1900, 1901]` - Only process specific years
+        3. **Random sampling**: `sample_size=100000` - Random sample of documents
+        4. **UMAP sampling**: `umap_sample_pages=3` - Fit UMAP on subset, transform all
+        5. **Combined**: Use multiple strategies together
+
+        **Recommended for 60M+ lines**:
+        - Process year-by-year: Call this function per year
+        - Use `filter_pages=[1, 2, 3]` for front pages only
+        - Use `umap_sample_pages=3` for memory efficiency
+        - Use `sample_size` for initial exploration
+
         Args:
             group_by: Columns to group by (e.g., ["date"], ["page_id"])
             n_topics: Target number of topics (None = automatic discovery)
@@ -265,6 +285,12 @@ class BERTopicExtractor:
                               (e.g., 3 = first 3 pages). Reduces memory usage
                               by 10-100x while maintaining topic quality.
                               Transforms all embeddings after fit.
+            filter_pages: Only process specific page numbers (e.g., [1, 2, 3] for first 3 pages)
+                         Filters BEFORE grouping for maximum memory savings.
+            years: Only process specific years (e.g., [1900, 1901])
+                  Filters BEFORE grouping for maximum memory savings.
+            sample_size: Random sample N documents after grouping (for exploration)
+            random_seed: Seed for random sampling (default: 42)
 
         Returns:
             DataFrame with doc_id, topic_terms, scores, topics, topic_probs,
@@ -274,6 +300,37 @@ class BERTopicExtractor:
 
         logger.info("Loading input data...")
         df = pl.read_parquet(self.input_file)
+
+        # Apply filters BEFORE any processing for maximum memory savings
+        original_count = len(df)
+
+        # Filter by years
+        if years is not None:
+            if "year" in df.columns:
+                df = df.filter(pl.col("year").is_in(years))
+                logger.info(
+                    f"Filtered to years {years}: {len(df):,} rows (from {original_count:,})"
+                )
+            elif "date" in df.columns:
+                # Extract year from date column
+                df = df.with_columns(pl.col("date").dt.year().alias("year"))
+                df = df.filter(pl.col("year").is_in(years))
+                logger.info(
+                    f"Filtered to years {years}: {len(df):,} rows (from {original_count:,})"
+                )
+            else:
+                logger.warning("No 'year' or 'date' column found - cannot filter by years")
+
+        # Filter by page numbers
+        if filter_pages is not None:
+            if "page_number" in df.columns:
+                df = df.filter(pl.col("page_number").is_in(filter_pages))
+                logger.info(
+                    f"Filtered to pages {filter_pages}: {len(df):,} rows "
+                    f"({len(df)/original_count*100:.1f}% of original)"
+                )
+            else:
+                logger.warning("No 'page_number' column found - cannot filter by pages")
 
         if limit:
             df = df.head(limit)
@@ -298,6 +355,14 @@ class BERTopicExtractor:
                     [pl.lit("doc_").add(pl.int_range(pl.len()).cast(str)).alias("doc_id")]
                 )
             df_grouped = df.select(["doc_id", self.text_column])
+
+        # Apply random sampling after grouping (for exploration)
+        if sample_size is not None and sample_size < len(df_grouped):
+            logger.info(
+                f"Random sampling {sample_size:,} documents from {len(df_grouped):,} "
+                f"(seed={random_seed})"
+            )
+            df_grouped = df_grouped.sample(n=sample_size, seed=random_seed)
 
         logger.info(f"Processing {len(df_grouped)} documents")
 

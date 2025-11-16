@@ -28,15 +28,23 @@ def remove_punctuation(
     """
     Remove punctuation from text.
 
+    By default, preserves % (common for percentages in newspaper text).
+
     Args:
         df: Input DataFrame
         text_column: Default column containing text (for backward compatibility)
         input_column: Column to process (default: text_column)
         output_column: Name for output column (default: {input_column}_nopunct)
-        keep_chars: Characters to keep (e.g., "-'" to keep hyphens and apostrophes)
+        keep_chars: Additional characters to keep (e.g., "-'" to keep hyphens and apostrophes)
 
     Returns:
         DataFrame with punctuation removed
+
+    Example:
+        >>> # Remove all punctuation except %
+        >>> df = remove_punctuation(df)
+        >>> # Keep hyphens and apostrophes too
+        >>> df = remove_punctuation(df, keep_chars="-'")
     """
     if input_column is None:
         input_column = text_column
@@ -46,10 +54,11 @@ def remove_punctuation(
     logger.info(f"Removing punctuation: {input_column} → {output_column}")
 
     # Build regex pattern: remove all non-alphanumeric except spaces and keep_chars
+    # Default: keep % for percentages (common in newspaper text)
     if keep_chars:
-        pattern = f"[^a-zA-ZäöüÄÖÜß0-9\\s{re.escape(keep_chars)}]"
+        pattern = f"[^a-zA-ZäöüÄÖÜß0-9\\s%{re.escape(keep_chars)}]"
     else:
-        pattern = "[^a-zA-ZäöüÄÖÜß0-9\\s]"
+        pattern = "[^a-zA-ZäöüÄÖÜß0-9\\s%]"
 
     df = df.with_columns(
         [

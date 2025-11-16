@@ -41,6 +41,16 @@ from newspaper_explorer.data.utils.metadata import (
 logger = logging.getLogger(__name__)
 
 
+# Global variable for feature names (shared across workers to avoid pickling)
+_FEATURE_NAMES = None
+
+
+def _init_worker(feature_names):
+    """Initialize worker process with shared feature names."""
+    global _FEATURE_NAMES
+    _FEATURE_NAMES = feature_names
+
+
 def _extract_keywords_batch(args):
     """
     Worker function to extract keywords from a batch of documents.
@@ -48,12 +58,13 @@ def _extract_keywords_batch(args):
     This function is designed to be called by multiprocessing workers.
 
     Args:
-        args: Tuple of (batch_start, batch_end, batch_dense, feature_names, top_k)
+        args: Tuple of (batch_start, batch_end, batch_dense, top_k)
 
     Returns:
         List of dicts with doc_idx, keywords, scores
     """
-    batch_start, batch_end, batch_dense, feature_names, top_k = args
+    batch_start, batch_end, batch_dense, top_k = args
+    feature_names = _FEATURE_NAMES  # Use shared feature names
 
     results = []
     num_docs = batch_dense.shape[0]
@@ -256,46 +267,6 @@ class TFIDFExtractor:
         # Remove duplicates and return
         return list(set(stopwords))
 
-    def _apply_preprocessing(
-        self,
-        df: pl.DataFrame,
-        preprocessing_steps: Optional[List[str]] = None,
-    ) -> pl.DataFrame:
-        """
-        Apply preprocessing pipeline to text.
-
-        Uses the existing preprocessing infrastructure from data.preprocessing.
-
-        Args:
-            df: DataFrame with text column
-            preprocessing_steps: List of preprocessing steps to apply.
-                               If None, applies default cleaning:
-                               ['normalize-whitespace', 'lowercase', 'remove-punctuation']
-
-        Returns:
-            DataFrame with 'clean_text' column
-        """
-        if preprocessing_steps is None:
-            # Default cleaning for TF-IDF
-            preprocessing_steps = ["normalize-whitespace", "lowercase", "remove-punctuation"]
-
-        if not preprocessing_steps:
-            # No preprocessing - just copy text
-            return df.with_columns(pl.col(self.text_column).alias("clean_text"))
-
-        logger.info(f"Applying preprocessing steps: {', '.join(preprocessing_steps)}")
-
-        from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
-
-        preprocessor = TextPreprocessor(text_column=self.text_column)
-        df = preprocessor.pipeline(
-            df,
-            steps=preprocessing_steps,
-            output_column="clean_text",
-        )
-
-        return df
-
     def extract_keywords(
         self,
         group_by: Optional[Union[str, List[str]]] = None,
@@ -304,7 +275,6 @@ class TFIDFExtractor:
         min_df: int = 2,
         max_df: float = 0.8,
         ngram_range: tuple = (1, 1),
-        preprocessing_steps: Optional[List[str]] = None,
         num_workers: Optional[int] = None,
         limit: Optional[int] = None,
     ) -> pl.DataFrame:
@@ -324,12 +294,6 @@ class TFIDFExtractor:
             max_df: Maximum document frequency (ignore terms appearing in more than this
                     fraction of documents, e.g., 0.8 = 80%)
             ngram_range: Range of n-grams to extract (1,1)=unigrams, (1,2)=unigrams+bigrams
-            preprocessing_steps: List of preprocessing steps to apply to text.
-                               If None, uses default: ['normalize-whitespace', 'lowercase', 'remove-punctuation']
-                               Pass empty list [] to skip preprocessing.
-                               Available: 'normalize', 'lowercase', 'normalize-whitespace',
-                                        'remove-punctuation', 'remove-stopwords', etc.
-                               See preprocessing.pipeline for full list.
             num_workers: Number of CPU workers for parallel keyword extraction.
                         Default: cpu_count() - 1 (auto-detect)
             limit: Limit number of rows to process (for testing)
@@ -342,20 +306,29 @@ class TFIDFExtractor:
             - scores: List of corresponding TF-IDF scores
             - [original grouping columns if group_by used]
 
+        Note:
+            No preprocessing is applied. Users should provide either:
+            1. Raw text in the text column (will include OCR artifacts)
+            2. Preprocessed text (e.g., from `newspaper-explorer data preprocess`)
+               Use --text-column to specify the preprocessed column name.
+
         Example:
-            >>> # Extract keywords per page (recommended)
+            >>> # Extract keywords from raw text
             >>> extractor = TFIDFExtractor("der_tag")
             >>> df = extractor.extract_keywords(document_level="page", top_k=10)
             >>>
-            >>> # Extract keywords per date
-            >>> df = extractor.extract_keywords(document_level="date", top_k=15)
-            >>>
-            >>> # Custom groups (year and month)
-            >>> df = extractor.extract_keywords(group_by=["year", "month"], top_k=20)
+            >>> # Extract keywords from preprocessed text
+            >>> extractor = TFIDFExtractor(
+            ...     "der_tag",
+            ...     input_file="data/processed/der_tag/text/preprocessed.parquet",
+            ...     text_column="text_processed"
+            ... )
+            >>> df = extractor.extract_keywords(document_level="page", top_k=10)
         """
         start_time = time.time()
 
         logger.info(f"Loading data from {self.input_file}")
+        print("Loading data...", flush=True)
         df = pl.read_parquet(self.input_file)
 
         if limit:
@@ -363,14 +336,12 @@ class TFIDFExtractor:
             df = df.head(limit)
 
         logger.info(f"Loaded {len(df):,} rows")
+        print(f"✓ Loaded {len(df):,} rows", flush=True)
 
         # Filter out null/empty texts
         df = df.filter(pl.col(self.text_column).is_not_null())
         df = df.filter(pl.col(self.text_column).str.len_chars() > 0)
         logger.info(f"After filtering: {len(df):,} rows with non-empty text")
-
-        # Apply preprocessing
-        df = self._apply_preprocessing(df, preprocessing_steps)
 
         # Determine document grouping
         if group_by:
@@ -409,18 +380,27 @@ class TFIDFExtractor:
                 f"Available columns: {df.columns}"
             )
 
-        # Group documents
+        # Group documents and aggregate foreign keys
         logger.info(f"Grouping by: {', '.join(group_cols)}")
+        print(f"Grouping {len(df):,} rows by {', '.join(group_cols)}...", flush=True)
 
-        df_grouped = df.group_by(group_cols).agg(
-            [
-                pl.col("clean_text").str.concat(" ").alias("document"),
-            ]
-        )
+        # Determine which foreign key columns exist in the data
+        fk_cols = []
+        for col in ["line_id", "text_block_id", "page_id", "issue_id", "source_id"]:
+            if col in df.columns:
+                fk_cols.append(col)
+
+        # Build aggregation: text + first non-null foreign key value from each group
+        agg_exprs = [pl.col(self.text_column).str.concat(" ").alias("document")]
+        for col in fk_cols:
+            agg_exprs.append(pl.col(col).drop_nulls().first().alias(col))
+
+        df_grouped = df.group_by(group_cols).agg(agg_exprs)
 
         documents = df_grouped["document"].to_list()
         num_documents = len(documents)
         logger.info(f"Created {num_documents:,} documents")
+        print(f"✓ Created {num_documents:,} documents", flush=True)
 
         # Memory warning for large document counts
         if num_documents > 5_000_000:
@@ -435,9 +415,10 @@ class TFIDFExtractor:
                 f"  4. Test with --limit 500000 first\n"
                 f"{'='*80}\n"
             )
-            import time
 
-            time.sleep(3)  # Give user time to read warning        # Initialize TF-IDF vectorizer
+            time.sleep(3)  # Give user time to read warning
+
+        # Initialize TF-IDF vectorizer
         logger.info("Initializing TF-IDF vectorizer...")
         logger.info(f"  min_df={min_df}, max_df={max_df}, ngram_range={ngram_range}")
         logger.info(f"  Using {len(self.stopwords)} stopwords")
@@ -455,11 +436,16 @@ class TFIDFExtractor:
         # Note: TF-IDF computation is CPU-only (scikit-learn sparse matrix operations)
         # This is very fast for this algorithm - GPU wouldn't provide benefit
         logger.info("Computing TF-IDF scores (CPU-based sparse matrix operations)...")
+        print(f"Computing TF-IDF matrix for {num_documents:,} documents...", flush=True)
         tfidf_matrix = vectorizer.fit_transform(documents)
         feature_names = vectorizer.get_feature_names_out()
 
         logger.info(f"TF-IDF matrix shape: {tfidf_matrix.shape}")
         logger.info(f"Vocabulary size: {len(feature_names)}")
+        print(
+            f"✓ TF-IDF matrix: {tfidf_matrix.shape[0]:,} documents × {tfidf_matrix.shape[1]:,} terms",
+            flush=True,
+        )
         logger.info(
             "Note: TF-IDF uses CPU (not GPU) - this is expected and optimal for this algorithm"
         )
@@ -470,12 +456,15 @@ class TFIDFExtractor:
 
         # Determine number of workers
         if num_workers is None:
-            num_workers = max(1, cpu_count() - 1)
+            # Reduce workers for large vocabulary to avoid OOM (each worker gets feature_names)
+            # With 2.2M vocab, even shared initialization can cause issues with many workers
+            num_workers = min(8, max(1, cpu_count() - 1))
         logger.info(f"Using {num_workers} CPU workers for parallel extraction")
 
         # CRITICAL: For large datasets, we need to avoid loading dense matrices into memory
         # Process in smaller batches and use sparse matrix operations
-        batch_size = 5000  # Smaller batches to avoid OOM
+        # With 2.2M vocabulary, even 5000 docs × 2.2M = 44 billion floats is too much
+        batch_size = 1000  # Very small batches for large vocabulary to avoid OOM
         num_docs = tfidf_matrix.shape[0]
         num_batches = (num_docs + batch_size - 1) // batch_size
 
@@ -494,17 +483,25 @@ class TFIDFExtractor:
                 batch_matrix = tfidf_matrix[batch_start:batch_end]  # type: ignore
                 batch_dense = batch_matrix.toarray()
 
-                yield (batch_start, batch_end, batch_dense, feature_names, top_k)
+                # Don't pass feature_names - workers get it via _init_worker
+                yield (batch_start, batch_end, batch_dense, top_k)
 
-        # Process with multiprocessing pool, using imap for streaming
-        with Pool(processes=num_workers) as pool:
+        # Process with multiprocessing pool, initializing workers with feature_names
+        # Use imap_unordered for better memory efficiency (doesn't need to maintain order)
+        with Pool(
+            processes=num_workers, initializer=_init_worker, initargs=(feature_names,)
+        ) as pool:
             for batch_results in tqdm(
-                pool.imap(_extract_keywords_batch, batch_generator(), chunksize=1),
+                pool.imap_unordered(_extract_keywords_batch, batch_generator(), chunksize=1),
                 total=num_batches,
                 desc="Extracting keywords",
                 unit="batch",
             ):
                 results.extend(batch_results)
+                # Force garbage collection after each batch to free memory
+                import gc
+
+                gc.collect()
 
         # Create results DataFrame
         logger.info("Creating results DataFrame...")
@@ -514,36 +511,59 @@ class TFIDFExtractor:
         df_grouped = df_grouped.with_row_count("doc_idx")
         results_df = results_df.join(df_grouped, on="doc_idx", how="left")
 
-        # Rename first group column to "doc_id" for consistency
+        # Create meaningful doc_id (composite from grouping columns)
+        # Don't just copy a single column - create a unique identifier
         if group_cols:
-            # Create doc_id from group columns if multiple, or use first column name
             if len(group_cols) == 1:
-                results_df = results_df.rename({group_cols[0]: "doc_id"})
+                # Single column: create ID with prefix
+                col_name = group_cols[0]
+                results_df = results_df.with_columns(
+                    (pl.lit(f"{col_name}=") + pl.col(col_name).cast(pl.Utf8)).alias("doc_id")
+                )
             else:
-                # Create composite ID from multiple columns
+                # Multiple columns: create composite ID
                 doc_ids = [
-                    "_".join(str(val) for val in row)
+                    "_".join(f"{col}={val}" for col, val in zip(group_cols, row))
                     for row in results_df.select(group_cols).iter_rows()
                 ]
                 results_df = results_df.with_columns(pl.Series("doc_id", doc_ids))
 
-        # Extract foreign keys from doc_ids
-        logger.info("Extracting foreign keys from doc_ids...")
-        doc_ids_list = results_df["doc_id"].to_list()
-        foreign_keys = [extract_foreign_keys(doc_id) for doc_id in doc_ids_list]
+        # Foreign keys: use aggregated values from original data, not extracted from doc_id
+        # If foreign keys were aggregated, they're already in df_grouped
+        # If not, extract from line_id if available
+        logger.info("Adding foreign key columns...")
 
-        # Add foreign key columns
-        results_df = results_df.with_columns(
-            [
-                pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
-                pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
-                pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
-                pl.Series(
-                    "text_block_id",
-                    [fk.get("text_block_id", fk.get("line_id", "")) for fk in foreign_keys],
-                ),
+        if "source_id" in results_df.columns and "issue_id" in results_df.columns:
+            # Foreign keys already aggregated from source data
+            logger.info("Using aggregated foreign keys from source data")
+            # Ensure they exist, fill nulls if needed
+            for col in ["source_id", "issue_id", "page_id", "text_block_id"]:
+                if col not in results_df.columns:
+                    results_df = results_df.with_columns(pl.lit(None).alias(col))
+        elif "line_id" in results_df.columns:
+            # Extract from line_id
+            logger.info("Extracting foreign keys from line_id...")
+            line_ids_list = results_df["line_id"].to_list()
+            foreign_keys = [
+                extract_foreign_keys(line_id) if line_id else {} for line_id in line_ids_list
             ]
-        )
+
+            results_df = results_df.with_columns(
+                [
+                    pl.Series("source_id", [fk.get("source_id") for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys]),
+                    pl.Series("page_id", [fk.get("page_id") for fk in foreign_keys]),
+                    pl.Series(
+                        "text_block_id",
+                        [fk.get("text_block_id", fk.get("line_id", "")) for fk in foreign_keys],
+                    ),
+                ]
+            )
+        else:
+            # No foreign keys available - add null columns
+            logger.warning("No foreign key columns (source_id, line_id) found in data")
+            for col in ["source_id", "issue_id", "page_id", "text_block_id"]:
+                results_df = results_df.with_columns(pl.lit(None).alias(col))
 
         logger.info(f"Extracted keywords for {len(results_df):,} documents")
 
@@ -551,6 +571,11 @@ class TFIDFExtractor:
         total_keywords = results_df["keywords"].map_elements(len, return_dtype=pl.Int64).sum()
         avg_keywords = total_keywords / len(results_df) if len(results_df) > 0 else 0
         logger.info(f"Average keywords per document: {avg_keywords:.1f}")
+
+        # Remove internal processing columns from output
+        # Keep: doc_id, foreign keys, grouping columns, keywords, scores
+        columns_to_drop = ["doc_idx", "document"]
+        results_df = results_df.drop([col for col in columns_to_drop if col in results_df.columns])
 
         # Store timing info for save_results
         self._last_extraction_time = time.time() - start_time
@@ -561,7 +586,6 @@ class TFIDFExtractor:
             "min_df": min_df,
             "max_df": max_df,
             "ngram_range": ngram_range,
-            "preprocessing_steps": preprocessing_steps,
         }
 
         return results_df

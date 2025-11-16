@@ -21,6 +21,8 @@ import polars as pl
 
 # Import all preprocessing functions
 from newspaper_explorer.data.preprocessing.normalization import (
+    normalize_unicode,
+    remove_diacritics,
     simple,
     transnormer,
     dta_cab,
@@ -28,7 +30,6 @@ from newspaper_explorer.data.preprocessing.normalization import (
 from newspaper_explorer.data.preprocessing.cleaning import (
     normalize_whitespace,
     lowercase,
-    remove_diacritics,
 )
 from newspaper_explorer.data.preprocessing.filtering import (
     remove_punctuation,
@@ -40,8 +41,13 @@ from newspaper_explorer.data.preprocessing.filtering import (
 )
 from newspaper_explorer.data.preprocessing.linguistic import (
     dehyphenate,
+    dehyphenate_lines,
     lemmatize_spacy,
     lemmatize_germalemma,
+)
+from newspaper_explorer.data.preprocessing.presets import (
+    get_preset,
+    list_presets,
 )
 from newspaper_explorer.data.utils.metadata import PreprocessingMetadata
 
@@ -96,6 +102,7 @@ class TextPreprocessor:
         Apply a pipeline of preprocessing steps.
 
         Available steps:
+        - normalize-unicode: Unicode normalization (NFKC + character translation)
         - normalize: Normalize historical German characters
         - remove-diacritics: Remove diacritics
         - normalize-whitespace: Normalize whitespace
@@ -129,6 +136,9 @@ class TextPreprocessor:
             All columns from the input DataFrame are preserved in the output,
             ensuring that foreign keys and metadata remain available after
             preprocessing for linking back to source data.
+
+            Recommended first step: 'normalize-unicode' to handle OCR artifacts,
+            unify quotes/hyphens, and remove control characters.
         """
         logger.info(f"Starting preprocessing pipeline with {len(steps)} steps")
         logger.info(f"Steps: {', '.join(steps)}")
@@ -143,26 +153,29 @@ class TextPreprocessor:
             else:
                 out_col = f"_tmp_{i}"
 
-            if step == "normalize":
-                df = simple(df, text_column=current_column, output_column=out_col)
+            if step == "normalize-unicode":
+                df = normalize_unicode(
+                    df,
+                    input_column=current_column,
+                    output_column=out_col,
+                )
+            elif step == "normalize":
+                df = simple(df, input_column=current_column, output_column=out_col)
             elif step == "remove-diacritics":
                 df = remove_diacritics(
                     df,
-                    text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
                 )
             elif step == "normalize-whitespace":
                 df = normalize_whitespace(
                     df,
-                    text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
                 )
             elif step == "normalize-transnormer":
                 df = transnormer(
                     df,
-                    text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
                     batch_size=batch_size,
@@ -173,14 +186,12 @@ class TextPreprocessor:
             elif step == "normalize-dtacab":
                 df = dta_cab(
                     df,
-                    text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
                 )
             elif step == "lowercase":
                 df = lowercase(
                     df,
-                    text_column=current_column,
                     input_column=current_column,
                     output_column=out_col,
                 )
@@ -206,12 +217,28 @@ class TextPreprocessor:
                     output_column=out_col,
                 )
             elif step == "dehyphenate":
-                df = dehyphenate(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
+                # Use line-level dehyphenation if coordinate columns are available
+                required_cols = ["text_block_id", "line_id", "x", "y", "width"]
+                if all(col in df.columns for col in required_cols):
+                    logger.info("Using line-level dehyphenation (preserves line structure)")
+                    df = dehyphenate_lines(
+                        df,
+                        text_column=current_column,
+                        output_column=out_col,
+                        text_block_id_column="text_block_id",
+                        line_id_column="line_id",
+                        x_column="x",
+                        y_column="y",
+                        width_column="width",
+                    )
+                else:
+                    logger.info("Using simple dehyphenation (line structure not available)")
+                    df = dehyphenate(
+                        df,
+                        text_column=current_column,
+                        input_column=current_column,
+                        output_column=out_col,
+                    )
             elif step == "lemmatize-spacy":
                 df = lemmatize_spacy(
                     df,
@@ -334,3 +361,66 @@ class TextPreprocessor:
         )
 
         return metadata
+
+
+def get_recommended_pipeline(name: str = "standard") -> List[str]:
+    """
+    Get a recommended preprocessing pipeline configuration.
+
+    Available pipelines:
+
+    General-purpose:
+    - minimal: Preserve original text, only fix critical OCR issues
+    - basic: Fast OCR cleanup (recommended start)
+    - standard: General text analysis (default choice)
+    - search: Optimized for search and matching
+    - analysis: Word frequency with filtering
+
+    Analysis-specific:
+    - entities: Named entity recognition (NER)
+    - topics: Topic modeling (BERTopic, etc.)
+    - emotions: Emotion classification, sentiment analysis
+    - keywords: Keyword extraction, TF-IDF
+    - embeddings: Text embeddings, semantic similarity
+    - concepts: Concept extraction, semantic networks
+
+    Args:
+        name: Pipeline name (default: "standard")
+
+    Returns:
+        List of preprocessing step names
+
+    Example:
+        >>> from newspaper_explorer.data.preprocessing.pipeline import (
+        ...     TextPreprocessor,
+        ...     get_recommended_pipeline
+        ... )
+        >>> preprocessor = TextPreprocessor(text_column="text")
+        >>> steps = get_recommended_pipeline("entities")
+        >>> df_processed = preprocessor.pipeline(df, steps=steps)
+
+    Note:
+        These pipelines do NOT include:
+        - normalize-transnormer: GPU-intensive neural normalization
+        - normalize-dtacab: API-based normalization (requires DTA-CAB service)
+        - lemmatize-spacy / lemmatize: Lemmatization (changes word forms)
+
+        If you need these features, add them manually or create a custom pipeline.
+    """
+    return get_preset(name)
+
+
+def list_pipelines() -> Dict[str, Dict[str, Union[str, List[str]]]]:
+    """
+    List all available recommended pipelines with their descriptions.
+
+    Returns:
+        Dictionary mapping pipeline names to their configuration
+
+    Example:
+        >>> from newspaper_explorer.data.preprocessing.pipeline import list_pipelines
+        >>> pipelines = list_pipelines()
+        >>> for name, config in pipelines.items():
+        ...     print(f"{name}: {config['description']}")
+    """
+    return list_presets()

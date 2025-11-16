@@ -35,8 +35,28 @@ def register_preprocessing_commands(data_group):
     @click.option(
         "--steps",
         type=str,
-        required=True,
         help="Comma-separated preprocessing steps (e.g., normalize,lowercase,remove-stopwords)",
+    )
+    @click.option(
+        "--pipeline",
+        "-p",
+        type=click.Choice(
+            [
+                "minimal",
+                "basic",
+                "standard",
+                "search",
+                "analysis",
+                "entities",
+                "topics",
+                "emotions",
+                "keywords",
+                "embeddings",
+                "concepts",
+            ],
+            case_sensitive=False,
+        ),
+        help="Use a recommended pipeline preset (alternative to --steps)",
     )
     @click.option(
         "--text-column",
@@ -83,6 +103,7 @@ def register_preprocessing_commands(data_group):
         input,
         output,
         steps,
+        pipeline,
         text_column,
         output_column,
         sample,
@@ -97,8 +118,19 @@ def register_preprocessing_commands(data_group):
         Apply a series of preprocessing steps to text data. Steps are applied
         in the order specified and results are saved to a new parquet file.
 
+        Use either --steps for custom pipeline or --pipeline for recommended presets.
+
         \b
-        Available steps:
+        Recommended Pipelines (--pipeline):
+          minimal   - Minimal processing, preserves original text
+          basic     - Basic OCR cleanup without heavy processing (recommended start)
+          standard  - General text analysis, topic modeling, embeddings (default choice)
+          search    - Optimized for search, matching, entity extraction
+          analysis  - Word frequency, keyword extraction with filtering
+
+        \b
+        Available steps (--steps):
+          normalize-unicode      - Unicode normalization (NFKC + translation) - RECOMMENDED FIRST
           normalize              - Normalize historical German (ſ→s, ẞ→SS) - FAST
           normalize-transnormer  - Transformer-based normalization - HIGH QUALITY
           normalize-dtacab       - DTA-CAB API normalization - SLOW but best
@@ -117,17 +149,19 @@ def register_preprocessing_commands(data_group):
 
         \b
         Examples:
-          # Basic normalization
+          # Use recommended pipeline (easiest)
+          newspaper-explorer data preprocess --source der_tag --pipeline standard
+
+          # Test recommended pipeline on sample
+          newspaper-explorer data preprocess --source der_tag --pipeline basic --sample 1000
+
+          # Custom pipeline with specific steps
           newspaper-explorer data preprocess --source der_tag \\
-              --steps normalize,lowercase
+              --steps normalize-unicode,normalize,lowercase
 
           # Full cleaning pipeline
           newspaper-explorer data preprocess --source der_tag \\
-              --steps normalize,lowercase,remove-punctuation,remove-stopwords
-
-          # Test on sample
-          newspaper-explorer data preprocess --source der_tag \\
-              --steps normalize,lowercase --sample 1000
+              --steps normalize-unicode,normalize,lowercase,remove-punctuation,remove-stopwords
 
           # Transnormer with custom batch size for speed
           newspaper-explorer data preprocess --source der_tag \\
@@ -140,7 +174,11 @@ def register_preprocessing_commands(data_group):
         import polars as pl
         import time
 
-        from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
+        from newspaper_explorer.data.preprocessing.pipeline import (
+            TextPreprocessor,
+            get_recommended_pipeline,
+            list_pipelines,
+        )
         from newspaper_explorer.data.utils.metadata import save_preprocessing_results
         from newspaper_explorer.utils.sources import get_source_paths, load_source_config
 
@@ -149,8 +187,24 @@ def register_preprocessing_commands(data_group):
         logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
         try:
-            # Parse steps
-            step_list = [s.strip() for s in steps.split(",")]
+            # Validate options
+            if not steps and not pipeline:
+                click.echo("Error: Must specify either --steps or --pipeline", err=True)
+                click.echo("\nAvailable pipelines:")
+                for name, config in list_pipelines().items():
+                    click.echo(f"  {name:10s} - {config['description']}")
+                raise click.Abort()
+
+            if steps and pipeline:
+                click.echo("Error: Cannot specify both --steps and --pipeline", err=True)
+                raise click.Abort()
+
+            # Get step list
+            if pipeline:
+                step_list = get_recommended_pipeline(pipeline)
+                click.echo(f"\nUsing recommended pipeline: {pipeline}")
+            else:
+                step_list = [s.strip() for s in steps.split(",")]
 
             click.echo(f"\nPreprocessing source: {source}")
             click.echo(f"Steps: {', '.join(step_list)}")
@@ -251,6 +305,7 @@ def register_preprocessing_commands(data_group):
                     "num_gpus": num_gpus,
                     "use_cache": not no_cache,
                     "sample": sample,
+                    "pipeline": pipeline if pipeline else None,
                 },
                 input_df=input_df,
                 output_df=df,
@@ -306,3 +361,37 @@ def register_preprocessing_commands(data_group):
 
             traceback.print_exc()
             raise click.Abort()
+
+    @data_group.command(name="list-pipelines")
+    def list_preprocessing_pipelines():
+        """
+        List available recommended preprocessing pipelines.
+
+        Shows all preset pipelines with their descriptions and steps.
+
+        Example:
+          newspaper-explorer data list-pipelines
+        """
+        from newspaper_explorer.data.preprocessing.pipeline import list_pipelines
+
+        pipelines = list_pipelines()
+
+        click.echo("\n" + "=" * 80)
+        click.echo("RECOMMENDED PREPROCESSING PIPELINES")
+        click.echo("=" * 80)
+
+        for name, config in pipelines.items():
+            click.echo(f"\n{name.upper()}")
+            click.echo("-" * 80)
+            click.echo(f"Description: {config['description']}")
+            click.echo(f"Use case:    {config['use_case']}")
+            click.echo(f"\nSteps ({len(config['steps'])}):")
+            for i, step in enumerate(config["steps"], 1):
+                click.echo(f"  {i}. {step}")
+
+        click.echo("\n" + "=" * 80)
+        click.echo("Usage:")
+        click.echo("  newspaper-explorer data preprocess --source SOURCE --pipeline PIPELINE_NAME")
+        click.echo("\nExample:")
+        click.echo("  newspaper-explorer data preprocess --source der_tag --pipeline standard")
+        click.echo("=" * 80 + "\n")
