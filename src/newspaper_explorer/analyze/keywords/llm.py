@@ -29,16 +29,13 @@ import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    extract_input_stats,
-    extract_output_stats,
-    save_analysis_results,
-)
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.llm.client import LLMClient
 from newspaper_explorer.llm.prompts.keyword_extraction import KEYWORD_EXTRACTION
-from newspaper_explorer.llm.schemas.keyword_extraction import KeywordResponse
+from newspaper_explorer.models.llm.keyword_extraction import KeywordResponse
 
 logger = logging.getLogger(__name__)
 

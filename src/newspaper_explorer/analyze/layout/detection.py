@@ -5,30 +5,29 @@ Library module for detecting document layout elements using YOLOv11 model
 fine-tuned on the DocLayNet dataset.
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Union, List, Optional, Dict
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 
 # Disable Ultralytics settings updates to avoid disk space issues
 os.environ["YOLO_CONFIG_DIR"] = str(Path(__file__).parent / ".ultralytics_cache")
 os.environ["ULTRALYTICS_AUTOINSTALL"] = "False"
 
-from ultralytics.models import YOLO
 from ultralytics import settings
+from ultralytics.models import YOLO
 
 # Update settings to avoid unnecessary downloads
 settings.update({"sync": False})
 
-from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
-from newspaper_explorer.data.utils.ids import (
-    generate_detection_id,
-    extract_issue_id_from_page_id,
-    parse_page_id,
-    generate_page_id,
-)
-from newspaper_explorer.data.utils.images import ImageIndexer
+from newspaper_explorer.data.indexing.image_index import ImageIndexer
+from newspaper_explorer.data.utils.ids import (extract_issue_id_from_page_id,
+                                               generate_detection_id,
+                                               generate_page_id, parse_page_id)
+from newspaper_explorer.models.analysis.layout import (BoundingBox, Detection,
+                                                       PageLayout)
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +362,7 @@ class LayoutDetector:
 
         # Batch processing with parallel image preloading (70% faster than sequential)
         from concurrent.futures import ThreadPoolExecutor
+
         import cv2
 
         def load_image(path):
@@ -479,5 +479,7 @@ class LayoutDetector:
 
         Returns:
             List of Detection objects
+        """
+        return _extract_detections_from_result(det_res, page_id, image_path)
         """
         return _extract_detections_from_result(det_res, page_id, image_path)

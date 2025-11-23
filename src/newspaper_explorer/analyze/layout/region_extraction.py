@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import polars as pl
 
-from newspaper_explorer.analyze.layout.schemas import Detection, PageLayout
+from newspaper_explorer.models.analysis.layout import Detection, PageLayout
 
 logger = logging.getLogger(__name__)
 

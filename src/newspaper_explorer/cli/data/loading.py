@@ -47,7 +47,7 @@ def register_loading_commands(data_group):
           newspaper-explorer data parse --source der_tag --no-resume
           newspaper-explorer data parse --source der_tag --limit 100
         """
-        from newspaper_explorer.data.loading.loader import DataLoader
+        from newspaper_explorer.data.ingest.loader import DataIngester
 
         # Setup logging with simple format
         config = get_config()
@@ -55,10 +55,10 @@ def register_loading_commands(data_group):
 
         try:
             click.echo(f"\nParsing source: {source}")
-            loader = DataLoader(source_name=source)
+            ingester = DataIngester(source_name=source)
 
             # Load the source with optional limit
-            df = loader.load_source(skip_processed=resume, max_files=limit)
+            df = ingester.load_source(skip_processed=resume, max_files=limit)
 
             if df is None or len(df) == 0:
                 click.echo("\nNo data loaded. Check if files exist and are valid.")
@@ -71,7 +71,7 @@ def register_loading_commands(data_group):
             click.echo(f"Total rows: {len(df):,}")
 
             # Construct output path from source config
-            from newspaper_explorer.utils.sources import get_source_paths, load_source_config
+            from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
             config = load_source_config(source)
             paths = get_source_paths(config)
@@ -139,8 +139,8 @@ def register_loading_commands(data_group):
         """
         import polars as pl
 
-        from newspaper_explorer.data.loading.aggregation import load_and_aggregate_textblocks
-        from newspaper_explorer.utils.sources import get_source_paths, load_source_config
+        from newspaper_explorer.data.processing.aggregation import load_and_aggregate_textblocks
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
         try:
             # Load config
@@ -249,7 +249,7 @@ def register_loading_commands(data_group):
           newspaper-explorer data find-empty --source der_tag
           newspaper-explorer data find-empty --source der_tag --show 20
         """
-        from newspaper_explorer.data.utils.validation import find_empty_xml_files
+        from newspaper_explorer.data.processing.validation import find_empty_xml_files
 
         try:
             # Use validation utility

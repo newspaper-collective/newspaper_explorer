@@ -15,7 +15,7 @@ import numpy as np
 from typing import List, Optional, Tuple, Literal
 import polars as pl
 
-from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox
+from newspaper_explorer.models.analysis.layout import Detection, BoundingBox
 from newspaper_explorer.analyze.layout.text_linker import TextLinker
 
 logger = logging.getLogger(__name__)
@@ -141,20 +141,54 @@ class ProximityMatcher:
 
     def _calculate_distance(self, source_bbox: BoundingBox, target_bbox: BoundingBox) -> float:
         """
-        Calculate distance between two bounding boxes.
+        Calculate spatially-aware distance between two bounding boxes.
 
-        Uses center-to-center Euclidean distance.
+        Uses a weighted scoring system that prioritizes proper spatial positioning:
+        - Vertical distance from edge (primary factor)
+        - Horizontal alignment with center (secondary factor)
+
+        This prevents corner elements from winning over properly positioned elements.
+        For example, a caption at the top-left corner of a wide image won't beat
+        a caption directly below the image.
 
         Args:
             source_bbox: Source element bounding box
             target_bbox: Target element bounding box
 
         Returns:
-            Distance in pixels
+            Weighted distance score (lower is better)
         """
-        dx = source_bbox.center_x - target_bbox.center_x
-        dy = source_bbox.center_y - target_bbox.center_y
-        return float(np.sqrt(dx**2 + dy**2))
+        # Determine position relationship based on relative_position setting
+        if self.relative_position == "below":
+            # Measure from source bottom to target top
+            vertical_dist = abs(target_bbox.y1 - source_bbox.y2)
+        elif self.relative_position == "above":
+            # Measure from source top to target bottom
+            vertical_dist = abs(source_bbox.y1 - target_bbox.y2)
+        elif self.relative_position == "any":
+            # Use minimum edge distance
+            if target_bbox.y1 >= source_bbox.y2:
+                # Target below source
+                vertical_dist = target_bbox.y1 - source_bbox.y2
+            elif target_bbox.y2 <= source_bbox.y1:
+                # Target above source
+                vertical_dist = source_bbox.y1 - target_bbox.y2
+            else:
+                # Overlapping - use center distance as fallback
+                dx = source_bbox.center_x - target_bbox.center_x
+                dy = source_bbox.center_y - target_bbox.center_y
+                return float(np.sqrt(dx**2 + dy**2))
+        else:
+            # For left/right, use center-to-center
+            dx = source_bbox.center_x - target_bbox.center_x
+            dy = source_bbox.center_y - target_bbox.center_y
+            return float(np.sqrt(dx**2 + dy**2))
+
+        # Calculate horizontal alignment (how centered is target relative to source)
+        horizontal_offset = abs(source_bbox.center_x - target_bbox.center_x)
+
+        # Weighted score: vertical distance is primary (80%), horizontal alignment is secondary (20%)
+        return float(vertical_dist + (horizontal_offset * 0.2))
 
     def _is_valid_position(self, source_bbox: BoundingBox, target_bbox: BoundingBox) -> bool:
         """

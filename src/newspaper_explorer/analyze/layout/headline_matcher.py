@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 import polars as pl
 
-from newspaper_explorer.analyze.layout.schemas import (
+from newspaper_explorer.models.analysis.layout import (
     Detection,
     Headline,
     PageLayout,

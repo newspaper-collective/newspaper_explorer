@@ -2,7 +2,7 @@
 Base prompt template class for LLM interactions.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class PromptTemplate:
@@ -34,20 +34,20 @@ class PromptTemplate:
         ```
     """
 
-    def __init__(self, system: str = "", user: str = "", include_metadata: bool = False):
+    def __init__(self, system: str = "", user: str = "", *, include_metadata: bool = False) -> None:
         """
         Initialize prompt template.
 
         Args:
             system: System message template (model behavior instructions).
             user: User message template (task-specific prompt).
-            include_metadata: If True, automatically append metadata context to prompt.
+            include_metadata: If True, automatically append metadata context to prompt (keyword-only).
         """
         self.system = system
         self.user = user
         self.include_metadata = include_metadata
 
-    def format(self, metadata: Optional[Dict[str, Any]] = None, **kwargs) -> Dict[str, str]:
+    def format(self, metadata: Optional[dict[str, Any]] = None, **kwargs: str) -> dict[str, str]:
         """
         Format template with provided variables and optional metadata.
 
@@ -72,7 +72,7 @@ class PromptTemplate:
             ```
         """
         # Merge metadata and kwargs (kwargs take precedence)
-        format_vars = {}
+        format_vars: dict[str, Any] = {}
         if metadata:
             format_vars.update(metadata)
         format_vars.update(kwargs)
@@ -91,7 +91,7 @@ class PromptTemplate:
             "user": user_prompt,
         }
 
-    def _format_metadata_context(self, metadata: Dict[str, Any]) -> str:
+    def _format_metadata_context(self, metadata: dict[str, Any]) -> str:
         """
         Format metadata into a context string.
 
@@ -101,7 +101,7 @@ class PromptTemplate:
         Returns:
             Formatted metadata context string
         """
-        context_parts = []
+        context_parts: list[str] = []
 
         if "source" in metadata or "newspaper_title" in metadata:
             context_parts.append(

@@ -30,18 +30,73 @@ import yake
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 
 
-from typing import Union, Sequence
+from typing import Sequence, Union
+
+
+def _filter_overlapping_keywords(
+    keywords: List[str], scores: List[float]
+) -> Tuple[List[str], List[float]]:
+    """
+    Filter out keywords that are substrings of other keywords.
+
+    When multiple n-grams overlap (e.g., "Präsident Theodore" and "Theodore Roosevelt"),
+    keeps only the longest/most specific version with the best score.
+
+    Args:
+        keywords: List of keyword strings
+        scores: Corresponding YAKE scores (lower is better)
+
+    Returns:
+        Tuple of (filtered_keywords, filtered_scores)
+    """
+    if not keywords:
+        return keywords, scores
+
+    # Create list of (keyword, score, index) tuples
+    kw_data = [(kw, score, i) for i, (kw, score) in enumerate(zip(keywords, scores))]
+
+    # Sort by length (descending) then by score (ascending, since lower is better)
+    kw_data.sort(key=lambda x: (-len(x[0]), x[1]))
+
+    filtered = []
+    filtered_indices = set()
+
+    for kw, score, idx in kw_data:
+        # Check if this keyword is a substring of any already-selected keyword
+        is_substring = False
+        for selected_kw, _, _ in filtered:
+            if kw in selected_kw and kw != selected_kw:
+                is_substring = True
+                break
+
+        if not is_substring:
+            # Check if any previously seen keyword is a substring of this one
+            # Remove those if this has a better score
+            to_remove = []
+            for i, (prev_kw, prev_score, prev_idx) in enumerate(filtered):
+                if prev_kw in kw and prev_kw != kw:
+                    to_remove.append(i)
+
+            # Remove substrings (in reverse order to preserve indices)
+            for i in reversed(to_remove):
+                filtered_indices.discard(filtered[i][2])
+                filtered.pop(i)
+
+            filtered.append((kw, score, idx))
+            filtered_indices.add(idx)
+
+    # Return in original order
+    result = [(kw, score) for kw, score, idx in sorted(filtered, key=lambda x: x[2])]
+    return [kw for kw, _ in result], [score for _, score in result]
+
 
 def _worker_extract_yake(
     args: Tuple[List[Tuple[str, str]], int, str, int, float, str, int],
@@ -90,6 +145,10 @@ def _worker_extract_yake(
             if extracted:
                 keywords = [kw for kw, score in extracted]
                 scores = [float(score) for kw, score in extracted]
+
+                # Filter overlapping keywords
+                keywords, scores = _filter_overlapping_keywords(keywords, scores)
+
                 results.append({"doc_id": doc_id, "keywords": keywords, "scores": scores})
             else:
                 results.append({"doc_id": doc_id, "keywords": [], "scores": []})
@@ -284,6 +343,10 @@ class YAKEExtractor:
                         if extracted:
                             keywords = [kw for kw, score in extracted]
                             scores = [float(score) for kw, score in extracted]
+
+                            # Filter overlapping keywords
+                            keywords, scores = _filter_overlapping_keywords(keywords, scores)
+
                             results.append(
                                 {"doc_id": doc_id, "keywords": keywords, "scores": scores}
                             )

@@ -8,11 +8,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from newspaper_explorer.data.utils.validation import (
-    ImageValidationResult,
-    check_image_size,
-    validate_image_file,
-)
+from newspaper_explorer.data.models import ImageValidationResult
+from newspaper_explorer.data.utils.validation import check_image_size, validate_image_file
 
 
 class TestImageValidation:

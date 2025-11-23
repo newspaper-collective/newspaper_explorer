@@ -12,7 +12,7 @@ import os
 import time
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
 import torch
@@ -20,15 +20,12 @@ from gliner import GLiNER
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config, get_project_root
-from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.ingest.loader import DataIngester
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    extract_input_stats,
-    extract_output_stats,
-    save_metadata,
-    save_analysis_results,
-)
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.data.utils.text import chunk_text
 
 logger = logging.getLogger(__name__)
@@ -157,8 +154,8 @@ def _process_texts_on_gpu(
         transformers_logging.set_verbosity_error()
 
         # Suppress stderr during model loading to hide tqdm output
-        import sys
         import contextlib
+        import sys
 
         @contextlib.contextmanager
         def suppress_output():
@@ -381,7 +378,7 @@ class GLiNEREntityExtractor:
                 # Already set, ignore
                 pass
 
-            from multiprocessing import Process, Queue, Barrier
+            from multiprocessing import Barrier, Process, Queue
 
             # Create barrier for synchronization
             barrier = Barrier(num_gpus)
@@ -560,9 +557,9 @@ class GLiNEREntityExtractor:
             logger.info(f"Loading data from {source_parquet}")
             df = pl.read_parquet(source_parquet)
         else:
-            logger.info(f"Loading data using DataLoader for '{self.source_name}'")
-            loader = DataLoader(source_name=self.source_name)
-            df = loader.load_source()
+            logger.info(f"Loading data using DataIngester for '{self.source_name}'")
+            ingester = DataIngester(source_name=self.source_name)
+            df = ingester.load_source()
 
         logger.info(f"Loaded {len(df)} lines")
 

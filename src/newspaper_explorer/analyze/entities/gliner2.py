@@ -23,7 +23,7 @@ from gliner2 import GLiNER2
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config, get_project_root
-from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.ingest.loader import DataIngester
 from newspaper_explorer.data.utils.text import chunk_text
 from newspaper_explorer.analyze.query.engine import create_result_metadata
 
@@ -301,9 +301,9 @@ class GLiNER2EntityExtractor:
             logger.info(f"Loading data from {source_parquet}")
             df = pl.read_parquet(source_parquet)
         else:
-            logger.info(f"Loading data using DataLoader for '{self.source_name}'")
-            loader = DataLoader(source_name=self.source_name)
-            df = loader.load_source()
+            logger.info(f"Loading data using DataIngester for '{self.source_name}'")
+            ingester = DataIngester(source_name=self.source_name)
+            df = ingester.load_source()
 
         logger.info(f"Loaded {len(df)} lines")
 
@@ -325,7 +325,9 @@ class GLiNER2EntityExtractor:
                 "model": self.model_name,  # Full model name
                 "threshold": self.threshold,
                 "batch_size": self.batch_size,
-                "labels": list(self.labels.keys()) if isinstance(self.labels, dict) else self.labels,
+                "labels": (
+                    list(self.labels.keys()) if isinstance(self.labels, dict) else self.labels
+                ),
                 "label_descriptions": isinstance(self.labels, dict),
                 "min_text_length": self.min_text_length,
                 "max_text_length": self.max_text_length,

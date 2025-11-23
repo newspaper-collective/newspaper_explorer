@@ -18,28 +18,24 @@ Optimizations:
 
 import logging
 import multiprocessing as mp
-from pathlib import Path
-from typing import Optional, Dict, List
 import queue
-import warnings
 import time
+import warnings
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import polars as pl
 import torch
-from torch.utils.data import Dataset, DataLoader
-from transformers.models.bert import BertForSequenceClassification, BertTokenizerFast
-from transformers import logging as transformers_logging
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from transformers import logging as transformers_logging
+from transformers.models.bert import BertForSequenceClassification, BertTokenizerFast
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 

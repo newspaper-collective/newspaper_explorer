@@ -763,8 +763,15 @@ def yake(
 )
 @click.option(
     "--use-multi-gpu",
+    type=click.Choice(["auto", "yes", "no"]),
+    default="auto",
+    help="Use multiple GPUs if available (auto=detect, yes=force, no=disable)",
+    show_default=True,
+)
+@click.option(
+    "--compile-model",
     is_flag=True,
-    help="Use multiple GPUs if available (experimental)",
+    help="Use torch.compile for model optimization (requires PyTorch 2.0+)",
 )
 @click.option(
     "--limit",
@@ -789,7 +796,8 @@ def keybert(
     use_chunking: bool,
     chunk_size: int,
     chunk_overlap: int,
-    use_multi_gpu: bool,
+    use_multi_gpu: str,
+    compile_model: bool,
     limit: Optional[int],
 ):
     """
@@ -854,10 +862,20 @@ def keybert(
     click.echo(f"Chunking: {'enabled' if use_chunking else 'disabled'}")
     if use_chunking:
         click.echo(f"  Chunk size: {chunk_size}, overlap: {chunk_overlap}")
-    if use_multi_gpu:
-        click.echo(f"Multi-GPU: enabled")
+    if compile_model:
+        click.echo(f"Model compilation: enabled (torch.compile)")
+    click.echo(f"Multi-GPU: {use_multi_gpu}")
 
     try:
+        # Convert multi-GPU string to Optional[bool]
+        multi_gpu_setting: Optional[bool]
+        if use_multi_gpu == "auto":
+            multi_gpu_setting = None
+        elif use_multi_gpu == "yes":
+            multi_gpu_setting = True
+        else:  # "no"
+            multi_gpu_setting = False
+
         # Initialize extractor
         click.echo("\nLoading BERT model (this may take a moment)...")
         extractor = KeyBERTExtractor(
@@ -873,7 +891,8 @@ def keybert(
             use_chunking=use_chunking,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            use_multi_gpu=use_multi_gpu,
+            use_multi_gpu=multi_gpu_setting,
+            compile_model=compile_model,
         )
 
         # Prepare grouping

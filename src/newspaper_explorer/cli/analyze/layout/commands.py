@@ -19,23 +19,21 @@ Usage:
 import json
 import logging
 import time
-import click
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import click
 from tqdm import tqdm
 
-from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.analyze.layout.article_builder import ArticleBuilder
 from newspaper_explorer.analyze.layout.detection import LayoutDetector
 from newspaper_explorer.analyze.layout.headline_matcher import HeadlineMatcher
-from newspaper_explorer.analyze.layout.article_builder import ArticleBuilder
 from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.ingest.loader import DataIngester
+from newspaper_explorer.data.models import AnalysisMetadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 
@@ -134,9 +132,9 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Layout Detection with YOLOv11")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -379,22 +377,22 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
             df.group_by("class_name").agg(pl.len().alias("count")).sort("count", descending=True)
         )
 
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         click.echo("Detection Complete!")
-        click.echo(f"{'='*60}")
+        click.echo(f"{'=' * 60}")
         click.echo(f"Pages processed: {len(results)}")
         click.echo(f"Total detections: {total_detections}")
         click.echo("\nDetections by class:")
         for row in class_counts.iter_rows(named=True):
             click.echo(f"  {row['class_name']}: {row['count']}")
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
     else:
-        click.echo(f"\n{'='*60}")
+        click.echo(f"\n{'=' * 60}")
         click.echo("Detection Complete!")
-        click.echo(f"{'='*60}")
+        click.echo(f"{'=' * 60}")
         click.echo(f"Pages processed: {len(results)}")
         click.echo(f"Total detections: 0")
-        click.echo(f"{'='*60}\n")
+        click.echo(f"{'=' * 60}\n")
 
 
 @layout_group.command()
@@ -475,9 +473,9 @@ def extract_pictures(
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Image Extraction")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -492,7 +490,8 @@ def extract_pictures(
 
     # Find detection files
     import json
-    from newspaper_explorer.analyze.layout.schemas import PageLayout
+
+    from newspaper_explorer.models.analysis.layout import PageLayout
 
     detection_files = list(detections_dir.glob("*_layout.json"))
     if year:
@@ -558,7 +557,7 @@ def extract_pictures(
             continue
 
         # Reconstruct PageLayout (simplified)
-        from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox
+        from newspaper_explorer.models.analysis.layout import BoundingBox, Detection
 
         page_layout = PageLayout(
             page_id=page_id,
@@ -591,14 +590,16 @@ def extract_pictures(
             mode = (
                 "append"
                 if (resume and metadata_path.exists())
-                else "overwrite" if idx == 0 else "append"
+                else "overwrite"
+                if idx == 0
+                else "append"
             )
             extractor.save_region_metadata(extracted, metadata_path, mode=mode)
             total_images += len(extracted)
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Image Extraction Complete!")
-    click.echo(f"{'='*60}")
+    click.echo(f"{'=' * 60}")
     click.echo(f"Total images extracted: {total_images}")
     if resume and skipped_pages > 0:
         click.echo(f"Skipped pages (already processed): {skipped_pages}")
@@ -607,7 +608,7 @@ def extract_pictures(
     click.echo(f"Metadata saved to: {metadata_path}")
     click.echo(f"\n💡 To match captions, run:")
     click.echo(f"   newspaper-explorer analyze layout match-captions --source {source}")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
 
 @layout_group.command()
@@ -659,9 +660,9 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Caption Matching")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -676,7 +677,8 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
 
     # Find detection files
     import json
-    from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
+
+    from newspaper_explorer.models.analysis.layout import BoundingBox, Detection, PageLayout
 
     detection_files = list(detections_dir.glob("*_layout.json"))
     if year:
@@ -784,13 +786,255 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
         df = pl.DataFrame(captions_data)
         df.write_parquet(output_path)
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Caption Matching Complete!")
-    click.echo(f"{'='*60}")
+    click.echo(f"{'=' * 60}")
     click.echo(f"Total images: {len(all_matched)}")
     click.echo(f"Images with captions: {sum(1 for img in all_matched if img.caption_text)}")
     click.echo(f"Results saved to: {output_path}")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
+
+
+@layout_group.command("extract-caption-text")
+@click.option(
+    "--source",
+    required=True,
+    help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--year",
+    type=int,
+    help="Process only specific year",
+)
+@click.option(
+    "--run-id",
+    help="Specific layout detection run ID to use",
+)
+@click.option(
+    "--min-iou",
+    type=float,
+    default=0.1,
+    help="Minimum IoU threshold for text line intersection (default: 0.1)",
+)
+@click.option(
+    "--text-data",
+    help="Text data source: 'raw' (default), 'preprocessed', or path to parquet file",
+)
+def extract_caption_text(source, year, run_id, min_iou, text_data):
+    """
+    Extract text content from detected caption regions using TextLinker.
+
+    This command:
+    1. Loads layout detections (Caption class)
+    2. Loads ALTO text lines from parquet
+    3. Uses image index for proper coordinate scaling
+    4. Matches caption bounding boxes to text lines via TextLinker
+    5. Saves enriched caption data with extracted text
+
+    Uses the image index to get original image dimensions for accurate
+    coordinate scaling between layout detection space and ALTO space.
+
+    Example:
+        newspaper-explorer analyze layout extract-caption-text --source der_tag --year 1902
+        newspaper-explorer analyze layout extract-caption-text --source der_tag --run-id 20241121_143022
+    """
+    import cv2
+    import polars as pl
+
+    from newspaper_explorer.analyze.layout.text_linker import TextLinker
+    from newspaper_explorer.models.analysis.layout import BoundingBox, Detection
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
+
+    click.echo(f"\n{'=' * 60}")
+    click.echo("Caption Text Extraction with Coordinate Normalization")
+    click.echo(f"{'=' * 60}\n")
+
+    config = get_config()
+
+    # Load detection results
+    layout_dir = config.results_dir / source / "layout"
+    if not layout_dir.exists():
+        click.echo(f"✗ Layout results not found: {layout_dir}", err=True)
+        return
+
+    # Find the layout run to use
+    if run_id:
+        layout_path = layout_dir / run_id / "layout.parquet"
+        output_dir = layout_dir / run_id
+    else:
+        # Use most recent
+        result_dirs = [
+            d for d in layout_dir.iterdir() if d.is_dir() and (d / "layout.parquet").exists()
+        ]
+        if not result_dirs:
+            click.echo(f"✗ No layout results found in {layout_dir}", err=True)
+            return
+        result_dirs.sort(reverse=True)
+        layout_path = result_dirs[0] / "layout.parquet"
+        output_dir = result_dirs[0]
+        run_id = result_dirs[0].name
+
+    if not layout_path.exists():
+        click.echo(f"✗ Layout data not found: {layout_path}", err=True)
+        return
+
+    click.echo(f"Using layout results: {run_id}")
+    click.echo(f"Loading from: {layout_path}")
+
+    # Load layout detections
+    detections_df = pl.read_parquet(layout_path)
+
+    # Filter for captions only
+    captions_df = detections_df.filter(pl.col("class_name") == "Caption")
+
+    if year:
+        # Extract year from page_id and filter
+        captions_df = captions_df.with_columns(
+            pl.col("page_id").str.extract(r"_(\d{4})-", 1).cast(pl.Int32).alias("year")
+        ).filter(pl.col("year") == year)
+
+    if len(captions_df) == 0:
+        click.echo(f"✗ No caption detections found", err=True)
+        return
+
+    click.echo(f"✓ Found {len(captions_df)} caption detections")
+
+    # Load text data
+    lines_path = get_text_data_path(source, text_data)
+    if not lines_path.exists():
+        click.echo(f"✗ Text data not found: {lines_path}", err=True)
+        click.echo("  Run 'newspaper-explorer data parse' first", err=True)
+        return
+
+    click.echo(f"Loading text lines from: {lines_path}")
+    lines_df = pl.read_parquet(lines_path)
+
+    if year:
+        lines_df = lines_df.filter(pl.col("year") == year)
+
+    click.echo(f"✓ Loaded {len(lines_df)} text lines")
+
+    # Initialize TextLinker with image index for coordinate scaling
+    click.echo(f"\nInitializing TextLinker with image index...")
+
+    # Suppress TextLinker logging during progress bar
+    linker_logger = logging.getLogger("newspaper_explorer.analyze.layout.text_linker")
+    original_level = linker_logger.level
+    linker_logger.setLevel(logging.WARNING)
+
+    linker = TextLinker(overlap_threshold=min_iou, source_name=source)
+
+    if linker.image_index is None:
+        click.echo(
+            f"⚠ Warning: Image index not found. Run: newspaper-explorer data index-images --source {source}",
+            err=True,
+        )
+        click.echo(f"  Coordinate scaling may be inaccurate!", err=True)
+
+    # Process captions
+    results = []
+    captions_with_text = 0
+
+    click.echo(f"\nProcessing {len(captions_df)} captions...")
+
+    for cap_row in tqdm(
+        captions_df.iter_rows(named=True), total=len(captions_df), desc="Extracting text"
+    ):
+        page_id = cap_row["page_id"]
+        detection_id = cap_row["detection_id"]
+        image_path = cap_row["image_path"]
+
+        # Get layout image dimensions
+        if not image_path:
+            logger.warning(f"No image path for caption {detection_id}")
+            continue
+
+        layout_img = cv2.imread(image_path)
+        if layout_img is None:
+            logger.warning(f"Could not load image: {image_path}")
+            continue
+
+        layout_height, layout_width = layout_img.shape[:2]
+
+        # Create Detection object
+        detection = Detection(
+            detection_id=detection_id,
+            class_name="Caption",
+            confidence=cap_row["confidence"],
+            bbox=BoundingBox(
+                x1=cap_row["bbox_x1"],
+                y1=cap_row["bbox_y1"],
+                x2=cap_row["bbox_x2"],
+                y2=cap_row["bbox_y2"],
+            ),
+            page_id=page_id,
+            image_path=image_path,
+        )
+
+        # Link to text with coordinate scaling
+        linked = linker.link_detections_to_text(
+            detections=[detection],
+            lines_df=lines_df,
+            page_id=page_id,
+            layout_width=layout_width,
+            layout_height=layout_height,
+        )
+
+        # Extract results
+        caption_text = linked[0].text_content if linked else None
+        num_lines = len(linked[0].alto_elements) if linked and linked[0].alto_elements else 0
+
+        if caption_text:
+            captions_with_text += 1
+
+        results.append(
+            {
+                "detection_id": detection_id,
+                "page_id": page_id,
+                "caption_text": caption_text,
+                "num_lines": num_lines,
+            }
+        )
+
+    # Restore original logging level
+    linker_logger.setLevel(original_level)
+
+    # Create results DataFrame
+    if results:
+        results_df = pl.DataFrame(results)
+
+        # Save to output directory
+        output_path = output_dir / "caption_text_enriched.parquet"
+        results_df.write_parquet(output_path)
+
+        click.echo(f"\n{'=' * 60}")
+        click.echo("Caption Text Extraction Complete!")
+        click.echo(f"{'=' * 60}")
+        click.echo(f"Total captions: {len(results)}")
+        click.echo(
+            f"Captions with text: {captions_with_text} ({captions_with_text / len(results) * 100:.1f}%)"
+        )
+        click.echo(f"Results saved to: {output_path}")
+        click.echo(f"{'=' * 60}\n")
+
+        # Show sample
+        if captions_with_text > 0:
+            click.echo("\nSample extracted captions:")
+            sample = results_df.filter(pl.col("caption_text").is_not_null()).head(5)
+            for row in sample.iter_rows(named=True):
+                text_preview = (
+                    row["caption_text"][:80] + "..."
+                    if len(row["caption_text"]) > 80
+                    else row["caption_text"]
+                )
+                click.echo(f"  [{row['page_id']}] {text_preview}")
+                click.echo(f"    Lines: {row['num_lines']}")
+    else:
+        click.echo(f"\n✗ No caption text extracted", err=True)
 
 
 @layout_group.command()
@@ -830,9 +1074,9 @@ def match_headlines(source, year, overlap_threshold, text_data):
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Headline Matching to OCR Text")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -880,7 +1124,7 @@ def match_headlines(source, year, overlap_threshold, text_data):
             page_data = json.load(f)
 
         # Reconstruct PageLayout (simplified - headlines only)
-        from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
+        from newspaper_explorer.models.analysis.layout import BoundingBox, Detection, PageLayout
 
         page_layout = PageLayout(
             page_id=page_data["page_id"],
@@ -937,12 +1181,12 @@ def match_headlines(source, year, overlap_threshold, text_data):
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Headline Matching Complete!")
-    click.echo(f"{'='*60}")
+    click.echo(f"{'=' * 60}")
     click.echo(f"Total headlines matched: {len(all_headlines)}")
     click.echo(f"Results saved to: {output_path}")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
 
 @layout_group.command()
@@ -1014,9 +1258,9 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Layout Visualization")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -1031,7 +1275,8 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
 
     click.echo(f"Loading detections from {detections_file}")
     import polars as pl
-    from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
+
+    from newspaper_explorer.models.analysis.layout import BoundingBox, Detection, PageLayout
 
     detections_df = pl.read_parquet(detections_file)
 
@@ -1110,11 +1355,11 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
         else:
             visualizer.visualize_page(page_layout, output_path, element_filter)
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Visualization Complete!")
-    click.echo(f"{'='*60}")
+    click.echo(f"{'=' * 60}")
     click.echo(f"Visualizations saved to: {vis_output_dir}")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
 
 @layout_group.command()
@@ -1148,9 +1393,9 @@ def build_articles(source, year, text_data):
         format="%(levelname)s: %(message)s",
     )
 
-    click.echo(f"\n{'='*60}")
+    click.echo(f"\n{'=' * 60}")
     click.echo("Article Reconstruction")
-    click.echo(f"{'='*60}\n")
+    click.echo(f"{'=' * 60}\n")
 
     config = get_config()
 
@@ -1193,4 +1438,9 @@ def build_articles(source, year, text_data):
     click.echo("\n⚠ Article building requires full implementation")
     click.echo("  (Headline object reconstruction from DataFrame)")
 
-    click.echo(f"\n{'='*60}\n")
+    click.echo(f"\n{'=' * 60}\n")
+    # For now, placeholder
+    click.echo("\n⚠ Article building requires full implementation")
+    click.echo("  (Headline object reconstruction from DataFrame)")
+
+    click.echo(f"\n{'=' * 60}\n")

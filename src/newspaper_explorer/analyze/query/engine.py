@@ -371,6 +371,400 @@ class QueryEngine:
 
         return self.query(sql)
 
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get comprehensive statistics from the source parquet file.
+
+        Returns:
+            Dictionary with statistics including line counts, date ranges,
+            and image counts.
+        """
+        if not self.source_parquet.exists():
+            return {
+                "total_lines": 0,
+                "total_files": 0,
+                "total_issues": 0,
+                "total_blocks": 0,
+                "min_date": "N/A",
+                "max_date": "N/A",
+                "years": 0,
+                "avg_pages": 0,
+                "total_pages": 0,
+                "total_images": 0,
+            }
+
+        try:
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    COUNT(*) as total_lines,
+                    COUNT(DISTINCT filename) as total_files,
+                    COUNT(DISTINCT issue_id) as total_issues,
+                    COUNT(DISTINCT text_block_id) as total_blocks,
+                    MIN(date) as min_date,
+                    MAX(date) as max_date,
+                    AVG(page_count) as avg_pages,
+                    COUNT(DISTINCT page_id) as total_pages
+                FROM read_parquet('{self.source_parquet}')
+            """
+            ).fetchone()
+
+            min_date = result[4].strftime("%Y-%m-%d") if result[4] else "N/A"
+            max_date = result[5].strftime("%Y-%m-%d") if result[5] else "N/A"
+
+            # Calculate years
+            years = 0
+            if result[4] and result[5]:
+                years = result[5].year - result[4].year + 1
+
+            # Get image count from image_index.parquet if it exists
+            total_images = 0
+            image_index_path = self.source_parquet.parent.parent / "image_index.parquet"
+            if image_index_path.exists():
+                try:
+                    img_result = self.con.execute(
+                        f"SELECT COUNT(*) FROM read_parquet('{image_index_path}')"
+                    ).fetchone()
+                    total_images = img_result[0] if img_result else 0
+                except Exception:
+                    pass
+
+            return {
+                "total_lines": result[0] or 0,
+                "total_files": result[1] or 0,
+                "total_issues": result[2] or 0,
+                "total_blocks": result[3] or 0,
+                "min_date": min_date,
+                "max_date": max_date,
+                "years": years,
+                "avg_pages": result[6] or 0,
+                "total_pages": result[7] or 0,
+                "total_images": total_images,
+            }
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return {
+                "total_lines": 0,
+                "total_files": 0,
+                "total_issues": 0,
+                "total_blocks": 0,
+                "total_images": 0,
+                "min_date": "N/A",
+                "max_date": "N/A",
+                "years": 0,
+                "avg_pages": 0,
+                "total_pages": 0,
+            }
+
+    def get_sample_data(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get random sample data for preview.
+
+        Args:
+            limit: Number of samples to return.
+
+        Returns:
+            List of sample records.
+        """
+        if not self.source_parquet.exists():
+            return []
+
+        try:
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    date,
+                    SUBSTR(text, 1, 100) || '...' as text,
+                    page_number,
+                    newspaper_title,
+                    issue_number
+                FROM read_parquet('{self.source_parquet}')
+                WHERE text IS NOT NULL AND LENGTH(text) > 20
+                ORDER BY RANDOM()
+                LIMIT {limit}
+            """
+            ).fetchall()
+
+            return [
+                {
+                    "date": row[0].strftime("%Y-%m-%d") if row[0] else "N/A",
+                    "text": row[1],
+                    "page": row[2] or "N/A",
+                    "title": row[3] or "N/A",
+                    "issue": row[4] or "N/A",
+                }
+                for row in result
+            ]
+        except Exception as e:
+            logger.error(f"Error getting sample data: {e}")
+            return []
+
+    def get_date_range_stats(self, start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        Get statistics for a specific date range.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD).
+            end_date: End date (YYYY-MM-DD).
+
+        Returns:
+            Statistics dictionary.
+        """
+        if not self.source_parquet.exists():
+            return {"total_lines": 0, "total_issues": 0, "total_pages": 0}
+
+        try:
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    COUNT(*) as total_lines,
+                    COUNT(DISTINCT issue_id) as total_issues,
+                    COUNT(DISTINCT page_id) as total_pages
+                FROM read_parquet('{self.source_parquet}')
+                WHERE date >= '{start_date}' AND date <= '{end_date}'
+            """
+            ).fetchone()
+
+            return {
+                "total_lines": result[0] or 0,
+                "total_issues": result[1] or 0,
+                "total_pages": result[2] or 0,
+            }
+        except Exception as e:
+            logger.error(f"Error getting date range stats: {e}")
+            return {"total_lines": 0, "total_issues": 0, "total_pages": 0}
+
+    def search_text_simple(
+        self,
+        query: str,
+        limit: int = 100,
+        offset: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Simple text search with pagination (for UI).
+
+        Args:
+            query: Search query.
+            limit: Maximum results to return.
+            offset: Offset for pagination.
+            start_date: Optional start date (YYYY-MM-DD).
+            end_date: Optional end date (YYYY-MM-DD).
+
+        Returns:
+            List of matching records with image paths.
+        """
+        if not self.source_parquet.exists():
+            return []
+
+        try:
+            # Build WHERE clause
+            where_clause = f"LOWER(text) LIKE LOWER('%{query}%')"
+            if start_date:
+                where_clause += f" AND date >= '{start_date}'"
+            if end_date:
+                where_clause += f" AND date <= '{end_date}'"
+
+            # Simple LIKE search
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    date,
+                    text,
+                    page_number,
+                    newspaper_title,
+                    issue_number,
+                    line_id,
+                    page_id,
+                    text_block_id,
+                    x,
+                    y,
+                    width,
+                    height
+                FROM read_parquet('{self.source_parquet}')
+                WHERE {where_clause}
+                ORDER BY date DESC
+                LIMIT {limit}
+                OFFSET {offset}
+            """
+            ).fetchall()
+
+            # Get image paths
+            image_index_path = self.source_parquet.parent.parent / "image_index.parquet"
+            image_map = {}
+
+            if image_index_path.exists() and result:
+                page_ids = [f"'{row[6]}'" for row in result if row[6]]
+                if page_ids:
+                    page_ids_str = ",".join(page_ids)
+                    try:
+                        img_result = self.con.execute(
+                            f"""
+                            SELECT page_id, image_path 
+                            FROM read_parquet('{image_index_path}')
+                            WHERE page_id IN ({page_ids_str})
+                            """
+                        ).fetchall()
+                        image_map = {row[0]: row[1] for row in img_result}
+                    except Exception as e:
+                        logger.warning(f"Error fetching image paths: {e}")
+
+            return [
+                {
+                    "date": row[0].strftime("%Y-%m-%d") if row[0] else "N/A",
+                    "text": row[1],
+                    "page": row[2] or "N/A",
+                    "title": row[3] or "N/A",
+                    "issue": row[4] or "N/A",
+                    "line_id": row[5],
+                    "page_id": row[6],
+                    "text_block_id": row[7],
+                    "x": row[8],
+                    "y": row[9],
+                    "width": row[10],
+                    "height": row[11],
+                    "image_path": image_map.get(row[6]),
+                }
+                for row in result
+            ]
+        except Exception as e:
+            logger.error(f"Error searching text: {e}")
+            return []
+
+    def search_text_count(
+        self,
+        query: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> int:
+        """
+        Get total count of search results.
+
+        Args:
+            query: Search query.
+            start_date: Optional start date (YYYY-MM-DD).
+            end_date: Optional end date (YYYY-MM-DD).
+
+        Returns:
+            Total count of matching records.
+        """
+        if not self.source_parquet.exists():
+            return 0
+
+        try:
+            # Build WHERE clause
+            where_clause = f"LOWER(text) LIKE LOWER('%{query}%')"
+            if start_date:
+                where_clause += f" AND date >= '{start_date}'"
+            if end_date:
+                where_clause += f" AND date <= '{end_date}'"
+
+            result = self.con.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM read_parquet('{self.source_parquet}')
+                WHERE {where_clause}
+            """
+            ).fetchone()
+
+            return result[0] if result else 0
+        except Exception as e:
+            logger.error(f"Error counting search results: {e}")
+            return 0
+
+    def get_yearly_stats(self) -> List[Dict[str, Any]]:
+        """
+        Get statistics aggregated by year.
+
+        Returns:
+            List of yearly statistics.
+        """
+        if not self.source_parquet.exists():
+            return []
+
+        try:
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    year,
+                    COUNT(*) as total_lines,
+                    COUNT(DISTINCT issue_id) as total_issues,
+                    COUNT(DISTINCT filename) as total_files
+                FROM read_parquet('{self.source_parquet}')
+                GROUP BY year
+                ORDER BY year
+            """
+            ).fetchall()
+
+            return [
+                {
+                    "year": row[0],
+                    "total_lines": row[1],
+                    "total_issues": row[2],
+                    "total_files": row[3],
+                }
+                for row in result
+            ]
+        except Exception as e:
+            logger.error(f"Error getting yearly stats: {e}")
+            return []
+
+    def get_monthly_distribution(self, year: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get distribution of documents by month.
+
+        Args:
+            year: Optional year filter.
+
+        Returns:
+            List of monthly counts.
+        """
+        if not self.source_parquet.exists():
+            return []
+
+        year_filter = f"WHERE year = {year}" if year else ""
+
+        try:
+            result = self.con.execute(
+                f"""
+                SELECT 
+                    month,
+                    COUNT(DISTINCT issue_id) as issue_count
+                FROM read_parquet('{self.source_parquet}')
+                {year_filter}
+                GROUP BY month
+                ORDER BY month
+            """
+            ).fetchall()
+
+            return [{"month": row[0], "issue_count": row[1]} for row in result]
+        except Exception as e:
+            logger.error(f"Error getting monthly distribution: {e}")
+            return []
+
+    def execute_custom_query(self, query_sql: str) -> List[tuple]:
+        """
+        Execute a custom SQL query on the parquet file.
+
+        Args:
+            query_sql: SQL query string.
+
+        Returns:
+            Query results as list of tuples.
+        """
+        if not self.source_parquet.exists():
+            return []
+
+        try:
+            # Replace placeholder table name with actual parquet path
+            query_sql = query_sql.replace("{{parquet}}", f"read_parquet('{self.source_parquet}')")
+            result = self.con.execute(query_sql).fetchall()
+            return result
+        except Exception as e:
+            logger.error(f"Error executing custom query: {e}")
+            return []
+
     def close(self):
         """Close database connection."""
         self.con.close()

@@ -12,7 +12,7 @@ from typing import List, Dict, Optional, Set
 from datetime import datetime
 import polars as pl
 
-from newspaper_explorer.analyze.layout.schemas import (
+from newspaper_explorer.models.analysis.layout import (
     Article,
     Headline,
     Detection,

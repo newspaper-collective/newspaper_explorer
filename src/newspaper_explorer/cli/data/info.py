@@ -30,16 +30,16 @@ def register_info_commands(data_group):
         """
         import polars as pl
 
-        from newspaper_explorer.utils.sources import get_source_paths, load_source_config
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
         try:
             # Load config
             config = load_source_config(source)
             source_name = config.dataset_name
 
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo(f"SOURCE INFORMATION: {source_name}")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             # Show metadata
             if config.metadata:
@@ -53,9 +53,9 @@ def register_info_commands(data_group):
             paths = get_source_paths(config)
 
             # Download/Extraction Status
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("DOWNLOAD & EXTRACTION STATUS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             raw_dir = paths["raw_dir"]
 
@@ -81,9 +81,9 @@ def register_info_commands(data_group):
                 click.echo(f"  newspaper-explorer data unpack --source {source}")
 
             # XML Files Status
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("RAW XML FILES")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             raw_dir = paths["raw_dir"]
             xml_pattern = config.loading.pattern if config.loading else "**/fulltext/*.xml"
@@ -101,9 +101,9 @@ def register_info_commands(data_group):
                 click.echo(f"  newspaper-explorer data unpack --source {source}")
 
             # Parsed Data Status
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("PARSED DATA (Parquet)")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             output_file = paths["output_file"]
             click.echo(f"Location: {output_file}")
@@ -148,9 +148,9 @@ def register_info_commands(data_group):
                 click.echo(f"  newspaper-explorer data parse --source {source}")
 
             # Aggregated Data Status
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("AGGREGATED TEXT BLOCKS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             textblocks_path = (
                 Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
@@ -173,13 +173,13 @@ def register_info_commands(data_group):
                     click.echo(f"  newspaper-explorer data aggregate --source {source}")
 
             # Image Download Status
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("PAGE IMAGES")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             try:
                 from newspaper_explorer.data.download.images import ImageDownloader
-                from newspaper_explorer.data.utils.images import ImageIndexer
+                from newspaper_explorer.data.indexing.image_index import ImageIndexer
 
                 # Try to use image index first (faster and more detailed)
                 indexer = ImageIndexer(source)
@@ -270,7 +270,7 @@ def register_info_commands(data_group):
                 click.echo(f"Status: ⚠ Could not determine image status")
                 click.echo(f"Error: {e}")
 
-            click.echo(f"\n{'='*80}\n")
+            click.echo(f"\n{'=' * 80}\n")
 
         except FileNotFoundError as e:
             click.echo(f"\nError: {e}", err=True)
@@ -294,7 +294,7 @@ def register_info_commands(data_group):
         Examples:
           newspaper-explorer data list-sources
         """
-        from newspaper_explorer.utils.sources import list_available_sources, load_source_config
+        from newspaper_explorer.data.utils.sources import list_available_sources, load_source_config
 
         sources = list_available_sources()
 
@@ -361,7 +361,7 @@ def register_info_commands(data_group):
         """
         import logging
 
-        from newspaper_explorer.data.utils.validation import verify_mets_completeness
+        from newspaper_explorer.data.processing.validation import verify_mets_completeness
 
         # Configure logging
         logging.basicConfig(
@@ -485,18 +485,18 @@ def register_info_commands(data_group):
           # Custom sample size
           newspaper-explorer data analyze-chars --source der_tag --sample-size 100000
         """
-        from newspaper_explorer.data.loading.loader import DataLoader
+        from newspaper_explorer.data.ingest.loader import DataIngester
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
         from newspaper_explorer.data.utils.text import analyze_character_lengths
-        from newspaper_explorer.utils.sources import load_source_config, get_source_paths
 
         try:
             # Load config
             config = load_source_config(source)
             source_name = config.dataset_name
 
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo(f"CHARACTER LENGTH ANALYSIS: {source_name}")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             # Get path to parquet file
             paths = get_source_paths(config)
@@ -527,9 +527,9 @@ def register_info_commands(data_group):
             )
 
             # Display results
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("CHARACTER LENGTH STATISTICS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             click.echo(f"\nDataset:")
             click.echo(f"  Total rows:       {stats['total_rows']:,}")
@@ -550,25 +550,25 @@ def register_info_commands(data_group):
             total = stats["sample_size"]
             click.echo(f"\nDistribution:")
             click.echo(
-                f"  ≤   50 chars:     {dist['under_50']:,} ({100*dist['under_50']/total:.1f}%)"
+                f"  ≤   50 chars:     {dist['under_50']:,} ({100 * dist['under_50'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤  100 chars:     {dist['under_100']:,} ({100*dist['under_100']/total:.1f}%)"
+                f"  ≤  100 chars:     {dist['under_100']:,} ({100 * dist['under_100'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤  200 chars:     {dist['under_200']:,} ({100*dist['under_200']/total:.1f}%)"
+                f"  ≤  200 chars:     {dist['under_200']:,} ({100 * dist['under_200'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤  500 chars:     {dist['under_500']:,} ({100*dist['under_500']/total:.1f}%)"
+                f"  ≤  500 chars:     {dist['under_500']:,} ({100 * dist['under_500'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤ 1000 chars:     {dist['under_1000']:,} ({100*dist['under_1000']/total:.1f}%)"
+                f"  ≤ 1000 chars:     {dist['under_1000']:,} ({100 * dist['under_1000'] / total:.1f}%)"
             )
 
             # Show longest examples
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("LONGEST TEXT EXAMPLES")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             for i, (char_count, text) in enumerate(stats["longest_examples"][:3], 1):
                 click.echo(f"\n{i}. {char_count} characters:")
@@ -628,18 +628,18 @@ def register_info_commands(data_group):
           # Use different tokenizer
           newspaper-explorer data analyze-tokens --source der_tag --tokenizer bert-base-german-cased
         """
-        from newspaper_explorer.data.loading.loader import DataLoader
+        from newspaper_explorer.data.ingest.loader import DataIngester
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
         from newspaper_explorer.data.utils.text import analyze_token_lengths
-        from newspaper_explorer.utils.sources import load_source_config, get_source_paths
 
         try:
             # Load config
             config = load_source_config(source)
             source_name = config.dataset_name
 
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo(f"TOKEN LENGTH ANALYSIS: {source_name}")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             # Get path to parquet file
             paths = get_source_paths(config)
@@ -653,7 +653,7 @@ def register_info_commands(data_group):
 
             # Load data directly from parquet (skip XML scanning)
             click.echo(f"\nLoading data from: {parquet_file.name}")
-            df = DataLoader.load_parquet(parquet_file)
+            df = DataIngester.load_parquet(parquet_file)
 
             if len(df) == 0:
                 click.echo("\n✗ Empty parquet file. Re-run parsing:", err=True)
@@ -672,9 +672,9 @@ def register_info_commands(data_group):
             )
 
             # Display results
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("TOKEN LENGTH STATISTICS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             click.echo(f"\nDataset:")
             click.echo(f"  Total rows:       {stats['total_rows']:,}")
@@ -695,16 +695,16 @@ def register_info_commands(data_group):
             total = stats["sample_size"]
             click.echo(f"\nDistribution:")
             click.echo(
-                f"  ≤  50 tokens:     {dist['under_50']:,} ({100*dist['under_50']/total:.1f}%)"
+                f"  ≤  50 tokens:     {dist['under_50']:,} ({100 * dist['under_50'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤ 100 tokens:     {dist['under_100']:,} ({100*dist['under_100']/total:.1f}%)"
+                f"  ≤ 100 tokens:     {dist['under_100']:,} ({100 * dist['under_100'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤ 200 tokens:     {dist['under_200']:,} ({100*dist['under_200']/total:.1f}%)"
+                f"  ≤ 200 tokens:     {dist['under_200']:,} ({100 * dist['under_200'] / total:.1f}%)"
             )
             click.echo(
-                f"  ≤ 300 tokens:     {dist['under_300']:,} ({100*dist['under_300']/total:.1f}%)"
+                f"  ≤ 300 tokens:     {dist['under_300']:,} ({100 * dist['under_300'] / total:.1f}%)"
             )
 
             if dist["at_max_length"] > 0:
@@ -713,9 +713,9 @@ def register_info_commands(data_group):
                     f"({stats['truncated_percent']:.2f}%) [truncated]"
                 )
 
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("PADDING ANALYSIS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             click.echo(f"\nWith static padding to 512 tokens:")
             click.echo(f"  Average tokens used:    {stats['mean_tokens']:.1f}")
@@ -731,9 +731,9 @@ def register_info_commands(data_group):
                 click.echo("\nℹ Dynamic padding may provide limited benefit.")
 
             # Show longest examples
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo("LONGEST TEXT EXAMPLES")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             for i, (token_count, text) in enumerate(stats["longest_examples"][:3], 1):
                 click.echo(f"\n{i}. {token_count} tokens:")
@@ -800,18 +800,18 @@ def register_info_commands(data_group):
           # Hide metadata columns
           newspaper-explorer data longest-tokens --source der_tag --no-metadata
         """
-        from newspaper_explorer.data.loading.loader import DataLoader
+        from newspaper_explorer.data.ingest.loader import DataIngester
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
         from newspaper_explorer.data.utils.text import get_longest_lines_by_tokens
-        from newspaper_explorer.utils.sources import load_source_config, get_source_paths
 
         try:
             # Load config
             config = load_source_config(source)
             source_name = config.dataset_name
 
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo(f"LONGEST TEXTS BY TOKEN COUNT: {source_name}")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             # Get path to parquet file
             paths = get_source_paths(config)
@@ -825,7 +825,7 @@ def register_info_commands(data_group):
 
             # Load data directly from parquet
             click.echo(f"\nLoading data from: {parquet_file.name}")
-            df = DataLoader.load_parquet(parquet_file)
+            df = DataIngester.load_parquet(parquet_file)
 
             if len(df) == 0:
                 click.echo("\n✗ Empty parquet file. Re-run parsing:", err=True)
@@ -844,9 +844,9 @@ def register_info_commands(data_group):
             )
 
             # Display results
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             click.echo(f"TOP {top_n} LONGEST TEXTS")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'=' * 80}")
 
             # Select columns to display
             if show_metadata:
@@ -875,7 +875,7 @@ def register_info_commands(data_group):
                     click.echo(f"   Text: {text}")
 
             # Summary
-            click.echo(f"\n{'='*80}")
+            click.echo(f"\n{'=' * 80}")
             token_counts = longest_df["token_count"].to_list()
             click.echo(f"Token count range: {min(token_counts)} - {max(token_counts)}")
 

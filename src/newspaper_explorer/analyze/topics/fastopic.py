@@ -30,21 +30,18 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 # Set up model cache directory
 _MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "sentence_transformers"

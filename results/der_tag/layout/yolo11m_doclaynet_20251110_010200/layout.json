@@ -83,5 +83,23 @@
     ]
   },
   "status": "completed",
-  "error_message": null
+  "error_message": null,
+  "enriched": {
+    "created_at": "2025-11-21T23:23:57.486282",
+    "enriched_classes": [
+      "Caption"
+    ],
+    "overlap_threshold": 0.01,
+    "total_detections": 3677,
+    "with_text_content": 3281,
+    "lines_source": "/mnt/data/userfiles/westphal/newspaper_explorer/data/raw/der_tag/text/der_tag_lines.parquet"
+  },
+  "caption_matching": {
+    "matched_at": "2025-11-21T23:27:30.581751",
+    "max_distance": 200,
+    "pictures_matched": 2557,
+    "total_pictures": 17480,
+    "match_rate": 0.14628146453089244,
+    "method": "ProximityMatcher"
+  }
 }

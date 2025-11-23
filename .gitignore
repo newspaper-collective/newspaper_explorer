@@ -57,6 +57,7 @@ cover/
 
 # Django stuff:
 *.log
+logs/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -136,6 +137,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -169,6 +171,10 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
+# Pyright type checker
+.pyright_cache/
+.basedpyright/
+
 # Cython debug symbols
 cython_debug/
 
@@ -177,7 +183,7 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.
@@ -190,7 +196,15 @@ cython_debug/
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
 
 # Ruff stuff:
 .ruff_cache/
@@ -217,7 +231,7 @@ data/downloads/*.zip
 data/extracted/
 data/processed/
 data/raw/
-models/
+/models/
 !models/.gitkeep
 !data/downloads/.gitkeep
 !data/extracted/.gitkeep

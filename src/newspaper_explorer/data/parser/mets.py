@@ -10,25 +10,10 @@ from pathlib import Path
 from typing import Optional
 
 from lxml import etree
-from pydantic import BaseModel
+
+from newspaper_explorer.models.core.data import IssueMetadata
 
 logger = logging.getLogger(__name__)
-
-
-class IssueMetadata(BaseModel):
-    """Metadata for a complete newspaper issue from METS file"""
-
-    filename: str
-    date: Optional[datetime] = None
-    issue_number: Optional[int] = None
-    issue_string: Optional[str] = None  # e.g., "Nr. 415, 05. September 1902"
-    edition: Optional[str] = None  # e.g., "Ausgabe A"
-    year_volume: Optional[str] = None  # e.g., "Jahrgang 1902"
-    page_count: Optional[int] = None
-    newspaper_title: Optional[str] = None
-    newspaper_id: Optional[str] = None  # ZDB ID
-    publisher: Optional[str] = None
-    language: Optional[str] = None
 
 
 class METSParser:

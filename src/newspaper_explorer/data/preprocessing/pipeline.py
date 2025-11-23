@@ -15,41 +15,36 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import polars as pl
 
-# Import all preprocessing functions
-from newspaper_explorer.data.preprocessing.normalization import (
-    normalize_unicode,
-    remove_diacritics,
-    simple,
-    transnormer,
-    dta_cab,
-)
-from newspaper_explorer.data.preprocessing.cleaning import (
-    normalize_whitespace,
-    lowercase,
-)
+from newspaper_explorer.data.models import PreprocessingMetadata
+from newspaper_explorer.data.preprocessing.cleaning import lowercase, normalize_whitespace
 from newspaper_explorer.data.preprocessing.filtering import (
-    remove_punctuation,
-    remove_numbers,
-    remove_stopwords,
+    clean_ocr_artifacts,
     filter_by_length,
     filter_by_word_count,
-    clean_ocr_artifacts,
+    remove_numbers,
+    remove_punctuation,
+    remove_stopwords,
 )
 from newspaper_explorer.data.preprocessing.linguistic import (
     dehyphenate,
     dehyphenate_lines,
-    lemmatize_spacy,
     lemmatize_germalemma,
+    lemmatize_spacy,
 )
-from newspaper_explorer.data.preprocessing.presets import (
-    get_preset,
-    list_presets,
+
+# Import all preprocessing functions
+from newspaper_explorer.data.preprocessing.normalization import (
+    dta_cab,
+    normalize_unicode,
+    remove_diacritics,
+    simple,
+    transnormer,
 )
-from newspaper_explorer.data.utils.metadata import PreprocessingMetadata
+from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
 
 logger = logging.getLogger(__name__)
 
@@ -293,9 +288,9 @@ class TextPreprocessor:
             Dictionary with previous preprocessing info, or None if not found
         """
         from newspaper_explorer.data.utils.metadata import (
+            PreprocessingMetadata,
             find_metadata_for_parquet,
             load_metadata,
-            PreprocessingMetadata,
         )
 
         input_path = Path(input_path)
@@ -423,4 +418,5 @@ def list_pipelines() -> Dict[str, Dict[str, Union[str, List[str]]]]:
         >>> for name, config in pipelines.items():
         ...     print(f"{name}: {config['description']}")
     """
+    return list_presets()
     return list_presets()

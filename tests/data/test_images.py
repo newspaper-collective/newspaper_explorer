@@ -7,7 +7,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from newspaper_explorer.data.download.images import ImageDownloader, ImageReference
+from newspaper_explorer.data.download.images import ImageDownloader
+from newspaper_explorer.data.models import ImageReference
 
 
 @pytest.fixture

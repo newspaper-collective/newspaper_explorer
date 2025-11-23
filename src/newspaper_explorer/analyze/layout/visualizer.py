@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
 
-from newspaper_explorer.analyze.layout.schemas import Detection, PageLayout, BoundingBox
+from newspaper_explorer.models.analysis.layout import Detection, PageLayout, BoundingBox
 
 logger = logging.getLogger(__name__)
 

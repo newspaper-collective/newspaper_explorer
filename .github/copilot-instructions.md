@@ -19,10 +19,9 @@
    - Parallel download with progress tracking and resume support
    - Provides download status via `get_download_status()` method
    
-3. **DataLoader** (`data/loading/`) - Configuration-driven XML parsing (modular)
-   - `loader.py`: Main DataLoader class, initialized with `source_name`
+3. **DataIngester** (`data/ingest/`) - Configuration-driven XML parsing (modular)
+   - `loader.py`: Main DataIngester class, initialized with `source_name`
    - `workers.py`: Parallel processing workers for ALTO/METS parsing
-   - `aggregation.py`: Text aggregation utilities (lines → text blocks)
    - Reads source config from `data/sources/{source}.json` for paths and patterns
    - Parallel ALTO XML parsing with METS metadata enrichment
    - Outputs line-level Polars DataFrames to `data/raw/{source}/text/{source}_lines.parquet`
@@ -32,6 +31,16 @@
    - ALTOParser: Extracts text lines with coordinates from fulltext pages
    - METSParser: Extracts issue-level metadata (title, date, volume, page count)
    - Automatic namespace detection for ALTO version compatibility
+
+5. **Text Aggregation** (`data/processing/aggregation.py`) - Post-processing utilities
+   - Aggregates line-level data into text blocks
+   - Operates on already-loaded parquet files
+
+6. **QueryEngine** (`analyze/query/engine.py`) - DuckDB-based query interface
+   - Unified query engine for both source data and analysis results
+   - UI-focused methods: get_stats(), search_text_simple(), get_sample_data()
+   - Analysis methods: find_entity_mentions(), entity_frequency(), etc.
+   - Replaces old data/query.py (now deleted)
 
 ### Configuration-Driven Pattern
 
@@ -93,13 +102,11 @@ src/newspaper_explorer/
 │   ├── parser/         # XML parsers
 │   │   ├── alto.py    # ALTO fulltext parser
 │   │   └── mets.py    # METS metadata parser
-│   ├── utils/         # Data utilities
-│   │   ├── fixes.py  # DataFixer for corrections
-│   │   └── text.py   # Text utilities
-│   ├── loading/      # Data loading (modular)
-│   │   ├── loader.py        # Main DataLoader class
-│   │   ├── workers.py       # Parallel processing workers
-│   │   └── aggregation.py   # Text aggregation utilities
+│   ├── ingest/         # Data ingestion (one-time ETL)
+│   │   ├── loader.py   # Main DataIngester class
+│   │   └── workers.py  # Parallel processing workers
+│   ├── processing/      # Data transformations
+│   │   └── aggregation.py  # Text aggregation (lines → blocks)
 │   ├── preprocessing/       # Text preprocessing (modular)
 │   │   ├── pipeline.py      # Main preprocessing pipeline
 │   │   ├── normalization.py # Historical text normalization
@@ -134,7 +141,7 @@ src/newspaper_explorer/
 │   ├── layout/       # Layout analysis
 │   ├── topics/       # Topic modeling
 │   └── query/        # Query engine for analysis
-│       ├── engine.py    # DuckDB query engine
+│       ├── engine.py    # DuckDB query engine (unified)
 │       └── examples.py  # Usage examples
 ├── utils/             # Lean utilities (infrastructure only)
 │   ├── config.py     # DEPRECATED: compatibility shim
@@ -208,14 +215,14 @@ Prompts with `include_metadata=True` automatically append context section.
 
 ### Working with DataFrames (Polars, NOT Pandas)
 ```python
-from newspaper_explorer.data.loading.loader import DataLoader
+from newspaper_explorer.data.ingest.loader import DataIngester
 
 # Load via source name (recommended)
-loader = DataLoader(source_name="der_tag")
-df = loader.load_source()
+ingester = DataIngester(source_name="der_tag")
+df = ingester.load_source()
 
 # Or load saved parquet
-df = DataLoader.load_parquet("data/raw/der_tag/text/der_tag_lines.parquet")
+df = DataIngester.load_parquet("data/raw/der_tag/text/der_tag_lines.parquet")
 
 # Polars operations
 df.filter(df["year"] == 1901)
@@ -239,7 +246,7 @@ Each DataFrame row = one text line from ALTO:
 ```
 
 ### Parallel Processing Pattern
-- DataLoader uses `ProcessPoolExecutor` with `cpu_count() - 1` workers
+- DataIngester uses `ProcessPoolExecutor` with `cpu_count() - 1` workers
 - METS cache pre-built before parallel parsing (shared metadata)
 - Worker function: `_parse_file_worker(filepath, mets_cache)`
 
@@ -256,6 +263,68 @@ Known data issues are automatically corrected during extraction:
 - **Type hints**: Optional but preferred (mypy with `disallow_untyped_defs = false`)
 - **Docstrings**: Required for public APIs
 - **CLI**: Rich examples in docstrings
+
+### Data Validation with Pydantic
+
+**Always validate external data immediately at boundaries using Pydantic models:**
+
+```python
+# ❌ BAD: Raw dict from API/file
+def process_user_data(data: dict) -> None:
+    name = data["name"]  # Could fail, no validation
+    age = data.get("age", 0)  # Type is Any
+
+# ✅ GOOD: Pydantic model + immediate validation
+from pydantic import BaseModel, Field
+
+class UserData(BaseModel):
+    name: str = Field(min_length=1)
+    age: int = Field(ge=0, le=150)
+
+def process_user_data(data: dict) -> None:
+    user = UserData.model_validate(data)  # Fails fast with clear errors
+    # Now user.name and user.age are fully typed and validated
+```
+
+**Apply this pattern to:**
+- **API responses**: `response.json()` → immediate `Model.model_validate()`
+- **Config files**: `json.load()` → immediate `Model.model_validate()`
+- **CLI arguments**: `argparse.Namespace` → convert to Pydantic model
+- **Environment variables**: Use `pydantic-settings` instead of raw `os.getenv()`
+- **JSON metadata**: Always validate with Pydantic schemas
+
+**Why**: Catches errors early, provides type safety, generates clear validation errors, and prevents working with untyped `dict[str, Any]` data throughout the codebase.
+
+### Avoid Boolean Traps
+
+**Never use positional boolean parameters - they make code unreadable:**
+
+```python
+# ❌ BAD: What does True mean here?
+send_email(user, True, False)
+
+# ✅ GOOD: Use enums or keyword-only args
+from enum import Enum
+
+class EmailFormat(Enum):
+    HTML = "html"
+    PLAIN = "plain"
+
+def send_email(
+    user: User,
+    *,  # Force keyword-only
+    format: EmailFormat,
+    async_send: bool = False
+) -> None: ...
+
+send_email(user, format=EmailFormat.HTML, async_send=False)
+```
+
+**Key patterns:**
+- Use `*` to force keyword-only arguments for booleans
+- Prefer enums over booleans when there are multiple states
+- Use descriptive parameter names that make the boolean meaning clear
+- Configuration objects are better than multiple boolean flags
 
 ### Output Standards
 
@@ -303,11 +372,12 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 ## Critical Patterns
 
 ✅ **DO**:
-- Initialize classes with source names: `DataLoader("der_tag")`
+- Initialize classes with source names: `DataIngester("der_tag")`
 - Use Polars for DataFrames (not Pandas)
 - Parse METS for metadata enrichment
-- Check loading status before re-processing
+- Check ingestion status before re-processing
 - Use configuration for all paths
+- Use `QueryEngine` for all data queries (source + analysis)
 
 ❌ **AVOID**:
 - `__init__.py` files anywhere
@@ -334,9 +404,9 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 
 ### Configuration & Data
 - `data/sources/der_tag.json` - Source configuration example
-- `data/loading/loader.py` - Main DataLoader class
-- `data/loading/workers.py` - Parallel processing workers
-- `data/loading/aggregation.py` - Text aggregation utilities
+- `data/ingest/loader.py` - Main DataIngester class
+- `data/ingest/workers.py` - Parallel processing workers
+- `data/processing/aggregation.py` - Text aggregation utilities
 - `data/download/text.py` - Archive download (ZenodoDownloader)
 - `data/download/images.py` - Image download (ImageDownloader)
 - `data/parser/alto.py` - ALTO XML parsing with dataclasses
@@ -363,8 +433,8 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 - `cli/analyze/layout/commands.py` - Layout analysis commands
 
 ### Analysis
-- `analysis/query/engine.py` - DuckDB query engine for analysis results
-- `analysis/query/examples.py` - Query usage examples
+- `analyze/query/engine.py` - DuckDB query engine (unified for all queries)
+- `analyze/query/examples.py` - Query usage examples
 
 ### Documentation
 - `docs/DATA_LOADER.md` - Detailed loading architecture

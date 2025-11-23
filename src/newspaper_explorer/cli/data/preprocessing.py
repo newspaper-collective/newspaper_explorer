@@ -171,16 +171,17 @@ def register_preprocessing_commands(data_group):
           newspaper-explorer data preprocess --source der_tag \\
               --steps normalize-transnormer --num-gpus 4 --batch-size 128
         """
-        import polars as pl
         import time
+
+        import polars as pl
 
         from newspaper_explorer.data.preprocessing.pipeline import (
             TextPreprocessor,
             get_recommended_pipeline,
             list_pipelines,
         )
-        from newspaper_explorer.data.utils.metadata import save_preprocessing_results
-        from newspaper_explorer.utils.sources import get_source_paths, load_source_config
+        from newspaper_explorer.data.utils.results import save_preprocessing_results
+        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
         # Setup logging
         config = get_config()
@@ -394,4 +395,5 @@ def register_preprocessing_commands(data_group):
         click.echo("  newspaper-explorer data preprocess --source SOURCE --pipeline PIPELINE_NAME")
         click.echo("\nExample:")
         click.echo("  newspaper-explorer data preprocess --source der_tag --pipeline standard")
+        click.echo("=" * 80 + "\n")
         click.echo("=" * 80 + "\n")

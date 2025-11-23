@@ -13,22 +13,14 @@ from urllib.parse import urlparse
 import requests
 from lxml import etree
 from natsort import natsorted
-from pydantic import BaseModel
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import ImageReference
+from newspaper_explorer.data.utils.sources import load_source_config
 from newspaper_explorer.data.utils.validation import validate_image_file
-from newspaper_explorer.utils.sources import load_source_config
 
 logger = logging.getLogger(__name__)
-
-
-class ImageReference(BaseModel):
-    """Reference to an image in METS XML."""
-
-    file_id: str
-    url: str
-    extension: str = ".jpg"
 
 
 class ImageDownloader:
@@ -89,17 +81,14 @@ class ImageDownloader:
         Returns:
             List of METS XML file paths
         """
-        if not self.xml_dir.exists():
-            logger.warning(f"XML directory not found: {self.xml_dir}")
-            return []
+        from newspaper_explorer.data.utils.xml import find_mets_files as find_mets
 
-        mets_files = []
-        for xml_file in natsorted(self.xml_dir.rglob("*.xml")):
-            # Skip fulltext directory
-            if "fulltext" not in str(xml_file):
-                mets_files.append(xml_file)
+        mets_files = find_mets(self.xml_dir)
+        if mets_files:
+            logger.info(f"Found {len(mets_files)} METS files")
+        else:
+            logger.warning(f"XML directory not found or empty: {self.xml_dir}")
 
-        logger.info(f"Found {len(mets_files)} METS files")
         return mets_files
 
     def extract_image_references(self, mets_file: Path) -> List[ImageReference]:

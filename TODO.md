@@ -44,6 +44,8 @@
 
 
 ]Skipping 3074409X_1901-07-14_000_297_H_1_-01.xml: Missing required ID components (date=None, issue=None, daily=None, page=None)
+march 1901 
+
 
 Transkribus OCR -> Problem with alto-export
 
@@ -57,3 +59,45 @@ Transkribus OCR -> Problem with alto-export
 - unify results output
 
 - sort dataset by filename when loading
+
+- jsonrepair libary for llm client
+
+-  "- und" nicht dehyphen 
+
+- null values in image_index.parquet
+
+- option to collapse analysis header
+
+- year picker in date range filter
+- slider in date range
+
+pagination for entiteies list
+
+refactor captions cli
+
+remove title from charts or improve/unify?
+
+picture detail dialog should link to page.
+
+thumbnail gallery lazy loading broken
+
+- emotions: link to pages in noticable peaks
+
+
+page reader -> click line scroll text
+
+
+filter textlines that contain only one or two repeating characters
+filter textlines that contain only numbers
+
+sorting broken in search -> 1910 Daten problem?
+
+brwose link layout detection detailed region in analysis tab to overlay
+
+issuereader, link emotion detections to line
+
+simple stats page? word count etc?
+
+drowpdon filters in browse month view
+
+date range filter custom range text of

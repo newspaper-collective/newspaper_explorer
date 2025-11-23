@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newspaper-explorer"
-version = "0.1.0"
+version = "0.2.0"
 description = "A tool for exploring and analyzing newspaper content"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -96,7 +96,75 @@ line-length = 100
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "BLE",   # flake8-blind-except (no bare except:)
+    "C4",    # flake8-comprehensions
+    "C90",   # mccabe complexity
+    "T20",   # flake8-print (no print statements)
+    "SIM",   # flake8-simplify
+    "N",     # pep8-naming
+    "Q",     # flake8-quotes
+    "RUF",   # Ruff-specific rules
+    "ASYNC", # flake8-async
+    "S",     # flake8-bandit (security)
+    "PTH",   # flake8-use-pathlib
+    "ERA",   # eradicate (commented-out code)
+    "PL",    # pylint (includes PLR1702: too-many-nested-blocks)
+    "PERF",  # perflint (performance)
+    "ANN",   # flake8-annotations
+    "ARG",   # flake8-unused-arguments
+    "FBT",   # flake8-boolean-trap (no boolean positional args)
+    "RET",   # flake8-return
+    "TCH",   # flake8-type-checking
+]
+ignore = [
+    "E501",    # line too long (handled by formatter)
+    "PLR0913", # too many arguments
+    "PERF203", # try-except in loop (sometimes necessary)
+    "ANN101",  # missing type annotation for self
+    "ANN102",  # missing type annotation for cls
+]
+
+# Complexity limits (anti-LLM-slop)
+[tool.ruff.lint.mccabe]
+max-complexity = 10 # Maximum cyclomatic complexity
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 3 # Maximum nested block depth (PLR1702)
+
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "F401", # Allow unused imports in __init__.py
+]
+"tests/**/*.py" = [
+    "S101",    # Allow assert in tests
+    "PLR2004", # Allow magic values in tests
+    "ANN",     # Don't require annotations in tests
+    "FBT",     # Allow boolean args in tests
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["newspaper_explorer"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -105,6 +173,32 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "integration: marks tests as integration tests (require actual data files)",
+]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=newspaper_explorer",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__pycache__/*", "*/site-packages/*"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
 ]
 
 [tool.mypy]

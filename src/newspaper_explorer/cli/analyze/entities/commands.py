@@ -5,6 +5,7 @@ Provides commands for extracting named entities using GLiNER or LLM methods.
 """
 
 import logging
+from typing import Optional
 import click
 
 from newspaper_explorer.config.base import get_config
@@ -596,6 +597,365 @@ def compare_results(source: str, method_1: str, method_2: str, detailed: bool):
         click.echo("\nUse 'list-results' to see available method IDs:")
         click.echo(f"  newspaper-explorer analyze entities list-results --source {source}")
         raise click.Abort()
+    except Exception as e:
+        click.echo(f"\nError: {e}", err=True)
+        raise click.Abort()
+
+
+@entities_group.command(name="network")
+@click.option("--source", type=str, default="der_tag", help="Source name (e.g., der_tag)")
+@click.option(
+    "--method-id",
+    type=str,
+    default=None,
+    help="Entity extraction method ID (uses most recent if not specified)",
+)
+@click.option(
+    "--connection-type",
+    type=click.Choice(["page", "issue", "date"], case_sensitive=False),
+    default="page",
+    help="How to define connections (page=same page, issue=same issue, date=same date)",
+)
+@click.option(
+    "--min-cooccur",
+    type=int,
+    default=2,
+    help="Minimum co-occurrences for edge",
+)
+@click.option(
+    "--entity-types",
+    type=str,
+    default=None,
+    help="Comma-separated entity types to include (e.g., 'person,organization')",
+)
+@click.option(
+    "--top-n",
+    type=int,
+    default=20,
+    help="Show top N most connected entities",
+)
+def network_stats(
+    source: str,
+    method_id: Optional[str],
+    connection_type: str,
+    min_cooccur: int,
+    entity_types: Optional[str],
+    top_n: int,
+):
+    """
+    Build and analyze entity co-occurrence network.
+
+    Creates a network where entities are connected if they appear together
+    on the same page/issue/date, then shows network statistics and most
+    connected entities.
+
+    Example:
+        # Build network from page co-occurrences
+        newspaper-explorer analyze entities network --source der_tag \\
+            --connection-type page --min-cooccur 2
+
+        # Filter to only persons and organizations
+        newspaper-explorer analyze entities network --source der_tag \\
+            --entity-types "person,organization" --top-n 30
+    """
+    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
+
+    try:
+        click.echo(f"\nBuilding entity network for '{source}'")
+        if method_id:
+            click.echo(f"Method ID: {method_id}")
+        else:
+            click.echo("Using most recent entity extraction")
+        click.echo("")
+
+        # Parse entity types
+        entity_type_list = None
+        if entity_types:
+            entity_type_list = [t.strip() for t in entity_types.split(",")]
+            click.echo(f"Filtering to entity types: {entity_type_list}")
+
+        # Build network
+        analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
+        stats = analyzer.build_network(
+            connection_type=connection_type,
+            min_co_occurrences=min_cooccur,
+            entity_types=entity_type_list,
+        )
+
+        # Print network stats
+        click.echo("\n" + "=" * 80)
+        click.echo("NETWORK STATISTICS")
+        click.echo("=" * 80)
+        click.echo(f"Nodes (entities): {stats['nodes']}")
+        click.echo(f"Edges (connections): {stats['edges']}")
+        click.echo(f"Connection type: {stats['connection_type']}")
+        click.echo(f"Min co-occurrences: {stats['min_co_occurrences']}")
+        click.echo(f"Avg connections per entity: {stats['avg_connections_per_entity']:.2f}")
+
+        # Get comprehensive stats
+        full_stats = analyzer.get_network_stats()
+        click.echo(f"\nMax degree: {full_stats['max_degree']}")
+        click.echo(f"Min degree: {full_stats['min_degree']}")
+        click.echo(f"Total co-occurrences: {full_stats['total_co_occurrences']}")
+
+        # Show top entities
+        click.echo("\n" + "=" * 80)
+        click.echo(f"TOP {top_n} MOST CONNECTED ENTITIES (by degree)")
+        click.echo("=" * 80)
+        click.echo(f"{'Entity':<40} {'Connections':<15} {'Total Co-occur':<15}")
+        click.echo("-" * 80)
+
+        top_entities = analyzer.get_top_entities(n=top_n, metric="degree")
+        for entity, degree in top_entities:
+            total_cooccur = analyzer.entity_metadata[entity]["total_co_occurrences"]
+            click.echo(f"{entity:<40} {int(degree):<15} {total_cooccur:<15}")
+
+        click.echo("\n" + "=" * 80)
+        click.echo("\nUse 'find-path' command to find connections between entities.")
+        click.echo("")
+
+    except Exception as e:
+        click.echo(f"\nError: {e}", err=True)
+        raise click.Abort()
+
+
+@entities_group.command(name="find-path")
+@click.option("--source", type=str, default="der_tag", help="Source name")
+@click.option("--from", "source_entity", type=str, required=True, help="Source entity name")
+@click.option("--to", "target_entity", type=str, required=True, help="Target entity name")
+@click.option(
+    "--method-id",
+    type=str,
+    default=None,
+    help="Entity extraction method ID (uses most recent if not specified)",
+)
+@click.option(
+    "--connection-type",
+    type=click.Choice(["page", "issue", "date"], case_sensitive=False),
+    default="page",
+    help="How to define connections",
+)
+@click.option(
+    "--min-cooccur",
+    type=int,
+    default=1,
+    help="Minimum co-occurrences for edge",
+)
+@click.option(
+    "--max-degrees",
+    type=int,
+    default=6,
+    help="Maximum degrees of separation to search",
+)
+@click.option(
+    "--show-details",
+    is_flag=True,
+    help="Show detailed connection information",
+)
+def find_path(
+    source: str,
+    source_entity: str,
+    target_entity: str,
+    method_id: Optional[str],
+    connection_type: str,
+    min_cooccur: int,
+    max_degrees: int,
+    show_details: bool,
+):
+    """
+    Find shortest path between two entities (Six Degrees of Separation).
+
+    Searches for connection paths between entities through their co-appearances
+    in the newspaper, showing how entities are related.
+
+    Example:
+        # Find path between two entities
+        newspaper-explorer analyze entities find-path \\
+            --from "Kaiser Wilhelm II" --to "Berlin" --source der_tag
+
+        # Show detailed connection info
+        newspaper-explorer analyze entities find-path \\
+            --from "Bismarck" --to "Reichstag" \\
+            --show-details
+    """
+    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
+
+    try:
+        click.echo(f"\nFinding path from '{source_entity}' to '{target_entity}'")
+        click.echo(f"Source: {source}")
+        if method_id:
+            click.echo(f"Method ID: {method_id}")
+        click.echo(f"Connection type: {connection_type}")
+        click.echo(f"Max degrees: {max_degrees}")
+        click.echo("")
+
+        # Build network
+        analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
+        analyzer.build_network(
+            connection_type=connection_type,
+            min_co_occurrences=min_cooccur,
+        )
+
+        # Find path
+        path = analyzer.find_path(source_entity, target_entity, max_degrees=max_degrees)
+
+        if path is None:
+            click.echo(f"\n❌ No path found within {max_degrees} degrees of separation")
+            click.echo("\nTips:")
+            click.echo("  - Check entity names (case-sensitive)")
+            click.echo("  - Try increasing --max-degrees")
+            click.echo("  - Try different --connection-type (date allows more connections)")
+            click.echo("  - Use 'network' command to see available entities")
+            return
+
+        # Show path
+        click.echo("=" * 80)
+        click.echo(f"✓ FOUND PATH: {path.degrees} DEGREES OF SEPARATION")
+        click.echo("=" * 80)
+        click.echo("")
+
+        for i, entity in enumerate(path.path):
+            if i == 0:
+                click.echo(f"START: {entity}")
+            elif i == len(path.path) - 1:
+                click.echo(f"  └─► {entity} (TARGET)")
+            else:
+                click.echo(f"  └─► {entity}")
+
+            # Show connection details
+            if show_details and i < len(path.connections):
+                conn = path.connections[i]
+                click.echo(f"      Co-occurrences: {conn.co_occurrences}")
+                click.echo(
+                    f"      Dates: {', '.join(conn.dates[:3])}"
+                    + (f" (and {len(conn.dates) - 3} more)" if len(conn.dates) > 3 else "")
+                )
+                if conn.pages and conn.pages[0] != "unknown":
+                    click.echo(f"      Pages: {len(conn.pages)} pages")
+                click.echo("")
+
+        click.echo("=" * 80)
+        click.echo(f"\nConnection summary:")
+        click.echo(f"  Total path length: {path.degrees} step(s)")
+        click.echo(f"  Total co-occurrences: {sum(c.co_occurrences for c in path.connections)}")
+
+        unique_dates = set()
+        for conn in path.connections:
+            unique_dates.update(conn.dates)
+        click.echo(f"  Unique dates: {len(unique_dates)}")
+        click.echo("")
+
+    except Exception as e:
+        click.echo(f"\nError: {e}", err=True)
+        raise click.Abort()
+
+
+@entities_group.command(name="entity-connections")
+@click.option("--source", type=str, default="der_tag", help="Source name")
+@click.option("--entity", type=str, required=True, help="Entity name to explore")
+@click.option(
+    "--method-id",
+    type=str,
+    default=None,
+    help="Entity extraction method ID",
+)
+@click.option(
+    "--connection-type",
+    type=click.Choice(["page", "issue", "date"], case_sensitive=False),
+    default="page",
+    help="How to define connections",
+)
+@click.option(
+    "--min-cooccur",
+    type=int,
+    default=2,
+    help="Minimum co-occurrences to show",
+)
+@click.option(
+    "--top-n",
+    type=int,
+    default=30,
+    help="Number of connections to show",
+)
+def entity_connections(
+    source: str,
+    entity: str,
+    method_id: Optional[str],
+    connection_type: str,
+    min_cooccur: int,
+    top_n: int,
+):
+    """
+    Show all connections for a specific entity.
+
+    Lists all entities that co-appear with the given entity, sorted by
+    number of co-occurrences.
+
+    Example:
+        # See what entities appear with "Kaiser Wilhelm II"
+        newspaper-explorer analyze entities entity-connections \\
+            --entity "Kaiser Wilhelm II" --top-n 50
+
+        # Find frequently co-occurring organizations
+        newspaper-explorer analyze entities entity-connections \\
+            --entity "Reichstag" --min-cooccur 5
+    """
+    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
+
+    try:
+        click.echo(f"\nFinding connections for: '{entity}'")
+        click.echo(f"Source: {source}")
+        click.echo(f"Connection type: {connection_type}")
+        click.echo("")
+
+        # Build network
+        analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
+        analyzer.build_network(
+            connection_type=connection_type,
+            min_co_occurrences=1,  # Build full network
+        )
+
+        # Get connections
+        connections = analyzer.get_entity_connections(
+            entity,
+            min_co_occurrences=min_cooccur,
+            sort_by="co_occurrences",
+        )
+
+        if not connections:
+            click.echo(f"❌ Entity not found or no connections: '{entity}'")
+            click.echo("\nTips:")
+            click.echo("  - Check spelling (case-sensitive)")
+            click.echo("  - Try lowering --min-cooccur")
+            click.echo("  - Use 'network' command to see top entities")
+            return
+
+        # Show connections
+        connections_to_show = connections[:top_n]
+
+        click.echo("=" * 80)
+        click.echo(f"CONNECTIONS FOR: {entity}")
+        click.echo("=" * 80)
+        click.echo(f"Total connections: {len(connections)}")
+        click.echo(f"Showing top {len(connections_to_show)}")
+        click.echo("")
+        click.echo(f"{'Connected Entity':<40} {'Co-occur':<12} {'Dates':<12} {'Pages':<12}")
+        click.echo("-" * 80)
+
+        for conn in connections_to_show:
+            other_entity = conn.entity2 if conn.entity1 == entity else conn.entity1
+            click.echo(
+                f"{other_entity:<40} {conn.co_occurrences:<12} "
+                f"{len(conn.dates):<12} {len(conn.pages):<12}"
+            )
+
+        if len(connections) > top_n:
+            click.echo(f"\n... and {len(connections) - top_n} more connections")
+
+        click.echo("\n" + "=" * 80)
+        click.echo("\nUse 'find-path' to find paths between this entity and others.")
+        click.echo("")
+
     except Exception as e:
         click.echo(f"\nError: {e}", err=True)
         raise click.Abort()

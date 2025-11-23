@@ -7,7 +7,7 @@ Supports retry logic, response validation against Pydantic schemas, and centrali
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Optional, Type, TypeVar, Union
 
 import requests
 from pydantic import BaseModel, ValidationError
@@ -50,7 +50,7 @@ class LLMClient:
     Example:
         ```python
         from newspaper_explorer.llm.client import LLMClient
-        from newspaper_explorer.llm.schemas import EntityResponse
+        from newspaper_explorer.models.llm.entity_extraction import EntityResponse
 
         client = LLMClient(
             base_url="https://api.openai.com/v1",
@@ -127,7 +127,7 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        **kwargs,
+        **kwargs: Union[str, int, float, bool, None],
     ) -> Union[str, T]:
         """
         Send completion request to LLM with optional validation.
@@ -212,7 +212,7 @@ class LLMClient:
 
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
-                
+
                 if not isinstance(content, str):
                     raise LLMError(f"Expected string content, got {type(content)}")
 

@@ -4,19 +4,9 @@ Centralized access to paths, settings, and environment variables.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def get_project_root() -> Path:
-    """
-    Get the project root directory.
-
-    Navigates from config/base.py -> config -> newspaper_explorer -> src -> project_root
-    """
-    return Path(__file__).parent.parent.parent.parent
 
 
 class Config(BaseSettings):
@@ -34,7 +24,10 @@ class Config(BaseSettings):
     )
 
     # Project root (computed, not from env)
-    project_root: Path = Field(default_factory=get_project_root, exclude=True)
+    # Navigates from config/base.py -> config -> newspaper_explorer -> src -> project_root
+    project_root: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent.parent, exclude=True
+    )
 
     # Data directories
     data_dir: Path = Field(default=Path("data"), description="Main data directory")
@@ -71,7 +64,8 @@ class Config(BaseSettings):
     def resolve_path(cls, v: Path) -> Path:
         """Convert relative paths to absolute (relative to project root)."""
         if not v.is_absolute():
-            project_root = get_project_root()
+            # config/base.py -> config -> newspaper_explorer -> src -> project_root
+            project_root = Path(__file__).parent.parent.parent.parent
             return project_root / v
         return v
 
@@ -87,13 +81,6 @@ class Config(BaseSettings):
             Configuration value.
         """
         return getattr(self, key, default)
-
-    def ensure_directories(self) -> None:
-        """Create necessary directories if they don't exist."""
-        self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.extracted_dir.mkdir(parents=True, exist_ok=True)
-        self.sources_dir.mkdir(parents=True, exist_ok=True)
-        self.results_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Global config instance

@@ -28,10 +28,10 @@ Example:
 import logging
 import os
 import time
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
-from multiprocessing import Pool, cpu_count
 from functools import partial
+from multiprocessing import Pool, cpu_count
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -41,15 +41,12 @@ from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.text import split_text_into_sentences, chunk_text
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.data.utils.text import chunk_text, split_text_into_sentences
 
 # Set up model cache directory
 _MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "sentence_transformers"
@@ -327,7 +324,7 @@ class BERTopicExtractor:
                 df = df.filter(pl.col("page_number").is_in(filter_pages))
                 logger.info(
                     f"Filtered to pages {filter_pages}: {len(df):,} rows "
-                    f"({len(df)/original_count*100:.1f}% of original)"
+                    f"({len(df) / original_count * 100:.1f}% of original)"
                 )
             else:
                 logger.warning("No 'page_number' column found - cannot filter by pages")
@@ -459,9 +456,11 @@ class BERTopicExtractor:
 
                 logger.info(
                     f"Sampled {len(sample_indices):,} chunks from first {umap_sample_pages} pages "
-                    f"({len(sample_indices)/len(embeddings)*100:.1f}% of {len(embeddings):,} total chunks)"
+                    f"({len(sample_indices) / len(embeddings) * 100:.1f}% of {len(embeddings):,} total chunks)"
                 )
-                logger.info(f"Memory reduction: {len(embeddings)/max(len(sample_indices), 1):.1f}x")
+                logger.info(
+                    f"Memory reduction: {len(embeddings) / max(len(sample_indices), 1):.1f}x"
+                )
             else:
                 logger.warning("No page_number column found - falling back to random sampling")
                 sample_size = min(500_000, len(embeddings))

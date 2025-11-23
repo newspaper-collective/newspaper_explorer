@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.fixes import DataFixer
-from newspaper_explorer.utils.sources import load_source_config
+from newspaper_explorer.data.utils.sources import load_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,8 @@ class ZenodoDownloader:
         self.extracted_dir: Path = Path(config.extracted_dir)
 
         # Ensure directories exist
-        config.ensure_directories()
+        self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.extracted_dir.mkdir(parents=True, exist_ok=True)
 
         # Load Zenodo links configuration from sources directory
         # TODO: Make this configurable instead of hardcoded to 'der_tag'

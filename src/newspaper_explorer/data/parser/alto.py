@@ -12,8 +12,8 @@ from typing import Dict, List, Optional, Tuple
 
 from lxml import etree
 from lxml.etree import _Element
-from pydantic import BaseModel, computed_field
 
+from newspaper_explorer.models.core.data import TextLine
 from newspaper_explorer.data.utils.ids import (
     generate_issue_id,
     generate_line_id,
@@ -23,62 +23,6 @@ from newspaper_explorer.data.utils.ids import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class TextLine(BaseModel):
-    """
-    Represents a single text line from ALTO XML with enriched metadata.
-
-    Note: Uses unified ID system with proper foreign key hierarchy:
-    source_id -> issue_id -> page_id -> text_block_id -> line_id
-    """
-
-    # Primary key and data
-    line_id: str  # PRIMARY: {source}_{date}_{issue}_{daily}_{page}_{block}_{line}
-    text: str  # OCR text content
-
-    # Foreign keys (for linking and querying)
-    source_id: str  # FK: Source identifier (e.g., "der_tag")
-    issue_id: str  # FK: {source}_{date}_{issue}_{daily}
-    page_id: str  # FK: {source}_{date}_{issue}_{daily}_{page}
-    text_block_id: str  # FK: {page_id}_{block_id}
-
-    # Original reference (for debugging)
-    filename: str  # Source ALTO XML filename
-
-    # Date information
-    date: Optional[datetime] = None
-
-    # Layout coordinates
-    x: Optional[int] = None
-    y: Optional[int] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-
-    # From filename parsing (denormalized for convenience)
-    issue_number: Optional[int] = None  # from filename (may differ from METS)
-    daily_issue_number: Optional[int] = None  # Number after H (2nd issue that day)
-    page_number: Optional[int] = None  # Last number in filename (e.g., 005)
-
-    # From METS metadata (denormalized for convenience)
-    year_volume: Optional[str] = None  # e.g., "Jahrgang 1902"
-    page_count: Optional[int] = None  # Total pages in issue
-    newspaper_title: Optional[str] = None  # e.g., "Der Tag"
-
-    @computed_field
-    def year(self) -> Optional[int]:
-        """Extract year from date"""
-        return self.date.year if self.date else None
-
-    @computed_field
-    def month(self) -> Optional[int]:
-        """Extract month from date"""
-        return self.date.month if self.date else None
-
-    @computed_field
-    def day(self) -> Optional[int]:
-        """Extract day from date"""
-        return self.date.day if self.date else None
 
 
 class ALTOParser:

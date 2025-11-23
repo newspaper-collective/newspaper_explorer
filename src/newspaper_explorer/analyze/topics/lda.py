@@ -29,11 +29,11 @@ Example:
     >>> doc_terms = extractor.extract_topic_based_document_terms(top_k=5)
 """
 
-import logging
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
 import json
+import logging
 import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -43,14 +43,11 @@ from gensim.parsing.preprocessing import STOPWORDS as GENSIM_STOPWORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 

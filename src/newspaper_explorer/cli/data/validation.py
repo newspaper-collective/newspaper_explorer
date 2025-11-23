@@ -36,7 +36,7 @@ def register_validation_commands(data_group):
           newspaper-explorer data validate-alto-mets --source der_tag
           newspaper-explorer data validate-alto-mets --source der_tag --save-report issues.txt
         """
-        from newspaper_explorer.data.utils.validation import validate_alto_mets_relationship
+        from newspaper_explorer.data.processing.validation import validate_alto_mets_relationship
 
         try:
             click.echo(f"Validating ALTO-METS relationships for source: {source}\n")

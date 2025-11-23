@@ -198,3 +198,120 @@ def register_image_commands(data_group):
         except Exception as e:
             click.echo(f"\nError: {e}", err=True)
             raise click.Abort()
+
+    @data_group.command("index-images")
+    @click.option(
+        "--source",
+        "-s",
+        type=str,
+        required=True,
+        help="Source name (e.g., der_tag)",
+    )
+    @click.option(
+        "--force-rebuild",
+        is_flag=True,
+        help="Force rebuild of index even if it exists",
+    )
+    def index_images(source, force_rebuild):
+        """
+        Create an image index with dimensions and metadata.
+
+        This command creates a comprehensive parquet index of all downloaded images,
+        enriched with:
+        - Original image dimensions from ALTO XML files
+        - Issue metadata from METS XML files (title, date, volume, page count)
+        - File paths and sizes
+
+        The index enables fast lookups and is required for accurate coordinate
+        scaling when matching layout detections with OCR text.
+
+        \b
+        Examples:
+          newspaper-explorer data index-images --source der_tag
+          newspaper-explorer data index-images --source der_tag --force-rebuild
+        """
+        import logging
+
+        from newspaper_explorer.config.base import get_config
+        from newspaper_explorer.data.indexing.image_index import ImageIndexer
+
+        # Configure logging
+        config = get_config()
+        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
+
+        try:
+            click.echo(f"Creating image index for source: {source}")
+            if force_rebuild:
+                click.echo("Force rebuild: existing index will be overwritten")
+            click.echo()
+
+            indexer = ImageIndexer(source)
+
+            # Check if index already exists
+            existing_index = indexer.load_index()
+            if existing_index is not None and not force_rebuild:
+                click.echo(f"Image index already exists with {len(existing_index)} images")
+                click.echo(f"Location: {indexer.index_path}")
+                click.echo("\nUse --force-rebuild to recreate it")
+                return
+
+            click.echo("Building image index...")
+            click.echo("- Extracting dimensions from ALTO XML files")
+            click.echo("- Loading metadata from METS XML files")
+            click.echo("- Scanning image directory\n")
+
+            # Create index
+            image_index = indexer.create_index(force_rebuild=force_rebuild)
+
+            click.echo("\n" + "=" * 60)
+            click.echo("Image Index Created")
+            click.echo("=" * 60)
+            click.echo(f"Total images indexed: {len(image_index):,}")
+            click.echo(f"Location: {indexer.index_path}")
+
+            # Show statistics
+            stats = indexer.get_stats()
+            click.echo(f"\nStatistics:")
+            click.echo(f"  Total size: {stats['total_size_gb']:.2f} GB")
+            click.echo(f"  Average file size: {stats['avg_file_size_mb']:.2f} MB")
+            click.echo(
+                f"  Year range: {stats['min_year']} - {stats['max_year']} ({stats['years']} years)"
+            )
+
+            # Show completeness
+            with_real_dims = image_index.filter(image_index["width"].is_not_null())
+            with_alto_dims = image_index.filter(image_index["alto_width"].is_not_null())
+            with_mets = image_index.filter(image_index["newspaper_title"].is_not_null())
+
+            click.echo(f"\nData completeness:")
+            click.echo(
+                f"  Images with real dimensions: {len(with_real_dims):,} ({len(with_real_dims) / len(image_index) * 100:.1f}%)"
+            )
+            click.echo(
+                f"  Images with ALTO dimensions: {len(with_alto_dims):,} ({len(with_alto_dims) / len(image_index) * 100:.1f}%)"
+            )
+            click.echo(
+                f"  Images with METS data:      {len(with_mets):,} ({len(with_mets) / len(image_index) * 100:.1f}%)"
+            )
+
+            if len(with_alto_dims) < len(image_index):
+                missing_dims = len(image_index) - len(with_alto_dims)
+                click.echo(
+                    f"\n⚠ {missing_dims:,} images missing ALTO dimensions (ALTO files not found)"
+                )
+
+            if len(with_mets) < len(image_index):
+                missing_mets = len(image_index) - len(with_mets)
+                click.echo(
+                    f"⚠ {missing_mets:,} images missing METS metadata (METS files not available)"
+                )
+
+            click.echo("\n✓ Image index created successfully!")
+            click.echo("=" * 60)
+
+        except Exception as e:
+            click.echo(f"\nError: {e}", err=True)
+            import traceback
+
+            traceback.print_exc()
+            raise click.Abort()

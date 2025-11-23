@@ -123,7 +123,7 @@ def register_download_commands(data_group):
         """
         import logging
 
-        from newspaper_explorer.utils.sources import load_source_config
+        from newspaper_explorer.data.utils.sources import load_source_config
 
         # Configure logging so user sees extraction progress
         cfg = get_config()

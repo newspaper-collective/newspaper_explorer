@@ -21,6 +21,7 @@ Example:
 import logging
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -38,14 +39,11 @@ from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    save_metadata,
-    save_analysis_results,
-    extract_input_stats,
-    extract_output_stats,
-)
+from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +98,10 @@ def _extract_keywords_on_gpu(
     # Load models
     sentence_model = SentenceTransformer(model_name, device=device)
     sentence_model.max_seq_length = max_seq_length
+
+    # Note: torch.compile is applied per-GPU worker in multi-GPU mode if needed
+    # For now, we skip compilation in worker processes to avoid overhead
+
     model = KeyBERT(model=sentence_model)  # type: ignore[arg-type]
 
     # Wait for all GPUs to finish loading (multi-GPU mode only)
@@ -271,7 +273,8 @@ class KeyBERTExtractor:
         use_chunking: bool = True,
         chunk_size: int = 400,
         chunk_overlap: int = 50,
-        use_multi_gpu: bool = False,
+        use_multi_gpu: Optional[bool] = None,
+        compile_model: bool = False,
     ):
         """
         Initialize KeyBERT extractor.
@@ -294,7 +297,8 @@ class KeyBERTExtractor:
             use_chunking: Split long texts into chunks to avoid truncation (default: True)
             chunk_size: Token size for each chunk (default: 400, leaves room for special tokens)
             chunk_overlap: Overlap between chunks in tokens (default: 50)
-            use_multi_gpu: Use multiple GPUs if available (default: False)
+            use_multi_gpu: Use multiple GPUs if available (None=auto-detect, True=force, False=disable)
+            compile_model: Use torch.compile for model optimization (default: False, requires PyTorch 2.0+)
         """
         self.source_name = source_name
         self.text_column = text_column
@@ -307,6 +311,7 @@ class KeyBERTExtractor:
         self.use_chunking = use_chunking
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.compile_model = compile_model
         self.use_multi_gpu = use_multi_gpu
 
         # Determine input file
@@ -350,14 +355,45 @@ class KeyBERTExtractor:
         if use_chunking:
             self.sentence_model = SentenceTransformer(model_name, device=self.device)
             self.sentence_model.max_seq_length = max_seq_length
+
+            # Apply torch.compile if requested (PyTorch 2.0+)
+            if (
+                compile_model
+                and hasattr(torch, "compile")
+                and hasattr(self.sentence_model, "__getitem__")
+            ):
+                try:
+                    logger.info("Compiling model with torch.compile for optimization...")
+                    # Access the transformer model and compile it
+                    transformer_model = self.sentence_model[0]
+                    if hasattr(transformer_model, "auto_model"):
+                        compiled = torch.compile(  # type: ignore
+                            transformer_model.auto_model, mode="reduce-overhead", fullgraph=False
+                        )
+                        transformer_model.auto_model = compiled
+                        logger.info("Model compilation successful")
+                except Exception as e:
+                    logger.warning(
+                        f"Model compilation failed: {e}. Continuing without compilation."
+                    )
+            elif compile_model:
+                logger.warning(
+                    "torch.compile not available (requires PyTorch 2.0+). Continuing without compilation."
+                )
         else:
             self.sentence_model = None
 
-        # Check for multi-GPU
+        # Check for multi-GPU (auto-enable if multiple GPUs available)
         if self.device == "cuda":
             gpu_count = torch.cuda.device_count()
             logger.info(f"Primary GPU: {torch.cuda.get_device_name(0)}")
             logger.info(f"Available GPUs: {gpu_count}")
+
+            # Auto-detect multi-GPU if use_multi_gpu is None
+            if use_multi_gpu is None:
+                use_multi_gpu = gpu_count > 1
+                if use_multi_gpu:
+                    logger.info(f"Multi-GPU auto-enabled: will use {gpu_count} GPUs")
 
             if gpu_count > 1 and use_multi_gpu:
                 logger.info(f"Multi-GPU enabled: will use {gpu_count} GPUs")
@@ -498,6 +534,11 @@ class KeyBERTExtractor:
             df = df.head(limit)
             logger.info(f"Limited to {limit} rows")
 
+        # Auto-aggregate by page if no grouping specified and using textblocks
+        if group_by is None and "page_id" in df.columns:
+            logger.info("Auto-aggregating text blocks by page for keyword extraction")
+            group_by = ["page_id"]
+
         # Group if requested - Fix deprecation warning
         if group_by:
             logger.info(f"Grouping by: {', '.join(group_by)}")
@@ -538,7 +579,7 @@ class KeyBERTExtractor:
                 # Already set, ignore
                 pass
 
-            from multiprocessing import Process, Queue, Barrier
+            from multiprocessing import Barrier, Process, Queue
 
             # Create barrier for synchronization
             barrier = Barrier(self.num_gpus)
@@ -705,11 +746,15 @@ class KeyBERTExtractor:
         if hasattr(self, "_last_input_df"):
             input_stats = extract_input_stats(self._last_input_df)
 
-        # Create metadata
+        # Create metadata with properly formatted timestamps
+        completed_at = datetime.now().isoformat()
+
         metadata = AnalysisMetadata(
+            analysis_id=None,  # Will be auto-generated
             analysis_type="keywords",
             method_type="keybert",
             model_name=self.model_name.replace("/", "_").replace("-", "_"),
+            model_version="unknown",  # sentence-transformers version could be extracted if needed
             source=self.source_name,
             parameters={
                 "model_name": self.model_name,
@@ -720,8 +765,9 @@ class KeyBERTExtractor:
                 "use_chunking": self.use_chunking,
                 "chunk_size": self.chunk_size,
                 "chunk_overlap": self.chunk_overlap,
-                "use_multi_gpu": self.use_multi_gpu,
+                "use_multi_gpu": self.use_multi_gpu if self.use_multi_gpu is not None else False,
                 "num_gpus": self.num_gpus if self.use_multi_gpu else 1,
+                "compile_model": self.compile_model,
                 "device": self.device,
                 "top_k": top_k,
                 "text_column": self.text_column,
@@ -731,6 +777,8 @@ class KeyBERTExtractor:
             output_data=output_stats,
             status="completed",
             duration_seconds=duration,
+            completed_at=completed_at,
+            error_message=None,
         )
 
         # Save using unified helper

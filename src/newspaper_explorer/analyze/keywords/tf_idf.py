@@ -30,13 +30,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import (
-    AnalysisMetadata,
-    extract_input_stats,
-    extract_output_stats,
-    save_analysis_results,
-)
+from newspaper_explorer.data.utils.results import save_analysis_results
+from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +329,7 @@ class TFIDFExtractor:
         # Memory warning for large document counts
         if num_documents > 5_000_000:
             logger.warning(
-                f"\n{'='*80}\n"
+                f"\n{'=' * 80}\n"
                 f"⚠️  MEMORY WARNING: {num_documents:,} documents will create a VERY LARGE TF-IDF matrix\n"
                 f"This may cause out-of-memory errors.\n\n"
                 f"RECOMMENDATIONS:\n"
@@ -340,7 +337,7 @@ class TFIDFExtractor:
                 f"  2. Use --document-level date (daily keyword trends)\n"
                 f"  3. Use --group-by year (yearly keyword trends)\n"
                 f"  4. Test with --limit 500000 first\n"
-                f"{'='*80}\n"
+                f"{'=' * 80}\n"
             )
 
             time.sleep(3)  # Give user time to read warning
