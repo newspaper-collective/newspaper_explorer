@@ -5,9 +5,9 @@
 
 A toolkit for exploring historical newspapers through computational analysis. Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing, yet standardized tools connecting raw data to statistical, NLP, computer vision, and LLM workflows remain scarce. 
 
-Built during a two-day hackathon, this project provides an initial starting point for researchers, students, and cultural heritage professionals to explore large newspaper datasets under a unified interface combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data and allows researchers a first step into unknown datasets, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
+Built during a two-day hackathon and refined since, this project provides a starting point for researchers, students, and cultural heritage professionals to explore large newspaper datasets under a unified interface combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data and allows researchers a first step into unknown datasets, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
 
-During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, a tool for knowledge graph generation, various models for layout detection, LLM-based topic modeling, and a custom emotion classification BERT-model from Universität Würzburg. However, this exploration quickly revealed the central challenge: the "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 page images**, totaling over **10 GB of compressed XML files** and **200 GB of JPEG images**. Working with a dataset of this scale proved a significant challenge during the two days of the hackathon, so some analyses were performed on data subsets due to computational and time constraints. Future development will focus on optimizing the codebase to efficiently process the complete dataset.
+During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, a tool for knowledge graph generation, various models for layout detection, LLM-based topic modeling, and a custom emotion classification BERT-model from Universität Würzburg. The "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 page images**, totaling over **10 GB of compressed XML files** and **200 GB of JPEG images**. Since the hackathon, we have optimized the codebase to efficiently process datasets of this scale, with an CLI for preprocessing and analysis workflows, and a Vue/FastAPI web interface for visualization and discovery.
 
 Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
@@ -22,6 +22,7 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 - **LLM Integration**: Structured prompts with Pydantic schemas for entity extraction, topic analysis, emotion detection
 - **Complete Traceability**: Unified ID system tracks lineage from source → issue → page → text block → line
 - **Historical Text Support**: Preprocessing pipeline with normalization, cleaning, and lemmatization for German historical text
+- **Quality Validation**: OCR quality metrics (character/token ratio, OOV rate, proper noun density) with German wordlists for data filtering
 - **Image Downloads**: Retrieve high-resolution newspaper page scans from METS references
 - **Smart Resume**: Automatic tracking of processed files to avoid reprocessing
 - **Modular CLI**: Clean command structure with comprehensive validation and status tracking
@@ -30,29 +31,139 @@ Built with open cultural data from the Stiftung Preußischer Kulturbesitz.
 
 ## Web Interface
 
-A modern web interface provides intuitive access to analysis results and exploration tools. Launch with `newspaper-explorer ui start`. The interface is currently work in progress.
+Two web interface implementations are available:
+
+### 1. Modern Web UI (v2)
+
+A modern full-stack web application with Vue.js frontend and FastAPI backend. Features interactive dashboards for entities, images, topics, emotions, and full-text search.
+
+**Status**: In active development
+
+**Tech Stack**:
+- Backend: FastAPI with DuckDB queries
+- Frontend: Vue 3 + TypeScript + Vite + TailwindCSS
+- Features: Entity timelines, image galleries, topic analysis, emotion tracking
 
 <details>
-<summary>📸 View screenshots from the web interface</summary>
+<summary>📸 View screenshots from the new Vue/FastAPI UI</summary>
 
-### Overview Dashboard
-![Overview Dashboard](docs/ui/screenshots/01_overview.png)
-*Screenshot: Main dashboard providing an overview of available datasets and analysis results*
+> **Note**: Screenshots show test data from development, not final analysis results.
 
-### Browse and Explore
-![Browse Interface](docs/ui/screenshots/02_browse.png)
-*Screenshot: Browse and explore newspaper pages with filtering and search capabilities*
+### Source Selection & Browsing
+![Source Selector](docs/ui/screenshots/01_source_selector.png)
+*Screenshot: Source selection interface for choosing newspaper datasets*
+
+![Browse Years](docs/ui/screenshots/02_browse_years.png)
+*Screenshot: Year-level navigation for exploring the corpus*
+
+![Browse Months](docs/ui/screenshots/03_browse_months.png)
+*Screenshot: Monthly view of available newspaper issues*
+
+![Browse Month](docs/ui/screenshots/04_browse_month.png)
+*Screenshot: Detailed month view with individual issues*
+
+![Browse Issue](docs/ui/screenshots/05_browse_issue.png)
+*Screenshot: Issue overview with page thumbnails*
+
+### Issue Reader
+![Issue Reader](docs/ui/screenshots/06_issue_reader.png)
+*Screenshot: Full-page issue reader with navigation*
+
+![Issue Reader Details](docs/ui/screenshots/07_issue_reader_details.png)
+*Screenshot: Detailed view with metadata and text*
+
+![Issue Reader Text Linking](docs/ui/screenshots/08_issue_reader_text_linking.png)
+*Screenshot: Interactive text-to-image linking from OCR*
+
+![Issue Reader Layout](docs/ui/screenshots/09_issue_reader_layout.png)
+*Screenshot: Layout detection overlay on page image*
+
+### Search
+![Search](docs/ui/screenshots/10_search.png)
+*Screenshot: Full-text search interface with filters*
+
+![Search Detail](docs/ui/screenshots/11_search_detail.png)
+*Screenshot: Search result details with context*
+
+### Layout Analysis
+![Layout](docs/ui/screenshots/12_layout.png)
+*Screenshot: Layout detection statistics and overview*
+
+![Layout Gallery](docs/ui/screenshots/13_layout_gallery.png)
+*Screenshot: Gallery of detected layout elements*
+
+![Layout Thumbs](docs/ui/screenshots/14_layout_thumbs.png)
+*Screenshot: Thumbnail view of detected regions*
+
+### Pictures
+![Pictures Stats](docs/ui/screenshots/15_pictures_stats.png)
+*Screenshot: Statistics for detected images across the corpus*
+
+![Pictures Gallery](docs/ui/screenshots/16_pictures_gallery.png)
+*Screenshot: Gallery view of extracted newspaper images*
+
+![Pictures Details](docs/ui/screenshots/17_pictures_details.png)
+*Screenshot: Detailed view of individual images with captions*
+
+![Pictures Show All](docs/ui/screenshots/18_pictures_details_show_all.png)
+*Screenshot: Expanded view showing all layout detections*
+
+### Emotion Analysis
+![Emotions Stats](docs/ui/screenshots/19_emotions_stats.png)
+*Screenshot: Emotion distribution statistics across the corpus*
+
+![Emotions Details](docs/ui/screenshots/20_emotions_details.png)
+*Screenshot: Detailed emotion analysis with text examples*
+
+### Entity Extraction
+![Entities Stats](docs/ui/screenshots/21_entities_stats.png)
+*Screenshot: Named entity statistics and distributions*
+
+![Entities Wordcloud](docs/ui/screenshots/22_entities_wordcloud.png)
+*Screenshot: Word cloud visualization of extracted entities*
+
+![Entities List](docs/ui/screenshots/23_entites_list.png)
+*Screenshot: Filterable list of extracted entities*
+
+![Entities Details](docs/ui/screenshots/24_entities_details.png)
+*Screenshot: Detailed entity view with occurrences*
+
+### Keyword Extraction
+![Keywords Stats](docs/ui/screenshots/25_keywords_stats.png)
+*Screenshot: Keyword extraction statistics*
+
+![Keywords Visuals](docs/ui/screenshots/26_keywords_visuals.png)
+*Screenshot: Visual representations of keyword patterns*
+
+![Keywords Co-occurrence](docs/ui/screenshots/27_keywords_co_occurance.png)
+*Screenshot: Keyword co-occurrence network visualization*
+
+![Keywords Details](docs/ui/screenshots/28_keywords_details.png)
+*Screenshot: Detailed keyword analysis with context*
 
 </details>
 
----
+### 2. Hackathon Demo (Streamlit)
 
-## Hackathon Demo: Streamlit UI
+A Streamlit-based web interface built during the two-day hackathon to showcase initial analysis results on the "Der Tag" dataset.
 
-During the two-day hackathon, we built a Streamlit-based web interface to showcase the first results of our various analysis approaches on the "Der Tag" dataset. These screenshots demonstrate the exploratory analysis capabilities we tested.
+**Status**: ✅ Functional demo from October 2025 hackathon
+
+**Tech Stack**: Streamlit + Plotly + WordCloud
+
+**Launch**: `streamlit run src/newspaper_explorer/ui/hackathon/app.py`
+
+**Features**:
+- Entity extraction dashboard with GLiNER
+- Concept extraction with knowledge graphs
+- YOLOv11 layout analysis and image detection
+- Image gallery with caption matching
+- Full-text search with word clouds
+- Topic modeling with LLM extraction
+- Emotion analysis visualization
 
 <details>
-<summary>📸 View screenshots from the Streamlit demo (October 2025)</summary>
+<summary>📸 View screenshots from the hackathon demo (October 2025)</summary>
 
 ### Entity Extraction Dashboard
 ![Entity Extraction](docs/hackathon/screenshots/01_entities.png)
@@ -180,6 +291,9 @@ newspaper-explorer data download-images --source der_tag --max-workers 8
 
 # 8. Optional: Preprocess text (normalize, clean, lemmatize)
 newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
+
+# 9. Optional: Generate German wordlist for quality validation
+newspaper-explorer data generate-wordlist --output data/wordlist_de.txt
 ```
 
 **Then analyze with Python** - see **[Python API Examples](docs/PYTHON_API.md)** for:
@@ -195,6 +309,18 @@ newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
 ## Analysis Methods
 
 The toolkit provides multiple analysis approaches that can be combined for comprehensive newspaper exploration:
+
+### Text Quality Validation
+Assess and filter OCR text quality before analysis using four complementary metrics:
+
+- **Character/Token Ratio** - Detects overly long words indicating OCR errors
+- **Out-of-Vocabulary (OOV) Rate** - Compares against German wordlists to identify garbled text
+
+**Wordlists**: Supports spaCy (244k words), Leipzig Corpora (155k words), DTA historical corpus, and Hunspell dictionaries. Generate with `newspaper-explorer data generate-wordlist`.
+
+**CLI**: Integrated in preprocessing pipeline with `--calculate-quality` and `--filter-by-quality` steps.
+
+**See**: [Quality Validation Guide](docs/data/preprocessing/QUALITY_VALIDATION.md) for complete metrics documentation and [Wordlists Guide](docs/data/preprocessing/WORDLISTS.md) for wordlist sources.
 
 ### Entity Extraction
 Extract named entities (persons, organizations, locations, events) from historical texts using three methods:
@@ -341,6 +467,8 @@ The toolkit can be used as a Python library for custom analysis workflows. Load 
 - **[Image Downloads](docs/data/IMAGES.md)** - High-resolution page scans
 - **[Text Preprocessing](docs/data/preprocessing/PREPROCESSING.md)** - Complete preprocessing guide (normalization, cleaning, filtering, linguistic)
 - **[Normalization](docs/data/preprocessing/NORMALIZATION.md)** - Historical text normalization (Transnormer, DTA-CAB)
+- **[Quality Validation](docs/data/preprocessing/QUALITY_VALIDATION.md)** - OCR quality metrics and filtering
+- **[German Wordlists](docs/data/preprocessing/WORDLISTS.md)** - Wordlist sources and generation
 
 ### Analysis Methods
 - **[Entity Extraction](docs/analysis/ENTITIES.md)** - Named entity recognition (GLiNER, GLiNER2, LLM)
@@ -348,6 +476,7 @@ The toolkit can be used as a Python library for custom analysis workflows. Load 
 - **[Emotion Analysis](docs/analysis/EMOTIONS.md)** - Multi-label emotion classification
 - **[Topic Modeling](docs/analysis/TOPICS.md)** - Thematic analysis and clustering
 - **[Keyword Extraction](docs/analysis/KEYWORDS.md)** - Statistical and semantic keywords
+- **[Quality Validation](docs/data/preprocessing/QUALITY_VALIDATION.md)** - OCR quality assessment and filtering
 - **[LLM Utilities](docs/analysis/LLM.md)** - Prompts, schemas, client usage
 - **[Query Engine](docs/analysis/QUERY.md)** - DuckDB analytics on Parquet
 

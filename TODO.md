@@ -101,3 +101,5 @@ simple stats page? word count etc?
 drowpdon filters in browse month view
 
 date range filter custom range text of
+
+support external image urls -> include in index

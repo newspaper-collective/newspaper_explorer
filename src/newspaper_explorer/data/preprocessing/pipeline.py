@@ -11,10 +11,10 @@ For direct use of preprocessing functions, import from individual modules:
     from newspaper_explorer.data.preprocessing.linguistic import lemmatize_spacy
 """
 
-import logging
-import time
 from datetime import datetime
+import logging
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional, Union
 
 import polars as pl
@@ -23,8 +23,12 @@ from newspaper_explorer.data.models import PreprocessingMetadata
 from newspaper_explorer.data.preprocessing.cleaning import lowercase, normalize_whitespace
 from newspaper_explorer.data.preprocessing.filtering import (
     clean_ocr_artifacts,
+    filter_by_char_token_ratio,
     filter_by_length,
     filter_by_word_count,
+    filter_excessive_word_length,
+    filter_number_only_lines,
+    filter_repeating_chars,
     remove_numbers,
     remove_punctuation,
     remove_stopwords,
@@ -39,12 +43,18 @@ from newspaper_explorer.data.preprocessing.linguistic import (
 # Import all preprocessing functions
 from newspaper_explorer.data.preprocessing.normalization import (
     dta_cab,
+    normalize_long_s,
     normalize_unicode,
     remove_diacritics,
     simple,
     transnormer,
 )
 from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
+from newspaper_explorer.data.preprocessing.validation import (
+    calculate_quality_metrics,
+    filter_by_quality_score,
+    summarize_quality,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +107,9 @@ class TextPreprocessor:
         Apply a pipeline of preprocessing steps.
 
         Available steps:
-        - normalize-unicode: Unicode normalization (NFKC + character translation)
+        - normalize-unicode: Unicode normalization (NFC + ftfy + character translation)
         - normalize: Normalize historical German characters
+        - normalize-long-s: Normalize long s (ſ) to modern s (simple/context-aware/preserve)
         - remove-diacritics: Remove diacritics
         - normalize-whitespace: Normalize whitespace
         - normalize-transnormer: Neural normalization with Transnormer
@@ -112,6 +123,12 @@ class TextPreprocessor:
         - lemmatize: Lemmatize with GermaLemma (slow)
         - filter-length: Filter out too short/long texts (by character count)
         - filter-word-count: Filter out too few/many words (by word count)
+        - filter-repeating-chars: Remove words with excessive character repetition (OCR garbage)
+        - filter-number-only: Remove lines containing only numbers and separators
+        - filter-char-token-ratio: Remove lines with high character-to-token ratio (OCR fragmentation)
+        - filter-word-length: Remove lines with excessively long words (merged OCR errors)
+        - calculate-quality: Calculate OCR quality metrics (char/token ratio, OOV rate, quality score)
+        - filter-by-quality: Filter rows by quality score (good/review/poor)
         - clean-ocr: Remove OCR artifacts and invalid characters
 
         Args:
@@ -156,6 +173,13 @@ class TextPreprocessor:
                 )
             elif step == "normalize":
                 df = simple(df, input_column=current_column, output_column=out_col)
+            elif step == "normalize-long-s":
+                df = normalize_long_s(
+                    df,
+                    input_column=current_column,
+                    output_column=out_col,
+                    mode="simple",
+                )
             elif step == "remove-diacritics":
                 df = remove_diacritics(
                     df,
@@ -257,6 +281,41 @@ class TextPreprocessor:
                     df, text_column=current_column, input_column=current_column
                 )
                 # Note: filter-word-count doesn't change the column, so keep current_column
+                current_column = current_column
+            elif step == "filter-repeating-chars":
+                df = filter_repeating_chars(
+                    df,
+                    text_column=current_column,
+                    input_column=current_column,
+                    output_column=out_col,
+                )
+            elif step == "filter-number-only":
+                df = filter_number_only_lines(
+                    df, text_column=current_column, input_column=current_column
+                )
+                # Note: filter-number-only removes rows, doesn't change column
+                current_column = current_column
+            elif step == "filter-char-token-ratio":
+                df = filter_by_char_token_ratio(
+                    df, text_column=current_column, input_column=current_column
+                )
+                # Note: filter removes rows, doesn't change column
+                current_column = current_column
+            elif step == "filter-word-length":
+                df = filter_excessive_word_length(
+                    df, text_column=current_column, input_column=current_column
+                )
+                # Note: filter removes rows, doesn't change column
+                current_column = current_column
+            elif step == "calculate-quality":
+                df = calculate_quality_metrics(
+                    df, text_column=current_column, input_column=current_column
+                )
+                # Note: adds quality columns, doesn't change current column
+                current_column = current_column
+            elif step == "filter-by-quality":
+                df = filter_by_quality_score(df)
+                # Note: filters rows, doesn't change current column
                 current_column = current_column
             elif step == "clean-ocr":
                 df = clean_ocr_artifacts(

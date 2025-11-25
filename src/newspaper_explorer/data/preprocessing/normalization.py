@@ -2,7 +2,7 @@
 Text normalization methods.
 
 Provides comprehensive normalization for historical German newspaper texts:
-- Unicode normalization (NFKC, character translation, control chars)
+- Unicode normalization (NFC with ftfy encoding repair, character translation, control chars)
 - Diacritic removal (ä→a, ö→o, ü→u)
 - Historical German character mapping (ſ→s, ß→ss)
 - Transnormer neural normalization (transformer-based)
@@ -16,6 +16,7 @@ import unicodedata
 from pathlib import Path
 from typing import Optional, Union
 
+import ftfy
 import polars as pl
 from tqdm import tqdm
 
@@ -35,23 +36,11 @@ logger = logging.getLogger(__name__)
 
 # CONSERVATIVE: Only fix clear OCR errors, preserve semantic distinctions
 UNICODE_TRANSLATION_CONSERVATIVE = {
-    # Historical character normalization
-    0x017F: "s",  # ſ long s → short s (common in historical German texts)
     # Remove problematic hyphens/spaces
     0x00AD: None,  # soft hyphen (invisible, remove)
     0x2011: "-",  # non-breaking hyphen → regular hyphen
     # NOTE: KEEP - (hyphen), – (en dash), — (em dash) - these have semantic meaning!
-    # Unify quotation marks (less controversial)
-    0x201E: '"',  # „ German opening quote
-    0x201C: '"',  # " German closing quote (left double quotation mark)
-    0x201C: '"',  # " left double quote
-    0x201D: '"',  # " right double quote
-    0x00AB: '"',  # « left-pointing double angle quote
-    0x00BB: '"',  # » right-pointing double angle quote
-    0x201A: "'",  # ‚ single low-9 quote
-    0x2018: "'",  # ' left single quote
-    0x2019: "'",  # ' right single quote
-    # Normalize various space types to regular space
+    # Normalize various space types to regular space (OCR-specific, not encoding)
     0x00A0: 32,  # non-breaking space
     0x202F: 32,  # narrow no-break space
     0x2000: 32,  # en quad
@@ -65,13 +54,7 @@ UNICODE_TRANSLATION_CONSERVATIVE = {
     0x2008: 32,  # punctuation space
     0x2009: 32,  # thin space
     0x200A: 32,  # hair space
-    # Remove zero-width and invisible characters
-    0x200B: None,  # zero-width space
-    0x200C: None,  # zero-width non-joiner
-    0x200D: None,  # zero-width joiner
-    0x2060: None,  # word joiner
-    0xFEFF: None,  # zero-width no-break space (BOM)
-    # Remove OCR artifacts (bullets, boxes, etc.)
+    # Remove OCR artifacts (bullets, boxes, etc.) - OCR garbage, not encoding
     0x2022: None,  # • bullet
     0x25AA: None,  # ▪ black small square
     0x2023: None,  # ‣ triangular bullet
@@ -80,6 +63,63 @@ UNICODE_TRANSLATION_CONSERVATIVE = {
     0x25FC: None,  # ◼ black medium square
     0x25AE: None,  # ▮ black vertical rectangle
     0x261E: None,  # ☞ white right pointing index
+    # Cyrillic confusables (OCR errors - looks like Latin but isn't)
+    0x0410: "A",  # А → A (Cyrillic A)
+    0x0412: "B",  # В → B (Cyrillic Ve)
+    0x0415: "E",  # Е → E (Cyrillic Ie)
+    0x041A: "K",  # К → K (Cyrillic Ka)
+    0x041C: "M",  # М → M (Cyrillic Em)
+    0x041D: "H",  # Н → H (Cyrillic En)
+    0x041E: "O",  # О → O (Cyrillic O)
+    0x0420: "P",  # Р → P (Cyrillic Er)
+    0x0421: "C",  # С → C (Cyrillic Es)
+    0x0422: "T",  # Т → T (Cyrillic Te)
+    0x0425: "X",  # Х → X (Cyrillic Kha)
+    0x0430: "a",  # а → a (Cyrillic a)
+    0x0435: "e",  # е → e (Cyrillic ie)
+    0x043E: "o",  # о → o (Cyrillic o)
+    0x0440: "p",  # р → p (Cyrillic er)
+    0x0441: "c",  # с → c (Cyrillic es)
+    0x0443: "y",  # у → y (Cyrillic u)
+    0x0445: "x",  # х → x (Cyrillic kha)
+    0x0455: "s",  # ѕ → s (Cyrillic dze)
+    0x0456: "i",  # і → i (Cyrillic byelorussian-ukrainian i)
+    0x0458: "j",  # ј → j (Cyrillic je)
+    0x04CF: "l",  # ӏ → l (Cyrillic palochka)
+    0x0405: "S",  # Ѕ → S (Cyrillic Dze)
+    0x0406: "I",  # І → I (Cyrillic Byelorussian-Ukrainian I)
+    # Greek confusables (OCR errors - looks like Latin but isn't)
+    0x0391: "A",  # Α → A (Greek Alpha)
+    0x0392: "B",  # Β → B (Greek Beta)
+    0x0395: "E",  # Ε → E (Greek Epsilon)
+    0x0396: "Z",  # Ζ → Z (Greek Zeta)
+    0x0397: "H",  # Η → H (Greek Eta)
+    0x0399: "I",  # Ι → I (Greek Iota)
+    0x039A: "K",  # Κ → K (Greek Kappa)
+    0x039C: "M",  # Μ → M (Greek Mu)
+    0x039D: "N",  # Ν → N (Greek Nu)
+    0x039F: "O",  # Ο → O (Greek Omicron)
+    0x03A1: "P",  # Ρ → P (Greek Rho)
+    0x03A4: "T",  # Τ → T (Greek Tau)
+    0x03A7: "X",  # Χ → X (Greek Chi)
+    # Accented i (German doesn't use these - OCR errors)
+    0x00ED: "i",  # í → i (acute)
+    0x00EC: "i",  # ì → i (grave)
+    0x00EE: "i",  # î → i (circumflex)
+    0x00EF: "i",  # ï → i (diaeresis)
+    0x0129: "i",  # ĩ → i (tilde)
+    0x012B: "i",  # ī → i (macron)
+    0x012D: "i",  # ĭ → i (breve)
+    0x012F: "i",  # į → i (ogonek)
+    0x0131: "i",  # ı → i (dotless)
+    0x00CD: "I",  # Í → I (uppercase acute)
+    0x00CC: "I",  # Ì → I (uppercase grave)
+    0x00CE: "I",  # Î → I (uppercase circumflex)
+    0x00CF: "I",  # Ï → I (uppercase diaeresis)
+    0x0128: "I",  # Ĩ → I (uppercase tilde)
+    0x012A: "I",  # Ī → I (uppercase macron)
+    0x012C: "I",  # Ĭ → I (uppercase breve)
+    0x012E: "I",  # Į → I (uppercase ogonek)
 }
 
 # AGGRESSIVE: Unify all dashes (good for NLP/topic modeling, loses nuance)
@@ -92,31 +132,10 @@ UNICODE_TRANSLATION_AGGRESSIVE = {
 }
 
 
-def _strip_control_characters(text: str, keep_newlines: bool = False) -> str:
-    """
-    Remove Unicode control and format characters.
-
-    Args:
-        text: Input text
-        keep_newlines: If True, preserves newlines and tabs
-
-    Returns:
-        Text with control characters removed
-    """
-    if keep_newlines:
-        # Keep newlines and tabs
-        return "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
-    else:
-        # Remove all control characters
-        return "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")
-
-
 def normalize_unicode(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
-    keep_newlines: bool = False,
-    strip_control_chars: bool = True,
     aggressive: bool = False,
 ) -> pl.DataFrame:
     """
@@ -125,7 +144,35 @@ def normalize_unicode(
     Recommended as the FIRST STEP in preprocessing pipelines.
     Handles common OCR issues while preserving semantic distinctions.
 
-    Two modes available:
+    **CRITICAL: Uses NFC normalization (NOT NFKC) for historical text preservation.**
+
+    NFC vs NFKC:
+    - NFC (Canonical Composition): Preserves character distinctions needed for
+      historical analysis. Represents ä, ö, ü, ß as single codepoints.
+    - NFKC (Compatibility): Performs aggressive normalization that LOSES information.
+      NOT suitable for historical text preservation!
+
+    **Processing stages:**
+    1. ftfy encoding repair: Fixes mojibake, HTML entities, ligatures, control chars, NFC
+    2. Character translation: Cyrillic/Greek confusables, accented i, spaces, OCR artifacts
+
+    **What ftfy.fix_text() handles:**
+    - Mojibake repair: "schÃ¶n" → "schön"
+    - HTML entities: "&auml;" → "ä"
+    - Ligatures: "ﬁ ﬂ ﬀ" → "fi fl ff" (Fraktur!)
+    - Curly quotes: "„text"" → "\"text\""
+    - Control characters removal (keeps newlines/tabs)
+    - NFC normalization at the end
+
+    **What our character translation handles:**
+    - Cyrillic confusables: "Теxt" → "Text" (А→A, о→o)
+    - Greek confusables: "Grееk" → "Greek" (Α→A, Ε→E)
+    - Accented i: "ínsíde" → "inside" (German doesn't use these)
+    - Space normalization: Various Unicode spaces → regular space
+    - OCR artifacts: Bullets, boxes → removed
+    - Dash handling: Conservative vs aggressive modes
+
+    **Two dash handling modes:**
 
     **Conservative mode (default, aggressive=False):**
     - Preserves semantic punctuation (en dash, em dash)
@@ -138,21 +185,10 @@ def normalize_unicode(
     - "1914–1918" becomes "1914-1918"
     - Good for: topic modeling, embeddings, NLP where nuance doesn't matter
 
-    Both modes perform:
-    1. NFKC Unicode normalization (compatibility decomposition + composition)
-    2. Character translation:
-       - Unifies quotation marks („", "", «») → standard quotes (")
-       - Normalizes various space types → regular space
-       - Removes soft hyphens and zero-width characters
-       - Removes OCR artifacts (bullets, boxes, etc.)
-    3. Strips Unicode control/format characters (optional)
-
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_unicode)
-        keep_newlines: If True, preserves newlines and tabs (default: False)
-        strip_control_chars: If True, removes control characters (default: True)
         aggressive: If True, unifies all dashes to hyphen (default: False)
 
     Returns:
@@ -162,7 +198,10 @@ def normalize_unicode(
         >>> # Conservative (default): preserves semantic dashes
         >>> df = normalize_unicode(df)
         >>> # "1914–1918" → "1914–1918" (en dash kept)
-        >>> # „Quoted text" → "Quoted text"
+        >>> # „Quoted text" → "\"Quoted text\""
+        >>> # "schÃ¶n" → "schön" (mojibake fixed by ftfy)
+        >>> # "Теxt with Суrilliс" → "Text with Cyrillic"
+        >>> # "ﬁ ﬂ ﬀ" → "fi fl ff" (ligatures)
         >>>
         >>> # Aggressive: unifies all dashes
         >>> df = normalize_unicode(df, aggressive=True)
@@ -184,15 +223,24 @@ def normalize_unicode(
         if not text:
             return text
 
-        # 1. NFKC normalization (compatibility decomposition + canonical composition)
-        text = unicodedata.normalize("NFKC", text)
+        # 1. Fix encoding corruption with ftfy
+        # This must happen FIRST before any other processing
+        # ftfy.fix_text() automatically does:
+        # - Mojibake repair (schÃ¶n → schön)
+        # - HTML entity decoding (&auml; → ä)
+        # - Ligature fixing (ﬁ, ﬂ → fi, fl) - perfect for Fraktur OCR!
+        # - Quote normalization
+        # - Control character removal
+        # - NFC normalization (at the end)
+        text = ftfy.fix_text(text, normalization="NFC")
 
-        # 2. Apply character translation map
+        # 2. Apply character translation map (our custom confusables handling)
+        # This adds OCR-specific fixes that ftfy doesn't handle:
+        # - Cyrillic/Greek confusables (А→A, о→o, Α→A)
+        # - Accented i mappings (í→i, German doesn't use these)
+        # - Space normalization (various Unicode spaces → regular space)
+        # - OCR artifacts removal
         text = text.translate(translation_map)
-
-        # 3. Strip control characters if requested
-        if strip_control_chars:
-            text = _strip_control_characters(text, keep_newlines=keep_newlines)
 
         return text
 
@@ -239,7 +287,7 @@ def remove_diacritics(
         from unidecode import unidecode
     except ImportError:
         raise ImportError(
-            "unidecode is required for diacritic removal. " "Install with: pip install unidecode"
+            "unidecode is required for diacritic removal. Install with: pip install unidecode"
         )
 
     if output_column is None:
@@ -420,6 +468,138 @@ def simple(
 
     logger.info(f"Normalized {len(df):,} rows")
     return df
+
+
+def normalize_long_s(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    mode: str = "simple",
+) -> pl.DataFrame:
+    """
+    Normalize historical German long s (ſ) character.
+
+    The long s (ſ, U+017F) was mandatory in 1910-1920 German Fraktur typography.
+    This function provides three normalization strategies depending on your use case.
+
+    **Three normalization modes:**
+
+    **1. "simple" (default, recommended for NLP):**
+    - Replaces all ſ → s unconditionally
+    - Fast, deterministic, perfect for search/NLP/topic modeling
+    - Example: "Hauſe" → "Hause", "faſten" → "fasten"
+    - Use when: Text analysis, embeddings, search indices
+
+    **2. "context-aware" (linguistic rules):**
+    - Applies simplified linguistic rules for ſ/s distinction
+    - Considers position (word-final), following characters (t, p, ch), vowels
+    - More historically accurate but slower
+    - Example: "faſten" → "fasten" (context rules)
+    - Use when: Digital scholarly editions, reading texts
+
+    **3. "preserve" (archival):**
+    - No normalization, keeps original ſ character
+    - For philological analysis, digital archives
+    - Example: "Hauſe" → "Hauſe" (unchanged)
+    - Use when: Historical text preservation, manuscript studies
+
+    **Common OCR issue:** ſ frequently misread as 'f' in Fraktur OCR
+    If you see "Haufe" instead of "Hauſe", the OCR misrecognized ſ as f.
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_long_s)
+        mode: Normalization strategy - "simple", "context-aware", or "preserve"
+
+    Returns:
+        DataFrame with long s normalized
+
+    Example:
+        >>> # Simple mode (recommended for NLP)
+        >>> df = normalize_long_s(df, mode="simple")
+        >>> # "Hauſe" → "Hause"
+        >>>
+        >>> # Context-aware mode (scholarly editions)
+        >>> df = normalize_long_s(df, mode="context-aware")
+        >>> # Applies linguistic rules for ſ/s
+        >>>
+        >>> # Preserve mode (archival)
+        >>> df = normalize_long_s(df, mode="preserve")
+        >>> # "Hauſe" → "Hauſe" (unchanged)
+
+    Note:
+        Based on historical typography rules for 1910-1920 German Fraktur.
+        For most NLP applications, "simple" mode is sufficient and recommended.
+    """
+    import re
+
+    if output_column is None:
+        output_column = f"{input_column}_long_s"
+
+    logger.info(f"Normalizing long s ({mode}): {input_column} → {output_column}")
+
+    if mode == "preserve":
+        # No transformation, just copy
+        df = df.with_columns([pl.col(input_column).alias(output_column)])
+        logger.info(f"Preserved long s for {len(df):,} rows (archival mode)")
+        return df
+
+    elif mode == "simple":
+        # Simple replacement: all ſ → s
+        df = df.with_columns(
+            [pl.col(input_column).str.replace_all("ſ", "s").alias(output_column)]  # U+017F
+        )
+        logger.info(f"Normalized long s (simple) for {len(df):,} rows")
+        return df
+
+    elif mode == "context-aware":
+        # Context-aware normalization using linguistic rules
+        def normalize_contextual(text: str) -> str:
+            if not text or "ſ" not in text:
+                return text
+
+            # Simplified linguistic rules for ſ/s distinction
+            # Full implementation would require:
+            # 1. Syllable boundary detection
+            # 2. Compound word analysis
+            # 3. Historical German lexicon lookup
+
+            # Rule 1: ſ before t, p, ch → s (common patterns: faſten, ſprechen)
+            text = re.sub(r"ſ([tpc])", r"s\1", text)
+
+            # Rule 2: ſ at word end → s (should be round s in proper typography)
+            text = re.sub(r"ſ\b", "s", text)
+
+            # Rule 3: ſ before vowels → s
+            text = re.sub(r"ſ([aeiouäöüAEIOUÄÖÜ])", r"s\1", text)
+
+            # Rule 4: ſſ → ss (geminate long s: Waſſer → Wasser)
+            text = text.replace("ſſ", "ss")
+
+            # Rule 5: ſs → ss (long s + round s: also becomes ss)
+            text = text.replace("ſs", "ss")
+
+            # NOTE: No catch-all rule here!
+            # Any remaining ſ characters might actually be OCR misreadings of 'f'
+            # These should be manually reviewed or handled separately
+
+            return text
+
+        # Apply context-aware normalization
+        texts = df[input_column].to_list()
+        normalized_texts = [
+            normalize_contextual(text)
+            for text in tqdm(texts, desc="Normalizing long s (context-aware)", leave=False)
+        ]
+
+        df = df.with_columns([pl.Series(output_column, normalized_texts)])
+        logger.info(f"Normalized long s (context-aware) for {len(df):,} rows")
+        logger.info("Note: Remaining ſ characters may be OCR errors (misread 'f')")
+        return df
+
+    else:
+        raise ValueError(f"Unknown mode: {mode}. Use 'simple', 'context-aware', or 'preserve'")
 
 
 def transnormer(
@@ -621,7 +801,7 @@ def transnormer(
     if use_cache:
         cache_rate = (cache_hits / total_chunks * 100) if total_chunks > 0 else 0
         logger.info(f"Cache hits: {cache_hits:,} ({cache_rate:.1f}%)")
-        logger.info(f"Chunks to process: {chunks_to_process:,} ({100-cache_rate:.1f}%)")
+        logger.info(f"Chunks to process: {chunks_to_process:,} ({100 - cache_rate:.1f}%)")
     logger.info(f"Processing with batch_size={batch_size}, num_beams={num_beams}")
 
     # Filter out chunks that are already cached
@@ -818,8 +998,7 @@ def dta_cab(
         import requests
     except ImportError:
         raise ImportError(
-            "DTA-CAB normalization requires 'requests' package.\n"
-            "Install with: pip install requests"
+            "DTA-CAB normalization requires 'requests' package.\nInstall with: pip install requests"
         )
 
     import hashlib
@@ -977,7 +1156,7 @@ def dta_cab(
     if use_cache:
         cache_rate = (cache_hits / len(texts) * 100) if len(texts) > 0 else 0
         logger.info(f"Cache hits: {cache_hits:,} ({cache_rate:.1f}%)")
-        logger.info(f"API calls: {api_calls:,} ({100-cache_rate:.1f}%)")
+        logger.info(f"API calls: {api_calls:,} ({100 - cache_rate:.1f}%)")
 
     logger.info(f"DTA-CAB normalized {len(df):,} rows")
     return df
