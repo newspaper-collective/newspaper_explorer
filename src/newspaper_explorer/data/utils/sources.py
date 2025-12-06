@@ -10,7 +10,7 @@ from pathlib import Path
 from natsort import natsorted
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.models.core.sources import SourceConfig
+from newspaper_explorer.models.data.sources import SourceConfig
 
 
 def list_available_sources() -> list[str]:

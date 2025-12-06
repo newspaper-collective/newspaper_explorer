@@ -3,7 +3,6 @@ Text normalization methods.
 
 Provides comprehensive normalization for historical German newspaper texts:
 - Unicode normalization (NFC with ftfy encoding repair, character translation, control chars)
-- Diacritic removal (ä→a, ö→o, ü→u)
 - Historical German character mapping (ſ→s, ß→ss)
 - Transnormer neural normalization (transformer-based)
 - DTA-CAB API normalization (web service)
@@ -12,7 +11,6 @@ Provides comprehensive normalization for historical German newspaper texts:
 import hashlib
 import logging
 import os
-import unicodedata
 from pathlib import Path
 from typing import Optional, Union
 
@@ -35,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Two modes: conservative (default) and aggressive
 
 # CONSERVATIVE: Only fix clear OCR errors, preserve semantic distinctions
-UNICODE_TRANSLATION_CONSERVATIVE = {
+UNICODE_TRANSLATION_CONSERVATIVE: dict[int, Optional[Union[str, int]]] = {
     # Remove problematic hyphens/spaces
     0x00AD: None,  # soft hyphen (invisible, remove)
     0x2011: "-",  # non-breaking hyphen → regular hyphen
@@ -123,12 +121,12 @@ UNICODE_TRANSLATION_CONSERVATIVE = {
 }
 
 # AGGRESSIVE: Unify all dashes (good for NLP/topic modeling, loses nuance)
-UNICODE_TRANSLATION_AGGRESSIVE = {
+UNICODE_TRANSLATION_AGGRESSIVE: dict[int, Optional[Union[str, int]]] = {
     **UNICODE_TRANSLATION_CONSERVATIVE,
     # Add aggressive dash normalization
-    0x2013: "-",  # – en dash → hyphen
-    0x2014: "-",  # — em dash → hyphen
-    0x2212: "-",  # − minus sign → hyphen
+    0x2013: "-",  # en dash → hyphen
+    0x2014: "-",  # em dash → hyphen
+    0x2212: "-",  # minus sign → hyphen
 }
 
 
@@ -253,55 +251,6 @@ def normalize_unicode(
     df = df.with_columns([pl.Series(output_column, normalized_texts)])
 
     logger.info(f"Unicode normalized for {len(df):,} rows")
-    return df
-
-
-def remove_diacritics(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-) -> pl.DataFrame:
-    """
-    Remove diacritics from text using unidecode.
-
-    Converts accented characters to their ASCII equivalents:
-    - ä → a, ö → o, ü → u
-    - é → e, à → a, etc.
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_no_diacritics)
-
-    Returns:
-        DataFrame with diacritics removed
-
-    Example:
-        >>> df = remove_diacritics(df)
-        >>> # "Münchner Straße" → "Munchner Strasse"
-
-    Note:
-        Requires unidecode package: pip install unidecode
-    """
-    try:
-        from unidecode import unidecode
-    except ImportError:
-        raise ImportError(
-            "unidecode is required for diacritic removal. Install with: pip install unidecode"
-        )
-
-    if output_column is None:
-        output_column = f"{input_column}_no_diacritics"
-
-    logger.info(f"Removing diacritics: {input_column} → {output_column}")
-
-    # Apply unidecode to each text
-    texts = df[input_column].to_list()
-    processed = [unidecode(str(text)) if text else "" for text in texts]
-
-    df = df.with_columns([pl.Series(output_column, processed)])
-
-    logger.info(f"Removed diacritics from {len(df):,} rows")
     return df
 
 

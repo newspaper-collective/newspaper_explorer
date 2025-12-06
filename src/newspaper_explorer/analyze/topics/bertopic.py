@@ -25,28 +25,28 @@ Example:
     >>> output_path = extractor.save_results(doc_topics, output_name="bertopic_topics")
 """
 
-import logging
-import os
-import time
 from functools import partial
+import logging
 from multiprocessing import Pool, cpu_count
+import os
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from bertopic import BERTopic
 import numpy as np
 import polars as pl
-from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.data.utils.text import chunk_text, split_text_into_sentences
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 # Set up model cache directory
 _MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "sentence_transformers"

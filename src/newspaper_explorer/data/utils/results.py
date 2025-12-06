@@ -11,8 +11,8 @@ from typing import Optional
 
 import polars as pl
 
-from newspaper_explorer.data.models import AnalysisMetadata, PreprocessingMetadata
 from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.models.data.metadata import AnalysisMetadata, PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def save_analysis_results(
 
     Example:
         >>> from newspaper_explorer.data.utils.results import save_analysis_results
-        >>> from newspaper_explorer.data.models import AnalysisMetadata
+        >>> from newspaper_explorer.models.data.metadata import AnalysisMetadata
         >>> from newspaper_explorer.config.base import get_config
         >>>
         >>> metadata = AnalysisMetadata(
@@ -126,7 +126,7 @@ def save_preprocessing_results(
 
     Example:
         >>> from newspaper_explorer.data.utils.results import save_preprocessing_results
-        >>> from newspaper_explorer.data.models import PreprocessingMetadata
+        >>> from newspaper_explorer.models.data.metadata import PreprocessingMetadata
         >>> from newspaper_explorer.config.base import get_config
         >>> config = get_config()
         >>>

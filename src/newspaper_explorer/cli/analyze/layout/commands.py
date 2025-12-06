@@ -16,11 +16,11 @@ Usage:
     newspaper-explorer analyze layout build-articles --source der_tag --year 1902
 """
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 
 import click
 from tqdm import tqdm
@@ -31,9 +31,9 @@ from newspaper_explorer.analyze.layout.headline_matcher import HeadlineMatcher
 from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -1231,24 +1231,24 @@ def match_headlines(source, year, overlap_threshold, text_data):
 def visualize(source, page_id, year, limit, element_types, comparison, show_linked_text):
     """
     Visualize detected layout elements for debugging.
-    
+
     Creates annotated images showing detected regions with bounding boxes,
     labels, and confidence scores.
-    
+
     Examples:
         # Visualize specific page
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001
-        
+
         # Visualize first 10 pages of a year
         newspaper-explorer analyze layout visualize --source der_tag --year 1902 --limit 10
-        
+
         # Show only headlines and images
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 \\
             --element-types title --element-types picture
-        
+
         # Show with linked OCR text (after running match-captions/match-headlines)
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 --show-linked-text
-        
+
         # Create comparison view
         newspaper-explorer analyze layout visualize --source der_tag --page-id 1902_01_01_001 --comparison
     """

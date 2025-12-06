@@ -19,22 +19,22 @@ Example:
     >>> keywords = extractor.extract_keywords(top_k=15, batch_size=10)
 """
 
-import logging
-import time
 from datetime import datetime
+import logging
 from pathlib import Path
+import time
 from typing import List, Optional
 
 import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.llm.client import LLMClient
 from newspaper_explorer.llm.prompts.keyword_extraction import KEYWORD_EXTRACTION
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 from newspaper_explorer.models.llm.keyword_extraction import KeywordResponse
 
 logger = logging.getLogger(__name__)

@@ -4,6 +4,37 @@
 - remove emojis from cli
 - unifiy output styling
 
+### ID System Optimization
+- **Redundant FK parsing**: Analysis modules re-parse IDs via `extract_foreign_keys()` even though FK columns already exist in source parquet
+  - Affects: mallet.py, gliner.py, bert_classifier.py, keybert.py, rake.py, yake.py, tf_idf.py, lda.py, bertopic.py, fastopic.py
+  - Fix: Check if FK columns exist before parsing, preserve FKs through aggregation
+- **Expensive string parsing**: `parse_line_id()` uses O(n) loops to find date/TL markers
+  - Fix: Use vectorized Polars string operations or compiled regex
+- **No caching**: Same IDs parsed repeatedly (e.g., multiple entities from same line)
+  - Fix: Add `@lru_cache` to `extract_foreign_keys()`
+- **Storage bloat**: Hierarchical IDs embed parent info redundantly
+  - Consider: Normalized integer IDs with lookup tables for long-term
+
+### CLI Refactoring - Move Logic to Library
+- **Problem**: CLI contains ~8,500 lines with significant business logic that should be in library modules
+- **Worst offenders**:
+  - `cli/analyze/topics/commands.py` (1,787 lines) - topic modeling orchestration
+  - `cli/analyze/layout/commands.py` (1,446 lines) - detection flattening, stats
+  - `cli/analyze/entities/commands.py` (961 lines) - entity extraction orchestration
+  - `cli/analyze/keywords/commands.py` (923 lines) - keyword extraction orchestration
+  - `cli/data/info.py` (897 lines) - token/char analysis, completeness checks
+- **What to move**:
+  - DataFrame transformations → library modules
+  - Statistics/analysis functions → `data/utils/` or `analyze/`
+  - Result saving patterns → shared utilities
+  - Progress bar wrapping → decorators/context managers
+- **CLI should only**:
+  - Parse arguments
+  - Call library functions
+  - Format output with click.echo()
+  - Handle errors gracefully
+- **Benefits**: Testable, reusable, cleaner separation of concerns
+
 - add source_name to aggregated blocks
 - spacy models?
 - yolo, spacy, hf cache dir move to .env
@@ -44,7 +75,7 @@
 
 
 ]Skipping 3074409X_1901-07-14_000_297_H_1_-01.xml: Missing required ID components (date=None, issue=None, daily=None, page=None)
-march 1901 
+march 1901
 
 
 Transkribus OCR -> Problem with alto-export
@@ -62,7 +93,7 @@ Transkribus OCR -> Problem with alto-export
 
 - jsonrepair libary for llm client
 
--  "- und" nicht dehyphen 
+-  "- und" nicht dehyphen
 
 - null values in image_index.parquet
 

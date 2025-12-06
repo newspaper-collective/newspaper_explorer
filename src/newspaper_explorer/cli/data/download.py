@@ -9,6 +9,7 @@ import click
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.download.text import ZenodoDownloader
+from newspaper_explorer.data.utils.checksums import verify_checksum
 
 
 def register_download_commands(data_group):
@@ -227,7 +228,7 @@ def register_download_commands(data_group):
 
                 # Verify checksum
                 click.echo(f"Verifying {part_name}...")
-                if downloader._verify_checksum(filepath, part_info["md5"]):
+                if verify_checksum(filepath, part_info["md5"]):
                     click.echo(f"Success: {part_name}: Checksum verified!")
                 else:
                     click.echo(f"Error: {part_name}: Checksum mismatch!")

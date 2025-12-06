@@ -2,14 +2,14 @@
 Tests for data validation utilities, including image validation.
 """
 
-import tempfile
 from pathlib import Path
+import tempfile
 
-import pytest
 from PIL import Image
+import pytest
 
-from newspaper_explorer.data.models import ImageValidationResult
 from newspaper_explorer.data.utils.validation import check_image_size, validate_image_file
+from newspaper_explorer.models.data.images import ImageValidationResult
 
 
 class TestImageValidation:

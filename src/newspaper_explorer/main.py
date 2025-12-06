@@ -58,7 +58,7 @@ def cli() -> None:
 
 # Register command groups
 cli.add_command(data)
-cli.add_command(analyze)  # layout is now under analyze
+cli.add_command(analyze)
 cli.add_command(ui_commands)
 
 

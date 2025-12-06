@@ -1,34 +1,15 @@
 """
-Pydantic models for data processing.
+Processing metadata models.
 
-Centralized location for data-related models used across the data module.
+Models for tracking analysis and preprocessing pipeline execution.
+These are "sidecar" metadata models that track how data was processed,
+enabling reproducibility and provenance tracking.
 """
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, field_validator
-
-
-class ImageValidationResult(BaseModel):
-    """Result of image validation check."""
-
-    is_valid: bool
-    file_path: Path
-    file_size: Optional[int] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-    format: Optional[str] = None
-    error: Optional[str] = None
-
-
-class ImageReference(BaseModel):
-    """Reference to an image in METS XML."""
-
-    file_id: str
-    url: str
-    extension: str = ".jpg"
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AnalysisMetadata(BaseModel):
@@ -78,7 +59,7 @@ class AnalysisMetadata(BaseModel):
     status: str = Field(default="completed", description="Status: completed, failed, in_progress")
     error_message: Optional[str] = Field(None, description="Error details if status is failed")
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, __context: object) -> None:
         """Generate analysis_id if not provided."""
         if self.analysis_id is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -106,10 +87,8 @@ class AnalysisMetadata(BaseModel):
         """Create from dictionary."""
         return cls.model_validate(data)
 
-    class Config:
-        """Pydantic config."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "analysis_type": "entities",
                 "method_type": "gliner",
@@ -128,6 +107,7 @@ class AnalysisMetadata(BaseModel):
                 "output_data": {"row_count": 5420},
             }
         }
+    )
 
 
 class PreprocessingMetadata(BaseModel):
@@ -188,7 +168,7 @@ class PreprocessingMetadata(BaseModel):
         default=None, description="Error details if status is failed"
     )
 
-    def model_post_init(self, __context: Any) -> None:
+    def model_post_init(self, __context: object) -> None:
         """Generate preprocessing_id if not provided."""
         if self.preprocessing_id is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -213,10 +193,11 @@ class PreprocessingMetadata(BaseModel):
         Returns:
             Flat list of all steps in chronological order
         """
-        all_steps = []
+        all_steps: list[str] = []
         if self.previous_preprocessing:
             prev_steps = self.previous_preprocessing.get("steps", [])
-            all_steps.extend(prev_steps)
+            if isinstance(prev_steps, list):
+                all_steps.extend(prev_steps)
         all_steps.extend(self.steps)
         return all_steps
 
@@ -229,10 +210,8 @@ class PreprocessingMetadata(BaseModel):
         """Create from dictionary."""
         return cls.model_validate(data)
 
-    class Config:
-        """Pydantic config."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "source": "der_tag",
                 "steps": ["normalize", "lowercase", "remove-stopwords"],
@@ -249,3 +228,4 @@ class PreprocessingMetadata(BaseModel):
                 "output_data": {"row_count": 98500},
             }
         }
+    )

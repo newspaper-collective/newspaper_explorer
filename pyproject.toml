@@ -66,7 +66,6 @@ dev = [
     "types-tqdm>=4.67.0",
     "lxml-stubs",
 ]
-ui = ["nicegui>=1.4.0"]
 streamlit = ["streamlit>=1.28.0"]
 
 
@@ -181,6 +180,10 @@ addopts = [
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html",
     "--cov-report=xml",
+]
+filterwarnings = [
+    # Ignore deprecation warnings from spacy/weasel about Click 9.0
+    "ignore:Importing 'parser.split_arg_string':DeprecationWarning",
 ]
 
 [tool.coverage.run]

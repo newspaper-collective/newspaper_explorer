@@ -4,11 +4,11 @@ Source configuration models.
 Pydantic models for validating newspaper source configurations from JSON files.
 """
 
-from typing import Any, Dict, List, Optional, Literal
-from pathlib import Path
 import json
+from pathlib import Path
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class SourcePart(BaseModel):
@@ -72,7 +72,7 @@ class SourceConfig(BaseModel):
     )
     metadata: SourceMetadata = Field(description="Newspaper metadata")
     loading: LoadingConfig = Field(description="Loading configuration")
-    parts: List[SourcePart] = Field(description="Downloadable parts")
+    parts: list[SourcePart] = Field(description="Downloadable parts")
 
     # Optional fields
     collection_id: Optional[str] = Field(default=None, description="Zenodo collection ID")
@@ -82,12 +82,12 @@ class SourceConfig(BaseModel):
         default=None, description="Provider/institution of the source"
     )
     license: Optional[str] = Field(default=None, description="License for the dataset")
-    fixes: Optional[Dict[str, Any]] = Field(default=None, description="Known data issues and fixes")
+    fixes: Optional[dict[str, Any]] = Field(default=None, description="Known data issues and fixes")
     notes: Optional[str] = Field(default=None, description="Additional notes")
 
     @field_validator("parts")
     @classmethod
-    def validate_parts_not_empty(cls, v: List[SourcePart]) -> List[SourcePart]:
+    def validate_parts_not_empty(cls, v: list[SourcePart]) -> list[SourcePart]:
         """Ensure at least one part exists."""
         if not v:
             raise ValueError("At least one part must be defined")
@@ -104,15 +104,35 @@ class SourceConfig(BaseModel):
         """Get total number of parts."""
         return len(self.parts)
 
+    def get_year_range(self) -> tuple[int, int]:
+        """
+        Get the valid year range from metadata.years_available.
+
+        Returns:
+            Tuple of (min_year, max_year) parsed from 'YYYY-YYYY' format.
+            Falls back to (1800, 2100) if parsing fails.
+
+        Example:
+            >>> config = SourceConfig.from_json_file(path)
+            >>> config.get_year_range()
+            (1900, 1920)
+        """
+        try:
+            start, end = self.metadata.years_available.split("-")
+            return int(start), int(end)
+        except (ValueError, AttributeError):
+            # Fallback to safe defaults if parsing fails
+            return 1800, 2100
+
     @classmethod
     def from_json_file(cls, path: Path) -> "SourceConfig":
         """Load and validate source config from JSON file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return cls(**data)
 
     def to_json_file(self, path: Path) -> None:
         """Save source config to JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with path.open("w", encoding="utf-8") as f:
             json.dump(self.model_dump(mode="json"), f, indent=2, ensure_ascii=False)

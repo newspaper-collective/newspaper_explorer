@@ -11,7 +11,7 @@ Metadata Pattern:
     - Metadata includes method details, parameters, input data, and provenance
 
 Example:
-    >>> from newspaper_explorer.data.models import AnalysisMetadata
+    >>> from newspaper_explorer.models.data.metadata import AnalysisMetadata
     >>> from newspaper_explorer.data.utils.metadata import save_metadata
     >>>
     >>> metadata = AnalysisMetadata(
@@ -36,7 +36,7 @@ import logging
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from newspaper_explorer.data.models import AnalysisMetadata, PreprocessingMetadata
+from newspaper_explorer.models.data.metadata import AnalysisMetadata, PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def save_metadata(
         Path to saved metadata file
 
     Example:
-        >>> from newspaper_explorer.data.models import AnalysisMetadata
+        >>> from newspaper_explorer.models.data.metadata import AnalysisMetadata
         >>> metadata = AnalysisMetadata(...)
         >>> save_metadata(metadata, Path("results/entities/analysis.parquet"))
         PosixPath('results/entities/analysis.json')

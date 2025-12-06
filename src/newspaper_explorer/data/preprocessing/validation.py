@@ -13,7 +13,7 @@ Quality metrics include:
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import polars as pl
 
@@ -81,7 +81,7 @@ def calculate_quality_metrics(
             logger.warning(f"German wordlist not found: {german_wordlist_path}")
             logger.warning("OOV rate will not be calculated")
 
-    def calculate_metrics(text: str) -> Dict[str, float]:
+    def calculate_metrics(text: str) -> dict[str, float]:
         """Calculate all quality metrics for a single text."""
         if not text or not text.strip():
             return {
@@ -240,7 +240,7 @@ def filter_by_quality_score(
 def summarize_quality(
     df: pl.DataFrame,
     quality_column_prefix: str = "quality_",
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Generate summary statistics for quality metrics.
 

@@ -1,24 +1,23 @@
 """
-Image downloader for newspaper page scans.
-Downloads high-resolution images from METS XML references with validation.
+Download high-resolution images from METS XML references with validation.
 """
 
-import logging
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, ClassVar, Optional
 from urllib.parse import urlparse
 
-import requests
 from lxml import etree
-from natsort import natsorted
+import requests
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import ImageReference
 from newspaper_explorer.data.utils.sources import load_source_config
 from newspaper_explorer.data.utils.validation import validate_image_file
+from newspaper_explorer.data.utils.xml import find_mets_files
+from newspaper_explorer.models.data.images import ImageReference
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 class ImageDownloader:
     """Download newspaper page images from METS XML files."""
 
-    NAMESPACES = {
+    NAMESPACES: ClassVar[dict[str, str]] = {
         "mets": "http://www.loc.gov/METS/",
         "xlink": "http://www.w3.org/1999/xlink",
     }
@@ -37,9 +36,10 @@ class ImageDownloader:
         max_workers: int = 8,
         max_retries: int = 3,
         timeout: int = 30,
+        *,
         validate: bool = True,
         min_image_size: int = 1024,
-    ):
+    ) -> None:
         """
         Initialize image downloader.
 
@@ -74,24 +74,7 @@ class ImageDownloader:
         logger.info(f"Images directory: {self.images_dir}")
         logger.info(f"Validation: {'enabled' if self.validate else 'disabled'}")
 
-    def find_mets_files(self) -> List[Path]:
-        """
-        Find all METS XML files (excluding fulltext).
-
-        Returns:
-            List of METS XML file paths
-        """
-        from newspaper_explorer.data.utils.xml import find_mets_files as find_mets
-
-        mets_files = find_mets(self.xml_dir)
-        if mets_files:
-            logger.info(f"Found {len(mets_files)} METS files")
-        else:
-            logger.warning(f"XML directory not found or empty: {self.xml_dir}")
-
-        return mets_files
-
-    def extract_image_references(self, mets_file: Path) -> List[ImageReference]:
+    def extract_image_references(self, mets_file: Path) -> list[ImageReference]:
         """
         Extract image URLs from METS XML MAX fileGrp.
 
@@ -112,7 +95,7 @@ class ImageDownloader:
                 logger.debug(f"No MAX fileGrp in {mets_file.name}")
                 return []
 
-            references = []
+            references: list[ImageReference] = []
             for file_elem in max_file_grp.findall(".//mets:file", self.NAMESPACES):
                 file_id = file_elem.get("ID", "unknown")
 
@@ -130,7 +113,7 @@ class ImageDownloader:
 
             return references
 
-        except Exception as e:
+        except (OSError, etree.XMLSyntaxError, etree.XPathEvalError) as e:
             logger.error(f"Error parsing {mets_file}: {e}")
             return []
 
@@ -150,7 +133,7 @@ class ImageDownloader:
             relative_path = mets_file.parent.relative_to(self.xml_dir)
         except ValueError:
             # Fallback if not in expected directory
-            relative_path = Path(".")
+            relative_path = Path()
         # Create target directory: data/raw/{source}/images/{year}/{month}/{day}/
         target_dir: Path = self.images_dir / relative_path
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -160,7 +143,7 @@ class ImageDownloader:
         filename = f"{image_ref.file_id}{image_ref.extension}"
         return target_dir / filename
 
-    def _download_single_image(self, url: str, save_path: Path, img_id: str) -> Dict[str, Any]:
+    def _download_single_image(self, url: str, save_path: Path, img_id: str) -> dict[str, Any]:
         """
         Download a single image with retry logic and validation.
 
@@ -209,7 +192,7 @@ class ImageDownloader:
 
                 # Atomic write
                 temp_path = save_path.with_suffix(save_path.suffix + ".tmp")
-                with open(temp_path, "wb") as f:
+                with temp_path.open("wb") as f:
                     f.write(response.content)
 
                 temp_path.rename(save_path)
@@ -242,7 +225,7 @@ class ImageDownloader:
                     "validated": self.validate,
                 }
 
-            except Exception as e:
+            except (requests.RequestException, OSError) as e:
                 last_error = str(e)
                 if attempt < self.max_retries - 1:
                     time.sleep(1 * (attempt + 1))  # Exponential backoff
@@ -257,7 +240,7 @@ class ImageDownloader:
             "validated": False,
         }
 
-    def download_images(self, mets_files: Optional[List[Path]] = None) -> Dict[str, int]:
+    def download_images(self, mets_files: Optional[list[Path]] = None) -> dict[str, int]:
         """
         Download images from METS files.
 
@@ -268,7 +251,7 @@ class ImageDownloader:
             Statistics dictionary
         """
         if mets_files is None:
-            mets_files = self.find_mets_files()
+            mets_files = find_mets_files(self.xml_dir)
 
         if not mets_files:
             logger.warning("No METS files to process")
@@ -287,7 +270,7 @@ class ImageDownloader:
             stats["total"] += len(images)
 
             # Prepare download tasks
-            download_tasks = []
+            download_tasks: list[tuple[str, Path, str]] = []
             for img_ref in images:
                 save_path = self._get_image_path(mets_file, img_ref)
                 download_tasks.append((img_ref.url, save_path, img_ref.file_id))
@@ -322,7 +305,7 @@ class ImageDownloader:
                             logger.warning(
                                 f"Failed {result['filename']}: {result.get('error', 'Unknown')}"
                             )
-                    except Exception as e:
+                    except (requests.RequestException, OSError) as e:
                         stats["failed"] += 1
                         logger.error(f"Exception during download: {e}")
 
@@ -337,14 +320,14 @@ class ImageDownloader:
 
         return stats
 
-    def get_download_status(self) -> Dict[str, Any]:
+    def get_download_status(self) -> dict[str, Any]:
         """
         Get image download status without downloading.
 
         Returns:
             Dictionary with download status information
         """
-        mets_files = self.find_mets_files()
+        mets_files = find_mets_files(self.xml_dir)
 
         if not mets_files:
             return {
@@ -378,78 +361,4 @@ class ImageDownloader:
             "total_images_expected": total_expected,
             "images_downloaded": downloaded,
             "coverage_pct": coverage_pct,
-        }
-
-    def validate_downloaded_images(self, min_size_bytes: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Validate all downloaded images in the images directory.
-
-        Args:
-            min_size_bytes: Minimum expected image size (uses self.min_image_size if None)
-
-        Returns:
-            Dictionary with validation statistics:
-            - total: Total images checked
-            - valid: Number of valid images
-            - invalid: Number of invalid images
-            - invalid_list: List of (path, error) tuples for invalid images
-        """
-        if min_size_bytes is None:
-            min_size_bytes = self.min_image_size
-
-        if not self.images_dir.exists():
-            logger.warning(f"Images directory not found: {self.images_dir}")
-            return {
-                "total": 0,
-                "valid": 0,
-                "invalid": 0,
-                "invalid_list": [],
-            }
-
-        # Find all image files
-        logger.info(f"Scanning for images in {self.images_dir}")
-        image_files: List[Path] = []
-        for ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
-            image_files.extend(self.images_dir.rglob(f"*{ext}"))
-
-        if not image_files:
-            logger.warning("No image files found")
-            return {
-                "total": 0,
-                "valid": 0,
-                "invalid": 0,
-                "invalid_list": [],
-            }
-
-        logger.info(f"Found {len(image_files)} images to validate")
-
-        valid_count = 0
-        invalid_count = 0
-        invalid_list = []
-
-        # Validate images with progress bar
-        for img_path in tqdm(image_files, desc="Validating images", unit="img"):
-            result = validate_image_file(img_path, min_size_bytes)
-
-            if result.is_valid:
-                valid_count += 1
-            else:
-                invalid_count += 1
-                relative_path = img_path.relative_to(self.images_dir)
-                invalid_list.append((str(relative_path), result.error))
-                logger.debug(f"Invalid image: {relative_path} - {result.error}")
-
-        # Log summary
-        logger.info("=" * 60)
-        logger.info("Validation complete!")
-        logger.info(f"Total images: {len(image_files)}")
-        logger.info(f"Valid: {valid_count}")
-        logger.info(f"Invalid: {invalid_count}")
-        logger.info("=" * 60)
-
-        return {
-            "total": len(image_files),
-            "valid": valid_count,
-            "invalid": invalid_count,
-            "invalid_list": invalid_list,
         }

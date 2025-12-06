@@ -18,11 +18,11 @@ Optimizations:
 
 import logging
 import multiprocessing as mp
+from pathlib import Path
 import queue
 import time
-import warnings
-from pathlib import Path
 from typing import Dict, List, Optional
+import warnings
 
 import polars as pl
 import torch
@@ -32,10 +32,10 @@ from transformers import logging as transformers_logging
 from transformers.models.bert import BertForSequenceClassification, BertTokenizerFast
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
 

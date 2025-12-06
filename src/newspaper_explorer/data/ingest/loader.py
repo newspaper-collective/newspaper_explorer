@@ -5,22 +5,22 @@ High-performance data ingester using multiprocessing and Polars for fast process
 Configuration-driven: loads source metadata from JSON files.
 """
 
-import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
+import logging
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import polars as pl
 from natsort import natsorted
+import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.workers import parse_file_worker, parse_mets_worker
 from newspaper_explorer.data.parser.mets import METSParser
-from newspaper_explorer.models.core.sources import SourceConfig
 from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
+from newspaper_explorer.models.data.sources import SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,6 @@ class DataIngester:
                 status["parquet_files"] = df["filename"].n_unique()
 
                 if "date" in df.columns and len(df) > 0:
-
                     min_date = df["date"].min()
                     max_date = df["date"].max()
 

@@ -72,8 +72,8 @@ def extract_input_stats(
 
     # Check for preprocessing metadata if input path provided
     if input_path:
-        from newspaper_explorer.data.models import PreprocessingMetadata
         from newspaper_explorer.data.utils.metadata import find_metadata_for_parquet, load_metadata
+        from newspaper_explorer.models.data.metadata import PreprocessingMetadata
 
         metadata_path = find_metadata_for_parquet(input_path)
         if metadata_path:

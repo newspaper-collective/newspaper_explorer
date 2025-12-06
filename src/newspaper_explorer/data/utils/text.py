@@ -3,9 +3,11 @@ Text processing utilities for newspaper data.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import polars as pl
+import spacy
+from transformers.models.bert import BertTokenizerFast
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ def chunk_text(
     if text_length <= max_length:
         return [text]
 
-    chunks = []
+    chunks: list[str] = []
     prev_index = 0
     start = max_length - split_margin
     end = max_length
@@ -105,26 +107,14 @@ def split_text_into_sentences(
         ImportError: If spaCy is not installed
         OSError: If the specified spaCy model is not installed
     """
-    try:
-        import spacy
-    except ImportError:
-        raise ImportError(
-            "spaCy is required for sentence splitting. Install it with: pip install spacy"
-        )
 
-    try:
-        nlp = spacy.load(model)
-    except OSError:
-        raise OSError(
-            f"spaCy model '{model}' not found. Install it with: "
-            f"python -m spacy download {model}"
-        )
+    nlp = spacy.load(model)
 
     # Process text
     doc = nlp(text)
 
     # Extract sentences
-    sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+    sentences: list[str] = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
 
     return sentences
 
@@ -169,25 +159,13 @@ def split_df_into_sentences(
     See Also:
         split_text_into_sentences: For splitting individual texts (not DataFrames)
     """
-    try:
-        import spacy
-    except ImportError:
-        raise ImportError(
-            "spaCy is required for sentence splitting. Install it with: pip install spacy"
-        )
 
     if text_column not in df.columns:
         raise ValueError(f"Column '{text_column}' not found in DataFrame")
 
     logger.info(f"Loading spaCy model: {model}")
 
-    try:
-        nlp = spacy.load(model)
-    except OSError:
-        raise OSError(
-            f"spaCy model '{model}' not found. Install it with: "
-            f"python -m spacy download {model}"
-        )
+    nlp = spacy.load(model)
 
     # Disable unnecessary pipeline components for speed
     # We only need sentence segmentation
@@ -226,9 +204,7 @@ def split_df_into_sentences(
     logger.info(f"Split {len(df)} texts into {len(results)} sentences")
 
     # Convert back to Polars DataFrame
-    result_df = pl.DataFrame(results)
-
-    return result_df
+    return pl.DataFrame(results)
 
 
 def get_longest_lines(
@@ -257,11 +233,11 @@ def get_longest_lines(
     return df[longest_indices]
 
 
-def analyze_character_lengths(
+def analyze_text_line_character_lengths(
     df: pl.DataFrame,
     text_column: str = "text",
     sample_size: int = 50000,
-) -> dict:
+) -> dict[str, Union[int, float, dict[str, int], list[tuple[int, str]]]]:
     """
     Analyze character lengths in text data.
 
@@ -379,7 +355,7 @@ def analyze_token_lengths(
     tokenizer_name: str = "deepset/gbert-large",
     sample_size: int = 50000,
     max_length: int = 512,
-) -> dict:
+) -> dict[str, Union[int, float, dict[str, int], list[tuple[int, str]]]]:
     """
     Analyze token lengths in text data using BERT tokenizer.
 
@@ -425,13 +401,6 @@ def analyze_token_lengths(
         ImportError: If transformers is not installed
         ValueError: If text_column not found in DataFrame
     """
-    try:
-        from transformers.models.bert import BertTokenizerFast
-    except ImportError:
-        raise ImportError(
-            "transformers is required for token analysis. "
-            "Install it with: pip install transformers"
-        )
 
     if text_column not in df.columns:
         raise ValueError(f"Column '{text_column}' not found in DataFrame")
@@ -562,10 +531,6 @@ def get_longest_lines_by_tokens(
         >>> # Get more results
         >>> longest = get_longest_lines_by_tokens(df, top_n=50)
     """
-    try:
-        from transformers.models.bert import BertTokenizerFast
-    except ImportError:
-        raise ImportError("transformers is required. Install it with: pip install transformers")
 
     if text_column not in df.columns:
         raise ValueError(f"Column '{text_column}' not found in DataFrame")

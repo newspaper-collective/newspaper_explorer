@@ -23,11 +23,13 @@ from ultralytics.models import YOLO
 settings.update({"sync": False})
 
 from newspaper_explorer.data.indexing.image_index import ImageIndexer
-from newspaper_explorer.data.utils.ids import (extract_issue_id_from_page_id,
-                                               generate_detection_id,
-                                               generate_page_id, parse_page_id)
-from newspaper_explorer.models.analysis.layout import (BoundingBox, Detection,
-                                                       PageLayout)
+from newspaper_explorer.data.utils.ids import (
+    extract_issue_id_from_page_id,
+    generate_detection_id,
+    generate_page_id,
+    parse_page_id,
+)
+from newspaper_explorer.models.analysis.layout import BoundingBox, Detection, PageLayout
 
 logger = logging.getLogger(__name__)
 
@@ -479,7 +481,5 @@ class LayoutDetector:
 
         Returns:
             List of Detection objects
-        """
-        return _extract_detections_from_result(det_res, page_id, image_path)
         """
         return _extract_detections_from_result(det_res, page_id, image_path)

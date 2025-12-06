@@ -1,5 +1,6 @@
 """Worker functions for parallel data processing."""
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Optional
@@ -44,13 +45,11 @@ def extract_image_metadata_worker(
             return None
 
         year, month, day, issue_num, filename = parts[0], parts[1], parts[2], parts[3], parts[4]
-
         # Extract page number from filename (e.g., "max_7.jpg" -> 7)
         page_number = None
         if "max_" in filename:
-            try:
+            with contextlib.suppress(IndexError, ValueError):
                 page_number = int(filename.split("max_")[1].split(".")[0])
-            except (IndexError, ValueError):
                 pass
 
         # Create path-based key for METS lookup
@@ -130,5 +129,6 @@ def extract_image_metadata_worker(
 
         return record
 
-    except Exception:
+    except (OSError, ValueError, KeyError) as e:
+        logger.debug(f"Failed to extract metadata from {img_path}: {e}")
         return None

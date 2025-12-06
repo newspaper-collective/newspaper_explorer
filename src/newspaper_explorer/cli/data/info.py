@@ -487,7 +487,7 @@ def register_info_commands(data_group):
         """
         from newspaper_explorer.data.ingest.loader import DataIngester
         from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
-        from newspaper_explorer.data.utils.text import analyze_character_lengths
+        from newspaper_explorer.data.utils.text import analyze_text_line_character_lengths
 
         try:
             # Load config
@@ -520,7 +520,7 @@ def register_info_commands(data_group):
             # Analyze character lengths
             click.echo(f"\nAnalyzing character lengths (sample size: {sample_size:,})...")
 
-            stats = analyze_character_lengths(
+            stats = analyze_text_line_character_lengths(
                 df,
                 text_column=text_column,
                 sample_size=sample_size,

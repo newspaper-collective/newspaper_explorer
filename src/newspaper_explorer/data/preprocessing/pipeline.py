@@ -5,33 +5,35 @@ Provides a simple pipeline function that chains together preprocessing steps
 of the modular preprocessing modules.
 
 For direct use of preprocessing functions, import from individual modules:
-    from newspaper_explorer.data.preprocessing.historical import normalize_historical
-    from newspaper_explorer.data.preprocessing.cleaning import lowercase
-    from newspaper_explorer.data.preprocessing.filtering import remove_stopwords
+    from newspaper_explorer.data.preprocessing.normalization import normalize_historical
+    from newspaper_explorer.data.preprocessing.cleaning import lowercase, remove_stopwords
+    from newspaper_explorer.data.preprocessing.filtering import filter_by_total_character_length
     from newspaper_explorer.data.preprocessing.linguistic import lemmatize_spacy
 """
 
 from datetime import datetime
 import logging
 from pathlib import Path
-import time
 from typing import Any, Dict, List, Optional, Union
 
 import polars as pl
 
-from newspaper_explorer.data.models import PreprocessingMetadata
-from newspaper_explorer.data.preprocessing.cleaning import lowercase, normalize_whitespace
-from newspaper_explorer.data.preprocessing.filtering import (
+from newspaper_explorer.data.preprocessing.cleaning import (
     clean_ocr_artifacts,
-    filter_by_char_token_ratio,
-    filter_by_length,
-    filter_by_word_count,
-    filter_excessive_word_length,
-    filter_number_only_lines,
-    filter_repeating_chars,
+    lowercase,
+    normalize_whitespace,
+    remove_diacritics,
     remove_numbers,
     remove_punctuation,
     remove_stopwords,
+)
+from newspaper_explorer.data.preprocessing.filtering import (
+    filter_by_char_token_ratio,
+    filter_by_max_word_length,
+    filter_by_total_character_length,
+    filter_by_word_count,
+    filter_number_only_lines,
+    filter_repeating_chars,
 )
 from newspaper_explorer.data.preprocessing.linguistic import (
     dehyphenate,
@@ -45,7 +47,6 @@ from newspaper_explorer.data.preprocessing.normalization import (
     dta_cab,
     normalize_long_s,
     normalize_unicode,
-    remove_diacritics,
     simple,
     transnormer,
 )
@@ -55,6 +56,7 @@ from newspaper_explorer.data.preprocessing.validation import (
     filter_by_quality_score,
     summarize_quality,
 )
+from newspaper_explorer.models.data.metadata import PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +275,9 @@ class TextPreprocessor:
                     output_column=out_col,
                 )
             elif step == "filter-length":
-                df = filter_by_length(df, text_column=current_column, input_column=current_column)
+                df = filter_by_total_character_length(
+                    df, text_column=current_column, input_column=current_column
+                )
                 # Note: filter-length doesn't change the column, so keep current_column
                 current_column = current_column
             elif step == "filter-word-count":
@@ -302,7 +306,7 @@ class TextPreprocessor:
                 # Note: filter removes rows, doesn't change column
                 current_column = current_column
             elif step == "filter-word-length":
-                df = filter_excessive_word_length(
+                df = filter_by_max_word_length(
                     df, text_column=current_column, input_column=current_column
                 )
                 # Note: filter removes rows, doesn't change column

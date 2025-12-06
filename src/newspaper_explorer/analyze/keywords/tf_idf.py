@@ -17,11 +17,11 @@ Example:
     ... )
 """
 
-import logging
-import time
 from datetime import datetime
+import logging
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -30,10 +30,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
 

@@ -5,13 +5,13 @@ Creates and maintains a Parquet index of downloaded images with metadata
 from METS and ALTO files.
 """
 
-import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
-import polars as pl
 from lxml import etree
+import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
@@ -49,7 +49,7 @@ class ImageIndexer:
     - file_exists: Whether the image file exists
     """
 
-    def __init__(self, source_name: str):
+    def __init__(self, source_name: str) -> None:
         """
         Initialize the image indexer for a source.
 
@@ -73,7 +73,7 @@ class ImageIndexer:
         # METS files are in the xml_ocr directory
         self.xml_dir = Path(self.config.data_dir) / "raw" / source_name / "xml_ocr"
 
-    def create_index(self, force_rebuild: bool = False) -> pl.DataFrame:
+    def create_index(self, *, force_rebuild: bool = False) -> pl.DataFrame:
         """
         Create or update the image index.
 
@@ -89,12 +89,11 @@ class ImageIndexer:
 
         # Load existing index if available
         existing_index = None
+        existing_paths: set[str] = set()
         if not force_rebuild and self.index_path.exists():
             logger.info(f"Loading existing index from {self.index_path}")
             existing_index = pl.read_parquet(self.index_path)
             existing_paths = set(existing_index["image_path"].to_list())
-        else:
-            existing_paths = set()
 
         # Scan for images
         logger.info(f"Scanning for images in {self.images_dir}")
@@ -181,7 +180,7 @@ class ImageIndexer:
         logger.info(f"Image index complete: {len(full_index)} total images")
         return full_index
 
-    def _build_mets_cache(self) -> dict[str, dict[str, str | int | None]]:
+    def _build_mets_cache(self) -> dict[str, dict[str, Union[str, int, None]]]:
         """
         Build a cache of METS metadata keyed by issue identifier.
 
@@ -222,7 +221,7 @@ class ImageIndexer:
                         path_key = f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}"
 
                         # Convert IssueMetadata to dict for caching
-                        cache_entry: dict[str, str | int | None] = {
+                        cache_entry: dict[str, Union[str, int, None]] = {
                             "newspaper_title": metadata.newspaper_title,
                             "year_volume": metadata.year_volume,
                             "page_count": metadata.page_count,

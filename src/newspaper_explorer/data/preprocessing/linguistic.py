@@ -7,13 +7,15 @@ Provides advanced linguistic processing methods:
 - Lemmatization (spaCy and GermaLemma)
 """
 
-import os
-import re
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
+from germalemma import GermaLemma
 import polars as pl
+import spacy
+from tqdm import tqdm
 
 # Set spaCy data directory to avoid filling up home directory
 # Use project's .cache directory for model downloads
@@ -76,9 +78,7 @@ def dehyphenate(
     try:
         import pyphen
     except ImportError:
-        raise ImportError(
-            "pyphen is required for dehyphenation. " "Install with: pip install pyphen"
-        )
+        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
 
     if input_column is None:
         input_column = text_column
@@ -201,9 +201,7 @@ def dehyphenate_lines(
     try:
         import pyphen
     except ImportError:
-        raise ImportError(
-            "pyphen is required for dehyphenation. " "Install with: pip install pyphen"
-        )
+        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
 
     if output_column is None:
         output_column = f"{text_column}_dehyphen"
@@ -475,12 +473,6 @@ def lemmatize_spacy(
         >>> # First download model: python -m spacy download de_core_news_sm
         >>> df = lemmatize_spacy(df, batch_size=5000)
     """
-    try:
-        import spacy
-    except ImportError:
-        raise ImportError(
-            "spaCy is required for lemmatization. " "Install with: pip install -e '.[nlp]'"
-        )
 
     if input_column is None:
         input_column = text_column
@@ -496,10 +488,8 @@ def lemmatize_spacy(
         logger.error(f"Download it with: python -m spacy download {model}")
         raise
 
-    from tqdm import tqdm
-
     texts = df[input_column].to_list()
-    lemmatized_texts = []
+    lemmatized_texts: list[str] = []
 
     logger.info(f"Processing {len(texts):,} texts in batches of {batch_size}")
 
@@ -536,15 +526,7 @@ def lemmatize_germalemma(
     Returns:
         DataFrame with lemmatized text column
 
-    Raises:
-        ImportError: If germalemma is not installed
     """
-    try:
-        from germalemma import GermaLemma
-    except ImportError:
-        raise ImportError(
-            "germalemma is required for lemmatization. " "Install with: pip install -e '.[nlp]'"
-        )
 
     if input_column is None:
         input_column = text_column
@@ -557,7 +539,7 @@ def lemmatize_germalemma(
     lemmatizer = GermaLemma()
 
     texts = df[input_column].to_list()
-    lemmatized_texts = []
+    lemmatized_texts: list[str] = []
 
     for i, text in enumerate(texts):
         if text:

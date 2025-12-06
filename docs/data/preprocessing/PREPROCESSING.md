@@ -72,17 +72,17 @@ Download → Parse ALTO/METS → Polars DataFrame
                             ┌───────────────┐  Unicode & Characters:
                             │ Normalization │  - normalize-unicode (NFKC, quotes, spaces)
                             │   (optional)  │  - remove-diacritics (ä→a, ö→o)
-                            └───────┬───────┘  
+                            └───────┬───────┘
                                     ↓          Historical German Spelling:
                                     ↓          - normalize (simple: ſ→s, ß→ss)
                                     ↓          - normalize-dtacab (API, slow)
                                     ↓          - normalize-transnormer (neural, fast)
-                                    ↓        
+                                    ↓
                             ┌───────────────┐  Use any/all:
                             │   Cleaning    │  - normalize-whitespace
                             │   (optional)  │  - lowercase
                             └───────┬───────┘
-                                    ↓          
+                                    ↓
                             ┌───────────────┐  Use any/all:
                             │   Filtering   │  - filter-length
                             │   (optional)  │  - filter-word-count
@@ -90,13 +90,13 @@ Download → Parse ALTO/METS → Polars DataFrame
                                     ↓          - remove-numbers
                                     ↓          - remove-stopwords
                                     ↓          - clean-ocr
-                                    ↓          
+                                    ↓
                             ┌───────────────┐  Linguistic processing:
                             │  Linguistic   │  - dehyphenate (remove line-breaks)
                             │   (optional)  │  - lemmatize-spacy (fast)
                             └───────┬───────┘  - lemmatize (thorough)
-                                    ↓          
-                                    ↓          
+                                    ↓
+                                    ↓
                               Original text
                                     ↓
                     Step 1 output → Step 2 input → Step 3 output → ... → Final output
@@ -253,7 +253,7 @@ df = normalize_unicode(df, input_column="text", aggressive=True)
 - **Use case**: ASCII normalization, searchability
 
 ```python
-from newspaper_explorer.data.preprocessing.normalization import remove_diacritics
+from newspaper_explorer.data.preprocessing.cleaning import remove_diacritics
 
 df = remove_diacritics(df, input_column="text", output_column="text_no_diacritics")
 ```
@@ -384,7 +384,7 @@ df = normalize_whitespace(
 ```python
 # Newspaper text with inconsistent spacing and line breaks
 text = """Der Kaiser    reiste gestern
-nach   Berlin.     
+nach   Berlin.
 
     Die Verhandlungen   über
 den Friedensvertrag    dauern an."""
@@ -405,15 +405,15 @@ df = lowercase(df, input_column="text", output_column="text_lower")
 - Converts all characters to lowercase
 - Useful for case-insensitive analysis
 
-### 4. Filtering Module
+### 4. Cleaning Module (continued)
 
-**Purpose**: Remove unwanted content from text.
+**Purpose**: Transform text content while keeping all rows.
 
 **Functions**:
 
 #### 4.1 Punctuation Removal
 ```python
-from newspaper_explorer.data.preprocessing.filtering import remove_punctuation
+from newspaper_explorer.data.preprocessing.cleaning import remove_punctuation
 
 df = remove_punctuation(
     df,
@@ -425,14 +425,14 @@ df = remove_punctuation(
 
 #### 4.2 Number Removal
 ```python
-from newspaper_explorer.data.preprocessing.filtering import remove_numbers
+from newspaper_explorer.data.preprocessing.cleaning import remove_numbers
 
 df = remove_numbers(df, input_column="text", output_column="text_nonum")
 ```
 
 #### 4.3 Stopword Removal
 ```python
-from newspaper_explorer.data.preprocessing.filtering import remove_stopwords
+from newspaper_explorer.data.preprocessing.cleaning import remove_stopwords
 
 df = remove_stopwords(
     df,
@@ -444,11 +444,17 @@ df = remove_stopwords(
 - Requires spaCy
 - Uses spaCy's built-in stopword lists
 
-#### 4.4 Length Filtering
-```python
-from newspaper_explorer.data.preprocessing.filtering import filter_by_length
+### 5. Filtering Module
 
-df = filter_by_length(
+**Purpose**: Remove rows from DataFrame based on criteria.
+
+**Functions**:
+
+#### 5.1 Length Filtering
+```python
+from newspaper_explorer.data.preprocessing.filtering import filter_by_total_character_length
+
+df = filter_by_total_character_length(
     df,
     input_column="text",
     min_length=10,
@@ -458,9 +464,9 @@ df = filter_by_length(
 - Removes too short or too long texts
 - Useful for removing headers, footers, OCR artifacts
 
-#### 4.5 OCR Artifact Cleaning
+#### 4.4 OCR Artifact Cleaning
 ```python
-from newspaper_explorer.data.preprocessing.filtering import clean_ocr_artifacts
+from newspaper_explorer.data.preprocessing.cleaning import clean_ocr_artifacts
 
 df = clean_ocr_artifacts(
     df,
@@ -718,7 +724,7 @@ df = preprocessor.pipeline(
 ```python
 from newspaper_explorer.data.preprocessing.normalization import simple, transnormer
 from newspaper_explorer.data.preprocessing.cleaning import lowercase, normalize_whitespace
-from newspaper_explorer.data.preprocessing.filtering import remove_stopwords, remove_punctuation
+from newspaper_explorer.data.preprocessing.cleaning import remove_stopwords, remove_punctuation
 from newspaper_explorer.data.preprocessing.linguistic import dehyphenate, lemmatize_spacy
 ```
 
@@ -745,7 +751,7 @@ df = cleaning.normalize_whitespace(df, input_column="text_norm", output_column="
 df = cleaning.lowercase(df, input_column="text_clean", output_column="text_lower")
 
 # Step 4: Remove stopwords
-df = filtering.remove_stopwords(df, input_column="text_lower", output_column="text_nostop")
+df = cleaning.remove_stopwords(df, input_column="text_lower", output_column="text_nostop")
 
 # Step 5: Lemmatize
 df = linguistic.lemmatize_spacy(df, input_column="text_nostop", output_column="text_lemma")
@@ -789,11 +795,11 @@ results = []
 
 for i in range(0, len(df), chunk_size):
     print(f"Processing chunk {i//chunk_size + 1}/{len(df)//chunk_size + 1}")
-    
+
     chunk = df[i:i + chunk_size]
     normalized_chunk = transnormer(chunk, batch_size=64, num_gpus=4)
     results.append(normalized_chunk)
-    
+
     # Optional: save intermediate results
     normalized_chunk.write_parquet(f"chunks/chunk_{i}.parquet")
 
@@ -933,13 +939,13 @@ For best results, apply steps in this general order:
 
 **Input (Historical German)**:
 ```
-Die Königinn ſaß auf des Pallaſtes mittlerer Tribune und beobachtete 
+Die Königinn ſaß auf des Pallaſtes mittlerer Tribune und beobachtete
 das Schauſpiel mit lebhaftem Intereſſe.
 ```
 
 **Simple Normalization**:
 ```
-Die Königinn sass auf des Pallastes mittlerer Tribune und beobachtete 
+Die Königinn sass auf des Pallastes mittlerer Tribune und beobachtete
 das Schauspiel mit lebhaftem Interesse.
 ```
 - Only character mapping
@@ -947,7 +953,7 @@ das Schauspiel mit lebhaftem Interesse.
 
 **Transnormer Normalization**:
 ```
-Die Königin saß auf des Palastes mittlerer Tribüne und beobachtete 
+Die Königin saß auf des Palastes mittlerer Tribüne und beobachtete
 das Schauspiel mit lebhaftem Interesse.
 ```
 - Character mapping + spelling correction
@@ -955,7 +961,7 @@ das Schauspiel mit lebhaftem Interesse.
 
 **DTA-CAB Normalization**:
 ```
-Die Königin saß auf der mittleren Tribüne des Palastes und beobachtete 
+Die Königin saß auf der mittleren Tribüne des Palastes und beobachtete
 das Schauspiel mit lebhaftem Interesse.
 ```
 - Character + spelling + grammar
@@ -1072,7 +1078,7 @@ for i in range(0, len(df), chunk_size):
     chunk = df[i:i + chunk_size]
     normalized = transnormer(chunk, batch_size=128, num_gpus=4)
     results.append(normalized)
-    
+
     # Save intermediate results
     normalized.write_parquet(f"chunks/chunk_{i}.parquet")
 
@@ -1144,7 +1150,7 @@ Preprocessing adds new columns while preserving all original columns:
     "source_id": str,
     "issue_id": str,
     # ... all other original columns ...
-    
+
     # New columns (added by preprocessing)
     "text_processed": str,          # Final processed text
     # Optional intermediate columns (if using direct API)
@@ -1495,7 +1501,7 @@ engine = QueryEngine(source="der_tag")
 
 # Query using preprocessed text
 results = engine.query("""
-    SELECT 
+    SELECT
         text,
         text_processed,
         LENGTH(text) - LENGTH(text_processed) as char_reduction

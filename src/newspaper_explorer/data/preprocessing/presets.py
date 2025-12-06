@@ -12,11 +12,10 @@ Or programmatically:
     steps = get_preset("standard")
 """
 
-from typing import Dict, List, Union
-
+from typing import Union
 
 # General-purpose preprocessing pipelines
-GENERAL_PIPELINES = {
+GENERAL_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
     "minimal": {
         "description": "Minimal processing, preserves original text as much as possible",
         "steps": [
@@ -78,7 +77,7 @@ GENERAL_PIPELINES = {
 
 
 # Analysis-specific preprocessing pipelines
-ANALYSIS_PIPELINES = {
+ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
     "entities": {
         "description": "Optimized for named entity recognition and extraction",
         "steps": [
@@ -162,10 +161,13 @@ ANALYSIS_PIPELINES = {
 
 
 # All available pipelines
-ALL_PIPELINES = {**GENERAL_PIPELINES, **ANALYSIS_PIPELINES}
+ALL_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
+    **GENERAL_PIPELINES,
+    **ANALYSIS_PIPELINES,
+}
 
 
-def get_preset(name: str) -> List[str]:
+def get_preset(name: str) -> list[str]:
     """
     Get a preprocessing pipeline preset by name.
 
@@ -210,7 +212,7 @@ def get_preset(name: str) -> List[str]:
     return ALL_PIPELINES[name]["steps"]
 
 
-def list_presets(category: str = "all") -> Dict[str, Dict[str, Union[str, List[str]]]]:
+def list_presets(category: str = "all") -> dict[str, dict[str, Union[str, list[str]]]]:
     """
     List available preprocessing pipeline presets.
 
@@ -242,7 +244,7 @@ def list_presets(category: str = "all") -> Dict[str, Dict[str, Union[str, List[s
         raise ValueError(f"Unknown category '{category}'. Use 'all', 'general', or 'analysis'")
 
 
-def get_preset_info(name: str) -> Dict[str, Union[str, List[str]]]:
+def get_preset_info(name: str) -> dict[str, Union[str, list[str]]]:
     """
     Get detailed information about a specific preset.
 

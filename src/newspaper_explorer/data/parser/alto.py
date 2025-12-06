@@ -4,16 +4,15 @@ Extracts text lines with coordinates and metadata from ALTO format.
 Integrates with METS metadata for rich issue-level information.
 """
 
-import logging
-import re
 from datetime import datetime
+import logging
 from pathlib import Path
+import re
 from typing import Dict, List, Optional, Tuple
 
 from lxml import etree
 from lxml.etree import _Element
 
-from newspaper_explorer.models.core.data import TextLine
 from newspaper_explorer.data.utils.ids import (
     generate_issue_id,
     generate_line_id,
@@ -21,6 +20,7 @@ from newspaper_explorer.data.utils.ids import (
     generate_source_id,
     generate_text_block_id,
 )
+from newspaper_explorer.models.data.content import TextLine
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,9 @@ class ALTOParser:
         self.namespace_cache[cache_key] = result
         return result
 
-    def _parse_filename(self, filename: str) -> Tuple[
+    def _parse_filename(
+        self, filename: str
+    ) -> Tuple[
         Optional[datetime],  # date
         Optional[int],  # issue_number
         Optional[int],  # daily_issue_number

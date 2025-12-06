@@ -18,11 +18,11 @@ Example:
     >>> keywords = extractor.extract_keywords(top_k=10)
 """
 
+from datetime import datetime
 import logging
 import os
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Dict, List, Optional, Tuple
 
 import polars as pl
@@ -39,11 +39,11 @@ from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.models import AnalysisMetadata
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,7 @@ General-purpose utilities for working with XML and METS files
 in the newspaper data pipeline.
 """
 
+import logging
 from pathlib import Path
 
 from natsort import natsorted
@@ -59,8 +60,17 @@ def find_mets_files(xml_dir: Path) -> list[Path]:
     if not xml_dir.exists():
         return []
 
+    logger = logging.getLogger(__name__)
+
     mets_files = [f for f in xml_dir.rglob("*.xml") if "fulltext" not in str(f)]
-    return natsorted(mets_files)
+    mets_files = natsorted(mets_files)
+
+    if mets_files:
+        logger.info(f"Found {len(mets_files)} METS files")
+    else:
+        logger.warning(f"XML directory not found or empty: {xml_dir}")
+
+    return mets_files
 
 
 def get_file_extension_from_mimetype(mimetype: str) -> str:

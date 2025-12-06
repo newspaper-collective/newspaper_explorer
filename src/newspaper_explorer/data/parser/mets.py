@@ -3,15 +3,15 @@ METS XML metadata parser for newspaper issues.
 Extracts rich metadata from METS files that describe complete issues.
 """
 
-import logging
-import re
 from datetime import datetime
+import logging
 from pathlib import Path
+import re
 from typing import Optional
 
 from lxml import etree
 
-from newspaper_explorer.models.core.data import IssueMetadata
+from newspaper_explorer.models.data.content import IssueMetadata
 
 logger = logging.getLogger(__name__)
 
