@@ -11,8 +11,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.indexing.image_index import ImageIndexer
-
-from ..models import DateFilter, Issue, Line, Page, PaginationParams, TextBlock
+from newspaper_explorer.models.api.content import Issue, Line, Page, TextBlock
+from newspaper_explorer.models.api.filters import DateFilter, PaginationParams
 
 router = APIRouter()
 

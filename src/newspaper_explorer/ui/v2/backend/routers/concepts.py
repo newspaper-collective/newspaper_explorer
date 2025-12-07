@@ -9,7 +9,7 @@ import polars as pl
 from pathlib import Path
 
 from newspaper_explorer.config.base import get_config
-from ..models import Concept, ConceptRelation
+from newspaper_explorer.models.api.concepts import Concept, ConceptRelation
 
 router = APIRouter()
 

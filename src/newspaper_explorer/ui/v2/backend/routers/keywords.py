@@ -9,7 +9,12 @@ import polars as pl
 from pathlib import Path
 
 from newspaper_explorer.config.base import get_config
-from ..models import Keyword, KeywordDocument, KeywordCoOccurrence, PaginatedKeywords
+from newspaper_explorer.models.api.keywords import (
+    Keyword,
+    KeywordCoOccurrence,
+    KeywordDocument,
+    PaginatedKeywords,
+)
 
 router = APIRouter()
 

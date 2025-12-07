@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import List
 
 from newspaper_explorer.analyze.query.engine import QueryEngine
-from ..models import SearchQuery, SearchResult, SearchResponse
+from newspaper_explorer.models.api.search import SearchQuery, SearchResponse, SearchResult
 
 router = APIRouter()
 

@@ -11,8 +11,7 @@ from fastapi import APIRouter, HTTPException
 from newspaper_explorer.analyze.query.engine import QueryEngine
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.sources import list_available_sources, load_source_config
-
-from ..models import AnalysisResultSummary, SourceInfo, SourceStats
+from newspaper_explorer.models.api.sources import AnalysisResultSummary, SourceInfo, SourceStats
 
 router = APIRouter()
 

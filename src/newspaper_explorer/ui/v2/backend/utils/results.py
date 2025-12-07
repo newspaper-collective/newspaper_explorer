@@ -5,10 +5,11 @@ Provides consistent interface for loading analysis results with metadata
 from the results directory structure: results/{source}/{analysis_type}/{run_id}/
 """
 
+from datetime import datetime
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from typing import Optional
+
 import polars as pl
 
 from newspaper_explorer.config.base import get_config
@@ -22,7 +23,7 @@ class AnalysisResult:
         source: str,
         analysis_type: str,
         run_id: str,
-        metadata: Dict,
+        metadata: dict,
         parquet_path: Path,
     ):
         self.source = source
@@ -85,11 +86,11 @@ class AnalysisResult:
         return self.metadata.get("duration_seconds")
 
     @property
-    def parameters(self) -> Dict:
+    def parameters(self) -> dict:
         """Get analysis parameters"""
         return self.metadata.get("parameters", {})
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary for API responses"""
         return {
             "source": self.source,
@@ -107,24 +108,24 @@ class AnalysisResult:
 class ResultsLoader:
     """Universal loader for analysis results"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config = get_config()
         self.results_dir = Path(self.config.results_dir)
 
-    def list_sources(self) -> List[str]:
+    def list_sources(self) -> list[str]:
         """List all sources with results"""
         if not self.results_dir.exists():
             return []
         return [d.name for d in self.results_dir.iterdir() if d.is_dir()]
 
-    def list_analysis_types(self, source: str) -> List[str]:
+    def list_analysis_types(self, source: str) -> list[str]:
         """List all analysis types available for a source"""
         source_dir = self.results_dir / source
         if not source_dir.exists():
             return []
         return [d.name for d in source_dir.iterdir() if d.is_dir()]
 
-    def list_runs(self, source: str, analysis_type: str) -> List[Tuple[str, str]]:
+    def list_runs(self, source: str, analysis_type: str) -> list[tuple[str, str]]:
         """
         List all runs for a source and analysis type.
 
@@ -136,13 +137,13 @@ class ResultsLoader:
             text_dir = Path(self.config.data_dir) / "raw" / source / "text"
             if not text_dir.exists():
                 return []
-            
+
             runs = []
             for file_path in text_dir.glob("*.parquet"):
                 run_id = file_path.name
                 display_name = file_path.stem.replace("_", " ").title()
                 runs.append((run_id, display_name))
-            
+
             # Sort by name
             runs.sort(key=lambda x: x[0])
             return runs
@@ -161,7 +162,7 @@ class ResultsLoader:
                 continue
 
             try:
-                with open(metadata_path, "r", encoding="utf-8") as f:
+                with metadata_path.open("r", encoding="utf-8") as f:
                     metadata = json.load(f)
 
                 result = AnalysisResult(
@@ -197,7 +198,7 @@ class ResultsLoader:
         # Special handling for text analysis type
         if analysis_type == "text":
             text_dir = Path(self.config.data_dir) / "raw" / source / "text"
-            
+
             if run_id is None:
                 # Default to the main lines file if available
                 default_file = text_dir / f"{source}_lines.parquet"
@@ -208,22 +209,25 @@ class ResultsLoader:
                     if not runs:
                         return None
                     run_id = runs[0][0]
-            
+
             parquet_path = text_dir / run_id
             if not parquet_path.exists():
                 return None
-                
+
             # Create synthetic metadata
             try:
                 stats = parquet_path.stat()
                 created_at = datetime.fromtimestamp(stats.st_mtime).isoformat()
-                
+
                 # Get row count efficiently using DuckDB
                 row_count = 0
                 try:
                     import duckdb
+
                     con = duckdb.connect()
-                    result = con.execute(f"SELECT COUNT(*) FROM read_parquet('{parquet_path}')").fetchone()
+                    result = con.execute(
+                        f"SELECT COUNT(*) FROM read_parquet('{parquet_path}')"
+                    ).fetchone()
                     if result:
                         row_count = result[0]
                 except Exception as e:
@@ -234,11 +238,9 @@ class ResultsLoader:
                     "method_type": "Text Import",
                     "model_name": "Raw/Preprocessed",
                     "parameters": {},
-                    "output_data": {
-                        "row_count": row_count
-                    }
+                    "output_data": {"row_count": row_count},
                 }
-                
+
                 return AnalysisResult(
                     source=source,
                     analysis_type=analysis_type,
@@ -282,7 +284,7 @@ class ResultsLoader:
                 metadata=metadata,
                 parquet_path=parquet_path,
             )
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError, ValueError, KeyError, TypeError) as e:
             print(f"Error loading result: {e}")
             return None
 

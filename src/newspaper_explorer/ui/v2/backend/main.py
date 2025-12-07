@@ -78,7 +78,7 @@ for source in list_available_sources():
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """API root endpoint"""
     return {
         "name": "Historical Newspaper Explorer API",
@@ -88,6 +88,6 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint"""
     return {"status": "healthy"}

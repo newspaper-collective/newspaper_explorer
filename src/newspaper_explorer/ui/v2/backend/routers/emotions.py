@@ -11,7 +11,7 @@ import numpy as np
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.analysis.emotions import EmotionRecord
-from ..models import EmotionTimeline
+from newspaper_explorer.models.api.emotions import EmotionTimeline
 
 router = APIRouter()
 

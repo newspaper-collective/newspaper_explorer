@@ -8,7 +8,7 @@ from datetime import datetime
 import logging
 from pathlib import Path
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, Union
 
 from lxml import etree
 from lxml.etree import _Element
@@ -32,9 +32,9 @@ class ALTOParser:
     """
 
     def __init__(self) -> None:
-        self.namespace_cache: Dict[str, Optional[Dict[str, str]]] = {}
+        self.namespace_cache: dict[str, Optional[dict[str, str]]] = {}
 
-    def _detect_namespace(self, root: _Element) -> Optional[Dict[str, str]]:
+    def _detect_namespace(self, root: _Element) -> Optional[dict[str, str]]:
         """
         Detect ALTO namespace from root element with caching.
 
@@ -61,7 +61,7 @@ class ALTOParser:
 
     def _parse_filename(
         self, filename: str
-    ) -> Tuple[
+    ) -> tuple[
         Optional[datetime],  # date
         Optional[int],  # issue_number
         Optional[int],  # daily_issue_number
@@ -110,8 +110,8 @@ class ALTOParser:
         self,
         filepath: Path,
         source_name: str,
-        mets_metadata: Optional[Dict] = None,
-    ) -> List[TextLine]:
+        mets_metadata: Optional[dict[str, Union[str, int, None]]] = None,
+    ) -> list[TextLine]:
         """
         Parse a single ALTO XML file and extract all text lines.
 
@@ -124,10 +124,6 @@ class ALTOParser:
             List of TextLine objects with unified IDs
         """
         try:
-            # Ensure filepath is a Path object
-            if not isinstance(filepath, Path):
-                filepath = Path(filepath)
-
             tree = etree.parse(str(filepath))
             root = tree.getroot()
 
@@ -238,7 +234,7 @@ class ALTOParser:
                             y=safe_int(y),
                             width=safe_int(width),
                             height=safe_int(height),
-                            # Metadata (denormalized)
+                            # Denormalized Metadata
                             issue_number=issue_number,
                             daily_issue_number=daily_issue_number,
                             page_number=page_number,
@@ -250,6 +246,9 @@ class ALTOParser:
 
             return lines
 
-        except Exception as e:
-            logger.error(f"Error parsing {filepath}: {e}")
+        except etree.XMLSyntaxError as e:
+            logger.error(f"XML syntax error parsing {filepath}: {e}")
+            return []
+        except OSError as e:
+            logger.error(f"File I/O error reading {filepath}: {e}")
             return []
