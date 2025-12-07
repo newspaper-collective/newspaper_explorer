@@ -11,7 +11,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def calculate_md5(filepath: Path) -> str:
+def calculate_md5_checksum(filepath: Path) -> str:
     """
     Calculate MD5 checksum of a file.
 
@@ -38,7 +38,7 @@ def calculate_md5(filepath: Path) -> str:
     return md5_hash.hexdigest()
 
 
-def verify_checksum(filepath: Path, expected_md5: str) -> bool:
+def verify_md5_checksum(filepath: Path, expected_md5: str) -> bool:
     """
     Verify file checksum matches expected value.
 
@@ -54,7 +54,7 @@ def verify_checksum(filepath: Path, expected_md5: str) -> bool:
         ...     print("File corrupted!")
     """
     logger.info("Verifying checksum...")
-    actual_md5 = calculate_md5(filepath)
+    actual_md5 = calculate_md5_checksum(filepath)
 
     if actual_md5 == expected_md5:
         logger.info(f"Checksum verified: {actual_md5}")

@@ -23,11 +23,10 @@ from datetime import datetime
 from functools import lru_cache
 import logging
 import re
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import NamedTuple, Optional
 import uuid
 
-if TYPE_CHECKING:
-    import polars as pl
+import polars as pl
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +72,6 @@ class ParsedFilename:
 # Format: 3074409X_1902-09-05_000_415_H_2_005.xml
 _ALTO_FILENAME_PATTERN = re.compile(
     r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_(\d{3})_(\d+)_([A-Z])_(\d+)_(\d+)"
-)
-
-# Regex pattern for METS filenames (no page suffix)
-# Format: 3074409X_1902-09-05_000_415_H_2.xml
-_METS_FILENAME_PATTERN = re.compile(
-    r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_(\d{3})_(\d+)_([A-Z])_(\d+)\.xml$"
 )
 
 # Simpler pattern to just extract edition from _H_N_ part
@@ -140,6 +133,10 @@ def parse_alto_filename(filename: str) -> Optional[ParsedFilename]:
 # Maximum reasonable edition number per day
 _MAX_EDITION = 9
 
+# Valid century prefixes for year detection in paths
+_VALID_CENTURY_PREFIXES = ("18", "19", "20")
+_YEAR_LENGTH = 4
+
 
 def extract_edition(
     *,
@@ -200,14 +197,18 @@ def _extract_edition_from_path(path: str) -> Optional[int]:
     parts = path_str.split("/")
 
     # Look for YYYY/MM/DD/ED pattern
-    # Find the year component (4 digits starting with 18 or 19 or 20)
+    # Find the year component (4 digits starting with 18, 19, or 20)
     for i, part in enumerate(parts):
-        if len(part) == 4 and part.isdigit() and part[:2] in ("18", "19", "20"):
+        if (
+            len(part) == _YEAR_LENGTH
+            and part.isdigit()
+            and part.startswith(_VALID_CENTURY_PREFIXES)
+        ):
             # Found year at index i, edition should be at index i+3 (YYYY/MM/DD/ED)
             edition_idx = i + 3
             if edition_idx < len(parts):
                 edition_part = parts[edition_idx]
-                if edition_part.isdigit() and len(edition_part) <= 2:
+                if edition_part.isdigit():
                     edition = int(edition_part)
                     if 1 <= edition <= _MAX_EDITION:
                         return edition
@@ -506,11 +507,17 @@ def parse_page_id(page_id: str) -> PageIdComponents:
         5
     """
     parts = page_id.split("_")
-    if len(parts) < 5:
-        raise ValueError(
-            f"Invalid page_id format: {page_id}. "
-            f"Expected: {{source}}_{{date}}_{{issue}}_{{daily}}_{{page}}"
-        )
+    try:
+        date_idx = _find_date_index(parts)
+        if date_idx is None:
+            raise ValueError(f"Could not find date in page_id: {page_id}")
+        source = "_".join(parts[:date_idx])
+        date_str = parts[date_idx]
+        issue_number = int(parts[date_idx + 1])
+        edition = int(parts[date_idx + 2])
+        page_number = int(parts[date_idx + 3])
+    except IndexError as err:
+        raise ValueError(f"Invalid page_id format: {page_id}. ...") from err
 
     # Handle multi-part source names (e.g., "der_tag")
     date_idx = _find_date_index(parts)
@@ -553,21 +560,19 @@ def parse_issue_id(issue_id: str) -> IssueIdComponents:
         415
     """
     parts = issue_id.split("_")
-    if len(parts) < 4:
+    try:
+        date_idx = _find_date_index(parts)
+        if date_idx is None:
+            raise ValueError(f"Could not find date in issue_id: {issue_id}")
+        source = "_".join(parts[:date_idx])
+        date_str = parts[date_idx]
+        issue_number = int(parts[date_idx + 1])
+        edition = int(parts[date_idx + 2])
+    except IndexError as err:
         raise ValueError(
             f"Invalid issue_id format: {issue_id}. "
-            f"Expected: {{source}}_{{date}}_{{issue}}_{{daily}}"
-        )
-
-    # Handle multi-part source names (e.g., "der_tag")
-    date_idx = _find_date_index(parts)
-    if date_idx is None:
-        raise ValueError(f"Could not find date in issue_id: {issue_id}")
-
-    source = "_".join(parts[:date_idx])
-    date_str = parts[date_idx]
-    issue_number = int(parts[date_idx + 1])
-    edition = int(parts[date_idx + 2])
+            f"Expected: {{source}}_{{date}}_{{issue}}_{{edition}}"
+        ) from err
 
     return IssueIdComponents(
         source=source,
@@ -598,11 +603,6 @@ def parse_line_id(line_id: str) -> LineIdComponents:
             'TL_1'
     """
     parts = line_id.split("_")
-    if len(parts) < 7:
-        raise ValueError(
-            f"Invalid line_id format: {line_id}. "
-            f"Expected: {{source}}_{{date}}_{{issue}}_{{daily}}_{{page}}_{{block}}_{{line}}"
-        )
 
     # Handle multi-part source names (e.g., "der_tag")
     date_idx = _find_date_index(parts)
@@ -627,12 +627,13 @@ def parse_line_id(line_id: str) -> LineIdComponents:
     if tl_idx is None:
         # No TL marker found, assume everything after page is block_id + line_id
         block_parts = parts[date_idx + 4 :]
-        if len(block_parts) >= 2:
+        try:
             # Assume last part is line number, rest is block
-            block_id = "_".join(block_parts[:-1])
-            line_id_str = block_parts[-1]
-        else:
-            block_id = "_".join(block_parts)
+            *block_components, line_id_str = block_parts
+            block_id = "_".join(block_components) if block_components else ""
+        except ValueError:
+            # Empty block_parts - no block or line info
+            block_id = ""
             line_id_str = ""
     else:
         # Block ID is between page and TL marker
@@ -738,6 +739,87 @@ def extract_text_block_id_from_line_id(line_id: str) -> str:
 # ID Type Identification
 # ============================================================================
 
+# ID structure constants
+_MIN_PARTS_FOR_SUFFIX_CHECK = 2  # Minimum parts to check for _ent_, _art_ suffixes
+_MAX_SOURCE_NAME_PARTS = 2  # Source names have at most 2 parts (e.g., "der_tag")
+_SHORT_UUID_LENGTH = 6  # Length of short UUIDs used in detection/article/entity IDs
+_HEX_CHARS = frozenset("0123456789abcdef")
+
+# Parts after date for each ID type
+_ISSUE_PARTS_AFTER_DATE = 2  # date + issue_number + edition
+_PAGE_PARTS_AFTER_DATE = 3  # date + issue_number + edition + page
+_BLOCK_MIN_PARTS_AFTER_DATE = 4  # date + issue_number + edition + page + block...
+
+# Special suffix markers
+_ENTITY_SUFFIX = "ent"
+_ARTICLE_SUFFIX = "art"
+_LINE_MARKER = "TL"
+
+# Detection class names (frozen for O(1) lookup)
+_DETECTION_CLASSES = frozenset(
+    {
+        "headline",
+        "image",
+        "caption",
+        "advertisement",
+        "table",
+        "paragraph",
+        "title",
+    }
+)
+
+
+def _is_short_uuid(s: str) -> bool:
+    """Check if string is a 6-character hex UUID."""
+    return len(s) == _SHORT_UUID_LENGTH and all(c in _HEX_CHARS for c in s)
+
+
+def _identify_suffix_type(parts: list[str]) -> Optional[str]:
+    """
+    Identify ID type from suffix patterns (_ent_, _art_, detection classes).
+
+    Returns ID type string or None if no suffix pattern matches.
+    """
+    if len(parts) < _MIN_PARTS_FOR_SUFFIX_CHECK:
+        return None
+
+    second_to_last = parts[-2]
+
+    if second_to_last == _ENTITY_SUFFIX:
+        return "entity_id"
+    if second_to_last == _ARTICLE_SUFFIX:
+        return "article_id"
+    if second_to_last in _DETECTION_CLASSES or _is_short_uuid(parts[-1]):
+        return "detection_id"
+
+    return None
+
+
+def _identify_hierarchical_type(parts: list[str], date_idx: int) -> str:
+    """
+    Identify ID type from hierarchical structure (issue, page, block, line).
+
+    Args:
+        parts: ID string split by underscore
+        date_idx: Index of the date component
+
+    Returns:
+        ID type string
+    """
+    parts_after_date = len(parts) - date_idx - 1
+
+    if parts_after_date == _ISSUE_PARTS_AFTER_DATE:
+        return "issue_id"
+    if parts_after_date == _PAGE_PARTS_AFTER_DATE:
+        return "page_id"
+    if parts_after_date >= _BLOCK_MIN_PARTS_AFTER_DATE:
+        # Check for TL (TextLine) marker in remaining parts
+        if _LINE_MARKER in parts[date_idx + _BLOCK_MIN_PARTS_AFTER_DATE :]:
+            return "line_id"
+        return "text_block_id"
+
+    return "unknown"
+
 
 def identify_id_type(id_string: str) -> str:
     """
@@ -775,84 +857,72 @@ def identify_id_type(id_string: str) -> str:
     """
     parts = id_string.split("_")
 
-    # Check for special suffixes
-    if len(parts) >= 2:
-        # Entity ID: ends with _ent_{uuid}
-        if len(parts) >= 2 and parts[-2] == "ent":
-            return "entity_id"
+    # Check for special suffix patterns first (entity, article, detection)
+    suffix_type = _identify_suffix_type(parts)
+    if suffix_type:
+        return suffix_type
 
-        # Article ID: ends with _art_{uuid}
-        if len(parts) >= 2 and parts[-2] == "art":
-            return "article_id"
+    # Find date marker to identify hierarchical types
+    date_idx = _find_date_index(parts)
 
-        # Detection ID: has element type before UUID (headline, image, caption, etc.)
-        # Check if second-to-last part looks like a detection class
-        detection_classes = [
-            "headline",
-            "image",
-            "caption",
-            "advertisement",
-            "table",
-            "paragraph",
-            "title",
-        ]
-        if parts[-2] in detection_classes or (
-            len(parts[-1]) == 6 and all(c in "0123456789abcdef" for c in parts[-1])
-        ):
-            # Last part is a short UUID (6 hex chars)
-            return "detection_id"
-
-    # Find date marker (YYYY-MM-DD format) using compiled regex
-    date_idx = None
-    for i, part in enumerate(parts):
-        if _DATE_PATTERN.match(part):
-            date_idx = i
-            break
-
-    # No date found - must be source_id or unknown
     if date_idx is None:
-        # Simple source names don't contain dates
-        if len(parts) <= 2:
-            return "source_id"
-        return "unknown"
+        # No date found - source_id if short, otherwise unknown
+        return "source_id" if len(parts) <= _MAX_SOURCE_NAME_PARTS else "unknown"
 
-    # Count parts after date to determine ID type
-    # Structure: source + date + issue + daily + page + [block] + [line]
-    # date_idx points to date, so we have:
-    # - date_idx + 1 = issue number
-    # - date_idx + 2 = daily issue number
-    # - date_idx + 3 = page number
-    # - date_idx + 4+ = block/line parts
+    return _identify_hierarchical_type(parts, date_idx)
 
-    parts_after_date = len(parts) - date_idx - 1
 
-    # Issue ID: date + issue + daily (2 parts after date)
-    if parts_after_date == 2:
-        return "issue_id"
+class ForeignKeys(NamedTuple):
+    """Foreign keys extracted from an ID string. Cached-friendly (hashable)."""
 
-    # Page ID: date + issue + daily + page (3 parts after date)
-    if parts_after_date == 3:
-        return "page_id"
+    source_id: Optional[str]
+    issue_id: Optional[str]
+    page_id: Optional[str]
+    text_block_id: Optional[str]
+    line_id: Optional[str]
 
-    # Text block or line ID (4+ parts after date)
-    if parts_after_date >= 4:
-        # Check for TL (TextLine) marker
-        if "TL" in parts[date_idx + 4 :]:
-            return "line_id"
-        return "text_block_id"
-
-    return "unknown"
+    def as_dict(self) -> dict[str, Optional[str]]:
+        """Convert to dictionary for backwards compatibility."""
+        return {
+            "source_id": self.source_id,
+            "issue_id": self.issue_id,
+            "page_id": self.page_id,
+            "text_block_id": self.text_block_id,
+            "line_id": self.line_id,
+        }
 
 
 @lru_cache(maxsize=10000)
-def _extract_foreign_keys_cached(
-    id_string: str,
-) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+def extract_foreign_keys(id_string: str) -> ForeignKeys:
     """
-    Internal cached implementation of extract_foreign_keys.
+    Extract all foreign key IDs from any ID type.
 
-    Returns a tuple instead of dict for hashability/caching.
-    Order: (source_id, issue_id, page_id, text_block_id, line_id)
+    Given any ID in the system, extract all parent IDs (foreign keys)
+    that link this entity to higher levels in the hierarchy.
+
+    Results are cached for performance - repeated calls with the same
+    ID string return cached results without re-parsing.
+
+    Args:
+        id_string: Any ID string from the system
+
+    Returns:
+        ForeignKeys NamedTuple with all extractable foreign keys:
+        - source_id: Source identifier
+        - issue_id: Issue identifier (if extractable)
+        - page_id: Page identifier (if extractable)
+        - text_block_id: Text block identifier (if extractable)
+        - line_id: Line identifier (if applicable)
+
+        Access via attribute (fks.source_id) or index (fks[0]).
+        Use fks.as_dict() if you need a dictionary.
+
+    Example:
+        >>> fks = extract_foreign_keys("der_tag_1902-09-05_415_2_005_TB_1_TL_1")
+        >>> fks.source_id
+        'der_tag'
+        >>> fks.page_id
+        'der_tag_1902-09-05_415_2_005'
     """
     id_type = identify_id_type(id_string)
 
@@ -863,7 +933,7 @@ def _extract_foreign_keys_cached(
     line_id: Optional[str] = None
 
     try:
-        if id_type == "line_id" or id_type == "entity_id":
+        if id_type in {"line_id", "entity_id"}:
             # Extract line components
             if id_type == "entity_id":
                 # Remove _ent_{uuid} suffix
@@ -891,9 +961,9 @@ def _extract_foreign_keys_cached(
             page_id = page_id_extracted
             text_block_id = id_string
 
-        elif id_type == "page_id" or id_type == "detection_id" or id_type == "article_id":
+        elif id_type in {"page_id", "detection_id", "article_id"}:
             # Extract page components
-            if id_type in ["detection_id", "article_id"]:
+            if id_type in {"detection_id", "article_id"}:
                 # Remove suffix to get page_id
                 page_id_extracted = extract_page_id_from_detection_or_article_id(id_string)
             else:
@@ -916,105 +986,7 @@ def _extract_foreign_keys_cached(
     except (ValueError, IndexError) as e:
         logger.warning(f"Could not extract foreign keys from {id_string}: {e}")
 
-    return (source_id, issue_id, page_id, text_block_id, line_id)
-
-
-def extract_foreign_keys(id_string: str) -> dict[str, Optional[str]]:
-    """
-    Extract all foreign key IDs from any ID type.
-
-    Given any ID in the system, extract all parent IDs (foreign keys)
-    that link this entity to higher levels in the hierarchy.
-
-    Results are cached for performance - repeated calls with the same
-    ID string return cached results without re-parsing.
-
-    Args:
-        id_string: Any ID string from the system
-
-    Returns:
-        Dictionary with all extractable foreign keys:
-        - source_id: Source identifier
-        - issue_id: Issue identifier (if extractable)
-        - page_id: Page identifier (if extractable)
-        - text_block_id: Text block identifier (if extractable)
-        - line_id: Line identifier (if applicable)
-
-    Example:
-        >>> fks = extract_foreign_keys("3074409-X_1902-09-05_415_2_005_TB_1_TL_1")
-        >>> fks["source_id"]
-        '3074409-X'
-        >>> fks["issue_id"]
-        '3074409-X_1902-09-05_415_2'
-        >>> fks["page_id"]
-        '3074409-X_1902-09-05_415_2_005'
-        >>> fks["text_block_id"]
-        '3074409-X_1902-09-05_415_2_005_TB_1'
-    """
-    cached = _extract_foreign_keys_cached(id_string)
-    return {
-        "source_id": cached[0],
-        "issue_id": cached[1],
-        "page_id": cached[2],
-        "text_block_id": cached[3],
-        "line_id": cached[4],
-    }
-
-    try:
-        if id_type == "line_id" or id_type == "entity_id":
-            # Extract line components
-            if id_type == "entity_id":
-                # Remove _ent_{uuid} suffix
-                parts = id_string.split("_")
-                line_id = "_".join(parts[:-2])
-            else:
-                line_id = id_string
-
-            components = parse_line_id(line_id)
-            result["source_id"] = components.source
-            result["issue_id"] = (
-                f"{components.source}_{components.date}_"
-                f"{components.issue_number:03d}_{components.edition}"
-            )
-            result["page_id"] = components.full_page_id
-            result["text_block_id"] = components.full_text_block_id
-            result["line_id"] = line_id
-
-        elif id_type == "text_block_id":
-            # Extract text block components
-            page_id = extract_page_id_from_text_block_id(id_string)
-            page_components = parse_page_id(page_id)
-            result["source_id"] = page_components.source
-            result["issue_id"] = extract_issue_id_from_page_id(page_id)
-            result["page_id"] = page_id
-            result["text_block_id"] = id_string
-
-        elif id_type == "page_id" or id_type == "detection_id" or id_type == "article_id":
-            # Extract page components
-            if id_type in ["detection_id", "article_id"]:
-                # Remove suffix to get page_id
-                page_id = extract_page_id_from_detection_or_article_id(id_string)
-            else:
-                page_id = id_string
-
-            page_components = parse_page_id(page_id)
-            result["source_id"] = page_components.source
-            result["issue_id"] = extract_issue_id_from_page_id(page_id)
-            result["page_id"] = page_id
-
-        elif id_type == "issue_id":
-            # Extract issue components
-            issue_components = parse_issue_id(id_string)
-            result["source_id"] = issue_components.source
-            result["issue_id"] = id_string
-
-        elif id_type == "source_id":
-            result["source_id"] = id_string
-
-    except (ValueError, IndexError) as e:
-        logger.warning(f"Could not extract foreign keys from {id_string}: {e}")
-
-    return result
+    return ForeignKeys(source_id, issue_id, page_id, text_block_id, line_id)
 
 
 def extract_page_id_from_detection_or_article_id(id_string: str) -> str:
@@ -1081,8 +1053,6 @@ def add_foreign_key_columns(
         >>> # Without source (falls back to parsing)
         >>> results_df = add_foreign_key_columns(results_df, id_column="doc_id")
     """
-    # Import here to avoid circular dependency and keep ids.py lightweight
-    import polars as pl_impl
 
     fk_columns = ["source_id", "issue_id", "page_id", "text_block_id"]
 
@@ -1098,24 +1068,24 @@ def add_foreign_key_columns(
             # Fill any missing FK columns with None
             for col in fk_columns:
                 if col not in df.columns:
-                    df = df.with_columns(pl_impl.lit(None).alias(col))
+                    df = df.with_columns(pl.lit(None).alias(col))
 
             return df
 
     # Fall back to parsing from ID column
     logger.info(f"Parsing foreign keys from {id_column} column...")
     id_list = df[id_column].to_list()
-    foreign_keys = [extract_foreign_keys(id_str) if id_str else {} for id_str in id_list]
+    foreign_keys = [
+        extract_foreign_keys(id_str) if id_str else ForeignKeys(None, None, None, None, None)
+        for id_str in id_list
+    ]
 
     # Add FK columns
     return df.with_columns(
         [
-            pl_impl.Series("source_id", [fk.get("source_id") for fk in foreign_keys]),
-            pl_impl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys]),
-            pl_impl.Series("page_id", [fk.get("page_id") for fk in foreign_keys]),
-            pl_impl.Series(
-                "text_block_id",
-                [fk.get("text_block_id") for fk in foreign_keys],
-            ),
+            pl.Series("source_id", [fk.source_id for fk in foreign_keys]),
+            pl.Series("issue_id", [fk.issue_id for fk in foreign_keys]),
+            pl.Series("page_id", [fk.page_id for fk in foreign_keys]),
+            pl.Series("text_block_id", [fk.text_block_id for fk in foreign_keys]),
         ]
     )

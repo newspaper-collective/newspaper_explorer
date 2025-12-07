@@ -566,10 +566,10 @@ class EmotionPredictor:
             # Add foreign key columns
             df_chunk = df_chunk.with_columns(
                 [
-                    pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
-                    pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
-                    pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
-                    pl.Series("text_block_id", [fk["text_block_id"] for fk in foreign_keys]),
+                    pl.Series("source_id", [fk.source_id for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk.issue_id for fk in foreign_keys]),
+                    pl.Series("page_id", [fk.page_id for fk in foreign_keys]),
+                    pl.Series("text_block_id", [fk.text_block_id for fk in foreign_keys]),
                 ]
             )
 
@@ -789,10 +789,10 @@ class EmotionPredictor:
             # Add foreign key columns
             df_chunk = df_chunk.with_columns(
                 [
-                    pl.Series("source_id", [fk["source_id"] for fk in foreign_keys]),
-                    pl.Series("issue_id", [fk["issue_id"] for fk in foreign_keys]),
-                    pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
-                    pl.Series("text_block_id", [fk["text_block_id"] for fk in foreign_keys]),
+                    pl.Series("source_id", [fk.source_id for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk.issue_id for fk in foreign_keys]),
+                    pl.Series("page_id", [fk.page_id for fk in foreign_keys]),
+                    pl.Series("text_block_id", [fk.text_block_id for fk in foreign_keys]),
                 ]
             )
 

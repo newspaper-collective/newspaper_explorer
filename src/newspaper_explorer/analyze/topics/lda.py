@@ -617,10 +617,10 @@ class LDAExtractor:
         # Add foreign key columns
         df = df.with_columns(
             [
-                pl.Series("source_id", [fk.get("source_id") for fk in foreign_keys_list]),
-                pl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys_list]),
-                pl.Series("page_id", [fk.get("page_id") for fk in foreign_keys_list]),
-                pl.Series("text_block_id", [fk.get("text_block_id") for fk in foreign_keys_list]),
+                pl.Series("source_id", [fk.source_id for fk in foreign_keys_list]),
+                pl.Series("issue_id", [fk.issue_id for fk in foreign_keys_list]),
+                pl.Series("page_id", [fk.page_id for fk in foreign_keys_list]),
+                pl.Series("text_block_id", [fk.text_block_id for fk in foreign_keys_list]),
             ]
         )
 

@@ -6,12 +6,12 @@ and checking completeness against METS references.
 """
 
 import logging
-import re
 from pathlib import Path
+import re
 from typing import Any, Optional
 
-import polars as pl
 from lxml import etree
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.parser.mets import METSParser
@@ -251,7 +251,7 @@ def _check_images_in_mets(
 
     expected = 0
     found = 0
-    missing = []
+    missing: list[str] = []
 
     # Check MAX images
     max_file_grp = root.find('.//mets:fileGrp[@USE="MAX"]', METS_NAMESPACES)
@@ -294,7 +294,7 @@ def _check_alto_in_mets(
 
     expected = 0
     found = 0
-    missing = []
+    missing: list[str] = []
 
     # Check FULLTEXT (ALTO) files
     fulltext_grp = root.find('.//mets:fileGrp[@USE="FULLTEXT"]', METS_NAMESPACES)

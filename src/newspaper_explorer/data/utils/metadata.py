@@ -239,9 +239,8 @@ def list_analysis(
         ...     print(f"{item['analysis_id']}: {item['model_name']}")
     """
     results_dir = Path(results_dir)
-    analysis = []
+    analysis: list[dict[str, Any]] = []
 
-    # Pattern: results/{source}/{analysis_type}/{analysis_id}/metadata.json
     pattern = "**/*.json"
     if source:
         pattern = f"{source}/**/*.json"
@@ -259,7 +258,7 @@ def list_analysis(
                 continue
             if source and metadata.source != source:
                 continue
-        elif isinstance(metadata, PreprocessingMetadata):
+        else:
             # Skip preprocessing metadata in analysis listing
             continue
 
@@ -269,7 +268,7 @@ def list_analysis(
 
         # Try to find associated parquet
         parquet_path = json_path.with_suffix(".parquet")
-        if not parquet_path.exists() and isinstance(metadata, AnalysisMetadata):
+        if not parquet_path.exists():
             parquet_path = json_path.parent / f"{metadata.analysis_id}.parquet"
         if parquet_path.exists():
             meta_dict["parquet_path"] = str(parquet_path)

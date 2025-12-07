@@ -16,7 +16,7 @@ import requests
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.checksums import verify_checksum
+from newspaper_explorer.data.utils.checksums import verify_md5_checksum
 from newspaper_explorer.data.utils.fixes import DataFixer
 from newspaper_explorer.data.utils.sources import load_source_config
 
@@ -105,7 +105,7 @@ class ZenodoDownloader:
             logger.info(f"File {filename} already exists")
             # Verify checksum if available
             if part_info.md5:
-                if verify_checksum(filepath, part_info.md5):
+                if verify_md5_checksum(filepath, part_info.md5):
                     logger.info("Skipping download - file verified")
                     return filepath
                 logger.warning("Checksum failed - will re-download")
@@ -138,7 +138,7 @@ class ZenodoDownloader:
         logger.info(f"Downloaded {filename}")
 
         # Verify checksum if available
-        if part_info.md5 and not verify_checksum(filepath, part_info.md5):
+        if part_info.md5 and not verify_md5_checksum(filepath, part_info.md5):
             logger.warning("Downloaded file checksum does not match!")
             logger.warning("File may be corrupted. Consider re-downloading.")
 

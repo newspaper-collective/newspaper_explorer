@@ -468,9 +468,9 @@ class GLiNEREntityExtractor:
                 all_records.append(
                     {
                         "text_block_id": block_id,
-                        "source_id": fks.get("source_id"),
-                        "issue_id": fks.get("issue_id"),
-                        "page_id": fks.get("page_id"),
+                        "source_id": fks.source_id,
+                        "issue_id": fks.issue_id,
+                        "page_id": fks.page_id,
                         "entity_text": entity["text"],
                         "entity_type": entity_type,
                         "confidence": float(entity.get("score", 0.0)),

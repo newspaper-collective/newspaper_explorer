@@ -30,7 +30,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.ids import extract_foreign_keys
+from newspaper_explorer.data.utils.ids import ForeignKeys, extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.models.data.metadata import AnalysisMetadata
@@ -469,17 +469,20 @@ class TFIDFExtractor:
             logger.info("Extracting foreign keys from line_id...")
             line_ids_list = results_df["line_id"].to_list()
             foreign_keys = [
-                extract_foreign_keys(line_id) if line_id else {} for line_id in line_ids_list
+                extract_foreign_keys(line_id)
+                if line_id
+                else ForeignKeys(None, None, None, None, None)
+                for line_id in line_ids_list
             ]
 
             results_df = results_df.with_columns(
                 [
-                    pl.Series("source_id", [fk.get("source_id") for fk in foreign_keys]),
-                    pl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys]),
-                    pl.Series("page_id", [fk.get("page_id") for fk in foreign_keys]),
+                    pl.Series("source_id", [fk.source_id for fk in foreign_keys]),
+                    pl.Series("issue_id", [fk.issue_id for fk in foreign_keys]),
+                    pl.Series("page_id", [fk.page_id for fk in foreign_keys]),
                     pl.Series(
                         "text_block_id",
-                        [fk.get("text_block_id", "") for fk in foreign_keys],
+                        [fk.text_block_id or "" for fk in foreign_keys],
                     ),
                 ]
             )

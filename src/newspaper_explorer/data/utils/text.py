@@ -3,7 +3,7 @@ Text processing utilities for newspaper data.
 """
 
 import logging
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import polars as pl
 import spacy
@@ -177,14 +177,14 @@ def split_df_into_sentences(
     df_pandas = df.to_pandas()
 
     # Prepare list to collect results
-    results = []
+    results: list[dict[str, Any]] = []
 
     # Process in batches
     texts = df_pandas[text_column].tolist()
 
     for doc_idx, doc in enumerate(nlp.pipe(texts, batch_size=batch_size)):
         # Get original row data
-        row_data = df_pandas.iloc[doc_idx].to_dict()
+        row_data = df_pandas.iloc[doc_idx].to_dict() # type: ignore[index]
 
         # Split into sentences
         sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
@@ -314,11 +314,11 @@ def analyze_text_line_character_lengths(
     p99 = sorted_lengths[int(0.99 * len(sorted_lengths))]
 
     # Distribution
-    under_50 = sum(1 for l in lengths if l <= 50)
-    under_100 = sum(1 for l in lengths if l <= 100)
-    under_200 = sum(1 for l in lengths if l <= 200)
-    under_500 = sum(1 for l in lengths if l <= 500)
-    under_1000 = sum(1 for l in lengths if l <= 1000)
+    under_50 = sum(1 for length in lengths if length <= 50)  # noqa: PLR2004
+    under_100 = sum(1 for length in lengths if length <= 100)  # noqa: PLR2004
+    under_200 = sum(1 for length in lengths if length <= 200)  # noqa: PLR2004
+    under_500 = sum(1 for length in lengths if length <= 500)  # noqa: PLR2004
+    under_1000 = sum(1 for length in lengths if length <= 1000)  # noqa: PLR2004
 
     distribution = {
         "under_50": under_50,
@@ -429,7 +429,7 @@ def analyze_token_lengths(
 
     # Load tokenizer
     logger.info(f"Loading tokenizer: {tokenizer_name}")
-    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name) # type: ignore[call-arg]
 
     # Tokenize and get lengths
     logger.info("Tokenizing texts (this may take a minute)...")
@@ -450,11 +450,11 @@ def analyze_token_lengths(
     p99 = sorted_lengths[int(0.99 * len(sorted_lengths))]
 
     # Distribution
-    under_50 = sum(1 for l in lengths if l <= 50)
-    under_100 = sum(1 for l in lengths if l <= 100)
-    under_200 = sum(1 for l in lengths if l <= 200)
-    under_300 = sum(1 for l in lengths if l <= 300)
-    at_max = sum(1 for l in lengths if l == max_length)
+    under_50 = sum(1 for length in lengths if length <= 50)  # noqa: PLR2004
+    under_100 = sum(1 for length in lengths if length <= 100)  # noqa: PLR2004
+    under_200 = sum(1 for length in lengths if length <= 200)  # noqa: PLR2004
+    under_300 = sum(1 for length in lengths if length <= 300)  # noqa: PLR2004
+    at_max = sum(1 for length in lengths if length == max_length)
 
     distribution = {
         "under_50": under_50,
@@ -544,12 +544,13 @@ def get_longest_lines_by_tokens(
     # Tokenize and get actual token counts
     logger.info("Tokenizing texts to get token counts...")
     texts = longest_by_chars[text_column].to_list()
-    token_counts = [len(tokenizer.encode(text, truncation=True, max_length=512)) for text in texts]
+    token_counts = [
+        len(tokenizer.encode(text, truncation=True, max_length=512))  # type: ignore[arg-type]
+        for text in texts
+    ]
 
     # Add token counts to DataFrame
     result_df = longest_by_chars.with_columns(pl.Series("token_count", token_counts))
 
     # Sort by token count and take top N
-    result_df = result_df.sort("token_count", descending=True).head(top_n)
-
-    return result_df
+    return result_df.sort("token_count", descending=True).head(top_n)

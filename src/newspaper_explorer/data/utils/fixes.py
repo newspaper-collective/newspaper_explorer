@@ -3,15 +3,19 @@ Error correction utilities for newspaper data.
 Handles known data issues in downloaded newspaper collections.
 """
 
+import logging
+import os
+from pathlib import Path
 import re
 import shutil
-from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class DataFixer:
     """Apply error corrections to newspaper data."""
 
-    def __init__(self, dataset_name: str, data_type: str):
+    def __init__(self, dataset_name: str, data_type: str) -> None:
         """
         Initialize the data fixer.
 
@@ -30,10 +34,8 @@ class DataFixer:
             part_name: Name of the dataset part
             extract_path: Path to the extracted directory (base raw directory)
 
-        Returns:
-            Number of fixes applied
         """
-        print(f"Checking for known errors in {part_name}...")
+        logger.info("Checking for known errors in %s...", part_name)
         fixes_applied = 0
 
         # Fix for dertag_1900-1902: Files labeled as 1900-01-02 are actually 1902-01-01/02
@@ -49,9 +51,9 @@ class DataFixer:
             fixes_applied += self._fix_dertag_1901_07_14_page_numbers(extract_path)
 
         if fixes_applied > 0:
-            print(f"Applied {fixes_applied} error fix(es)")
+            logger.info("Applied %d error fix(es)", fixes_applied)
         else:
-            print("No known errors to fix")
+            logger.debug("No known errors to fix")
 
         return fixes_applied
 
@@ -72,10 +74,10 @@ class DataFixer:
         if not year_1900_dir.exists():
             return 0
 
-        print("  Checking for mislabeled 1900 files...")
+        logger.debug("Checking for mislabeled 1900 files...")
 
         # Hardcoded list of known mislabeled dates
-        # Format: {old_year: {(month, day, issue): correct_year}}
+        # Keys are old years, values are dicts mapping (month, day, issue) tuples to correct years
         mislabeled_dates = {
             "1900": {
                 ("01", "02", "01"): "1902",  # 1900-01-02 issue 01 is actually 1902-01-02
@@ -92,14 +94,17 @@ class DataFixer:
 
             if issue_dir.exists():
                 rel_path = issue_dir.relative_to(raw_dir)
-                print(f"    Found mislabeled: {rel_path} -> {correct_year}")
+                logger.info("Found mislabeled: %s -> %s", rel_path, correct_year)
                 fixes_applied += self._relocate_and_fix_issue(
                     issue_dir, raw_dir, old_year, correct_year
                 )
             else:
-                print(
-                    f"    Note: Expected mislabeled path not found: "
-                    f"{old_year}/{month}/{day}/{issue_num}"
+                logger.debug(
+                    "Expected mislabeled path not found: %s/%s/%s/%s",
+                    old_year,
+                    month,
+                    day,
+                    issue_num,
                 )
 
         return fixes_applied
@@ -122,8 +127,6 @@ class DataFixer:
         try:
             # Extract month/day/issue from current path
             parts = issue_dir.relative_to(raw_dir / old_year).parts
-            if len(parts) < 3:
-                return 0
 
             month, day, issue_num = parts[0], parts[1], parts[2]
 
@@ -193,8 +196,8 @@ class DataFixer:
                     final_target.write_text(content, encoding="utf-8")
                     files_fixed += 1
 
-                except Exception as e:
-                    print(f"      Warning: Could not fix {file_path.name}: {e}")
+                except (OSError, PermissionError, UnicodeDecodeError) as e:
+                    logger.warning("Could not fix %s: %s", file_path.name, e)
                     continue
 
             # Remove old directory if all files were moved successfully
@@ -203,34 +206,33 @@ class DataFixer:
                     shutil.rmtree(issue_dir)
                     old_path = f"{old_year}/{month}/{day}/{issue_num}"
                     new_path = f"{new_year}/{month}/{day}/{issue_num}"
-                    print(f"    Relocated {files_fixed} files: {old_path} -> {new_path}")
+                    logger.info("Relocated %d files: %s -> %s", files_fixed, old_path, new_path)
 
                     # Clean up empty parent directories
                     self._cleanup_empty_dirs(raw_dir / old_year)
-                except Exception as e:
-                    print(f"      Warning: Could not remove old directory: {e}")
+                except (OSError, PermissionError) as e:
+                    logger.warning("Could not remove old directory: %s", e)
 
             return 1 if files_fixed > 0 else 0
 
-        except Exception as e:
-            print(f"    Error relocating issue: {e}")
+        except (OSError, PermissionError, ValueError, UnicodeDecodeError) as e:
+            logger.error("Error relocating issue: %s", e)
             return 0
 
-    def _cleanup_empty_dirs(self, start_dir: Path):
+    def _cleanup_empty_dirs(self, start_dir: Path) -> None:
         """
         Recursively remove empty directories starting from start_dir.
 
         Args:
             start_dir: Directory to start cleanup from
         """
-        import os
 
         if not start_dir.exists() or not start_dir.is_dir():
             return
 
         try:
             # Walk bottom-up and remove empty directories
-            for root, dirs, files in os.walk(str(start_dir), topdown=False):
+            for root, dirs, _ in os.walk(str(start_dir), topdown=False):
                 for dir_name in dirs:
                     dir_path = Path(root) / dir_name
                     try:
@@ -247,8 +249,8 @@ class DataFixer:
                     start_dir.rmdir()
             except OSError:
                 pass
-        except Exception:
-            # Silently ignore cleanup errors
+        except (OSError, PermissionError):
+            # Silently ignore cleanup errors (filesystem issues)
             pass
 
     def _fix_dertag_mixed_issues(self, raw_dir: Path) -> int:
@@ -265,7 +267,7 @@ class DataFixer:
         Returns:
             Number of issues fixed
         """
-        print("  Checking for mixed-issue directories...")
+        logger.debug("Checking for mixed-issue directories...")
 
         # Hardcoded list of known mixed-issue cases
         mixed_cases = [
@@ -291,7 +293,7 @@ class DataFixer:
                 continue
 
             # Check if orphaned files exist
-            orphaned_files = []
+            orphaned_files: list[Path] = []
             for orphaned_issue in orphaned_issues:
                 pattern = f"*_{orphaned_issue}_H_*.xml"
                 found = list(fulltext_dir.glob(pattern))
@@ -301,8 +303,10 @@ class DataFixer:
             if not orphaned_files:
                 continue
 
-            print(f"    Found mixed issues in {directory}")
-            print(f"      {len(orphaned_files)} orphaned file(s) from issue(s) {orphaned_issues}")
+            logger.info("Found mixed issues in %s", directory)
+            logger.info(
+                "%d orphaned file(s) from issue(s) %s", len(orphaned_files), orphaned_issues
+            )
 
             # For now, just log the issue - actual relocation would require:
             # 1. Determining correct dates for orphaned issues
@@ -314,8 +318,8 @@ class DataFixer:
             fixes_applied += 1
 
         if fixes_applied > 0:
-            print(f"    Identified {fixes_applied} mixed-issue case(s)")
-            print("    Note: Automatic fix not yet implemented - manual intervention required")
+            logger.info("Identified %d mixed-issue case(s)", fixes_applied)
+            logger.warning("Automatic fix not yet implemented - manual intervention required")
 
         return 0  # Return 0 since we're not actually fixing yet
 
@@ -347,14 +351,14 @@ class DataFixer:
         if not issue_dir.exists():
             return 0
 
-        print("  Checking for corrupted page numbers in 1901-07-14...")
+        logger.debug("Checking for corrupted page numbers in 1901-07-14...")
 
         # Check if the corrupted file exists
         corrupted_file = issue_dir / "3074409X_1901-07-14_000_297_H_1_-01.xml"
         if not corrupted_file.exists():
             return 0
 
-        print(f"    Found corrupted page numbering in {issue_dir.relative_to(raw_dir)}")
+        logger.info("Found corrupted page numbering in %s", issue_dir.relative_to(raw_dir))
 
         try:
             # Rename files in reverse order to avoid conflicts
@@ -372,9 +376,9 @@ class DataFixer:
                 if old_path.exists():
                     old_path.rename(new_path)
                     files_renamed += 1
-                    print(f"      Renamed: {old_name} → {new_name}")
+                    logger.debug("Renamed: %s → %s", old_name, new_name)
                 else:
-                    print(f"      Warning: Expected file not found: {old_name}")
+                    logger.warning("Expected file not found: %s", old_name)
 
             # Finally, rename the corrupted -01 file to 001
             if corrupted_file.exists():
@@ -382,14 +386,14 @@ class DataFixer:
                 correct_path = issue_dir / correct_name
                 corrupted_file.rename(correct_path)
                 files_renamed += 1
-                print(f"      Renamed: 3074409X_1901-07-14_000_297_H_1_-01.xml → {correct_name}")
+                logger.debug("Renamed: 3074409X_1901-07-14_000_297_H_1_-01.xml → %s", correct_name)
 
             if files_renamed > 0:
-                print(f"    Fixed page numbering: {files_renamed} file(s) renamed")
+                logger.info("Fixed page numbering: %d file(s) renamed", files_renamed)
                 return 1  # Return 1 fix applied (the issue as a whole)
 
-        except Exception as e:
-            print(f"    Error fixing page numbers: {e}")
+        except (OSError, PermissionError) as e:
+            logger.error("Error fixing page numbers: %s", e)
             return 0
 
         return 0

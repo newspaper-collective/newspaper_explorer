@@ -11,6 +11,10 @@ from typing import Any, Optional, Union
 
 import polars as pl
 
+from newspaper_explorer.data.utils.ids import identify_id_type
+from newspaper_explorer.data.utils.metadata import find_metadata_for_parquet, load_metadata
+from newspaper_explorer.models.data.metadata import PreprocessingMetadata
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +45,7 @@ def extract_input_stats(
         >>> print(stats["preprocessing"])  # Will include preprocessing metadata if available
         {'preprocessing_id': 'normalize_lowercase_20251110_120000', 'steps': [...]}
     """
-    stats = {
+    stats: dict[str, Any] = {
         "row_count": len(df),
         "columns": df.columns,
         "schema": {col: str(dtype) for col, dtype in df.schema.items()},
@@ -57,8 +61,8 @@ def extract_input_stats(
                 str(min_date) if min_date else None,
                 str(max_date) if max_date else None,
             ]
-        except Exception as e:
-            # Date column exists but might not be datetime type
+        except (pl.exceptions.ComputeError, pl.exceptions.SchemaError, TypeError):
+            # Date column exists but might not be datetime type or incompatible
             stats["date_range"] = None
 
     # Add ID type info if available
@@ -66,15 +70,10 @@ def extract_input_stats(
         stats["id_column"] = id_column
         sample_id = df.select(pl.col(id_column)).head(1).item()
         if sample_id:
-            from newspaper_explorer.data.utils.ids import identify_id_type
-
             stats["id_type"] = identify_id_type(sample_id)
 
     # Check for preprocessing metadata if input path provided
     if input_path:
-        from newspaper_explorer.data.utils.metadata import find_metadata_for_parquet, load_metadata
-        from newspaper_explorer.models.data.metadata import PreprocessingMetadata
-
         metadata_path = find_metadata_for_parquet(input_path)
         if metadata_path:
             try:
@@ -89,7 +88,7 @@ def extract_input_stats(
                         "metadata_path": str(metadata_path),
                     }
                     logger.debug(f"Loaded preprocessing metadata: {metadata.preprocessing_id}")
-            except Exception as e:
+            except (OSError, ValueError, TypeError, KeyError) as e:
                 logger.debug(f"Could not load preprocessing metadata from {metadata_path}: {e}")
 
     return stats
