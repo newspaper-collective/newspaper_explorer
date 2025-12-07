@@ -385,7 +385,7 @@ class RAKEExtractor:
                 pl.Series("page_id", [fk["page_id"] for fk in foreign_keys]),
                 pl.Series(
                     "text_block_id",
-                    [fk.get("text_block_id", fk.get("line_id", "")) for fk in foreign_keys],
+                    [fk.get("text_block_id") for fk in foreign_keys],
                 ),
             ]
         )

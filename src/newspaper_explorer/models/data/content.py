@@ -18,7 +18,7 @@ class IssueMetadata(BaseModel):
     date: Optional[datetime] = None
     issue_number: Optional[int] = None
     issue_string: Optional[str] = None  # e.g., "Nr. 415, 05. September 1902"
-    edition: Optional[str] = None  # e.g., "Ausgabe A"
+    edition: Optional[int] = None  # Edition of the day (1=morning, 2=midday, 3=evening)
     year_volume: Optional[str] = None  # e.g., "Jahrgang 1902"
     page_count: Optional[int] = None
     newspaper_title: Optional[str] = None
@@ -58,8 +58,8 @@ class TextLine(BaseModel):
     height: Optional[int] = None
 
     # From filename parsing (denormalized for convenience)
-    issue_number: Optional[int] = None  # from filename (may differ from METS)
-    daily_issue_number: Optional[int] = None  # Number after H (2nd issue that day)
+    issue_number: Optional[int] = None  # Sequential publication number (may differ from METS)
+    edition: Optional[int] = None  # Edition of the day (1=morning, 2=midday, 3=evening)
     page_number: Optional[int] = None  # Last number in filename (e.g., 005)
 
     # From METS metadata (denormalized for convenience)

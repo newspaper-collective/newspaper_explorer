@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 import time
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import polars as pl
 
@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 def load_and_aggregate_textblocks(
     parquet_path: Union[str, Path],
-    group_by: Optional[List[str]] = None,
-    sort_by: Optional[List[str]] = None,
+    group_by: Optional[list[str]] = None,
+    sort_by: Optional[list[str]] = None,
     save_path: Optional[Union[str, Path]] = None,
+    *,
     auto_save: bool = True,
 ) -> pl.DataFrame:
     """
@@ -116,7 +117,7 @@ def load_and_aggregate_textblocks(
         "page_id",
         "page_number",
         "issue_number",
-        "daily_issue_number",
+        "edition",
     ]
 
     # Only include columns that actually exist in the DataFrame
@@ -125,7 +126,7 @@ def load_and_aggregate_textblocks(
     # Aggregate text blocks
     agg_exprs = [
         # Concatenate text with space separator
-        pl.col("text").str.concat(" ").alias("text"),
+        pl.col("text").str.join(delimiter=" ").alias("text"),
         # Count lines in block
         pl.count().alias("line_count"),
         # Average coordinates
@@ -139,28 +140,27 @@ def load_and_aggregate_textblocks(
     ]
 
     # Add metadata columns (take first value from group since they're the same within a block)
-    for col in available_metadata:
-        agg_exprs.append(pl.col(col).first().alias(col))
+    agg_exprs.extend(pl.col(col).first().alias(col) for col in available_metadata)
 
     aggregated = df.group_by(group_by, maintain_order=True).agg(agg_exprs)
 
     logger.info(f"Aggregated into {len(aggregated)} text blocks")
 
+    # Extract source name from path (e.g., "der_tag" from "data/raw/der_tag/text/lines.parquet")
+    parts = parquet_path.parts
+    try:
+        # Find "raw" in path and get the next part as source name
+        raw_idx = parts.index("raw")
+        source_name = parts[raw_idx + 1]
+    except (ValueError, IndexError):
+        # Fallback: try to infer from path structure
+        logger.warning("Could not extract source name from path, using 'unknown'")
+        source_name = "unknown"
+
     # Determine save path
     if save_path:
         final_save_path = Path(save_path)
     elif auto_save:
-        # Extract source name from path (e.g., "der_tag" from "data/raw/der_tag/text/lines.parquet")
-        parts = parquet_path.parts
-        try:
-            # Find "raw" in path and get the next part as source name
-            raw_idx = parts.index("raw")
-            source_name = parts[raw_idx + 1]
-        except (ValueError, IndexError):
-            # Fallback: try to infer from path structure
-            logger.warning("Could not extract source name from path, using 'unknown'")
-            source_name = "unknown"
-
         # Construct output path
         final_save_path = Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
         logger.info(f"Auto-save enabled: will save to {final_save_path}")
@@ -177,6 +177,7 @@ def load_and_aggregate_textblocks(
         # Save aggregation metadata
         end_time = time.time()
         metadata = AggregationMetadata(
+            aggregation_id=f"{source_name}_textblock_{int(start_time)}",
             source=source_name,
             aggregation_type="textblock",
             group_by=group_by,
@@ -186,6 +187,7 @@ def load_and_aggregate_textblocks(
             input_row_count=len(df),
             output_row_count=len(aggregated),
             duration_seconds=end_time - start_time,
+            error_message=None,
         )
         metadata_path = final_save_path.with_suffix(".json")
         metadata_path.write_text(

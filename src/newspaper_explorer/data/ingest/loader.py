@@ -60,7 +60,7 @@ class DataIngester:
 
         Metadata (denormalized for convenience):
             issue_number (int): Issue number from filename
-            daily_issue_number (int): Daily issue number (2nd issue that day)
+            edition (int): Daily issue number (2nd issue that day)
             page_number (int): Page number
             year_volume (str): Year volume from METS (e.g., "Jahrgang 1902")
             page_count (int): Total pages in issue from METS
@@ -293,13 +293,10 @@ class DataIngester:
                 "Initialize DataLoader with source_name parameter."
             )
 
-        # Determine source ID for ID generation (prefer zdb_source_id, fallback to source_name)
+        # Always use source_name for ID generation (canonical identifier)
+        # ZDB ID is kept in config for provenance only, not used in IDs
         source_id = self.source_name
-        if self.config_data and self.config_data.metadata.zdb_source_id:
-            source_id = self.config_data.metadata.zdb_source_id
-            logger.info(f"Using ZDB source ID for ID generation: {source_id}")
-        else:
-            logger.info(f"Using source name for ID generation: {source_id}")
+        logger.info(f"Using source name for ID generation: {source_id}")
 
         # Process files in parallel with METS cache
         logger.info("Processing ALTO XML files in parallel...")
@@ -459,13 +456,10 @@ class DataIngester:
                 "Provide source_name parameter or initialize DataLoader with source_name."
             )
 
-        # Determine source ID for ID generation (prefer zdb_source_id if available)
+        # Always use source_name for ID generation (canonical identifier)
+        # ZDB ID is kept in config for provenance only, not used in IDs
         source_id = src
-        if self.config_data and self.config_data.metadata.zdb_source_id:
-            source_id = self.config_data.metadata.zdb_source_id
-            logger.info(f"Using ZDB source ID for ID generation: {source_id}")
-        else:
-            logger.info(f"Using source name for ID generation: {source_id}")
+        logger.info(f"Using source name for ID generation: {source_id}")
 
         all_lines = []
 

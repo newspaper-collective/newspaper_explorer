@@ -288,25 +288,28 @@ class GLiNEREntityExtractor:
         self,
         df: pl.DataFrame,
         text_column: str = "text",
-        id_column: str = "line_id",
+        id_column: str = "text_block_id",
         limit: Optional[int] = None,
         num_gpus: int = 1,
     ) -> pl.DataFrame:
-        """
+        (
+            """
         Extract entities from a Polars DataFrame.
 
         Args:
             df: DataFrame with text data.
             text_column: Column containing text content.
-            id_column: Column containing unique identifiers (line_id, text_block_id, etc.).
+            id_column: Column containing unique identifiers (text_block_id, line_id, etc.).
             limit: Optional limit on number of rows to process.
             num_gpus: Number of GPUs to use (default: 1). Set to >1 for multi-GPU processing.
 
         Returns:
-            DataFrame with extracted entities (source_id, entity_text, entity_type, confidence, detection_count).
-            Note: source_id contains values from the id_column (maintains foreign key relationship).
+            DataFrame with extracted entities (text_block_id, source_id, entity_text, entity_type, confidence, detection_count).
+            Note: text_block_id contains values from the id_column (maintains foreign key relationship).
                   detection_count tracks how many times the same entity was detected (useful for chunked texts).
         """
+            ""
+        )
         logger.info(f"Extracting entities from {len(df)} rows")
 
         # Filter by text length
@@ -320,7 +323,7 @@ class GLiNEREntityExtractor:
         # Prepare texts with chunking
         logger.info("Preparing texts and chunking long texts...")
         texts = []
-        line_ids = []
+        block_ids = []
         chunk_counts = []
 
         for row in df_filtered.iter_rows(named=True):
@@ -334,7 +337,7 @@ class GLiNEREntityExtractor:
             # Add all chunks with same ID
             for chunk in chunks:
                 texts.append(chunk)
-                line_ids.append(row[id_column])
+                block_ids.append(row[id_column])
 
         total_chunks = len(texts)
         chunked_texts = sum(1 for c in chunk_counts if c > 1)
@@ -453,10 +456,10 @@ class GLiNEREntityExtractor:
         # Convert results to records
         all_records = []
         for idx, entities in processing_results:
-            line_id = line_ids[idx]
+            block_id = block_ids[idx]
 
-            # Extract foreign keys from line_id
-            fks = extract_foreign_keys(line_id)
+            # Extract foreign keys from block_id
+            fks = extract_foreign_keys(block_id)
 
             for entity in entities:
                 # Map label to standard type
@@ -464,11 +467,10 @@ class GLiNEREntityExtractor:
 
                 all_records.append(
                     {
-                        "line_id": line_id,
+                        "text_block_id": block_id,
                         "source_id": fks.get("source_id"),
                         "issue_id": fks.get("issue_id"),
                         "page_id": fks.get("page_id"),
-                        "text_block_id": fks.get("text_block_id"),
                         "entity_text": entity["text"],
                         "entity_type": entity_type,
                         "confidence": float(entity.get("score", 0.0)),
@@ -479,16 +481,15 @@ class GLiNEREntityExtractor:
         logger.info(f"Raw entities extracted: {len(all_records)}")
         if all_records:
             results_df_raw = pl.DataFrame(all_records)
-            # Deduplicate: keep highest confidence for each (line_id, entity_text, entity_type)
+            # Deduplicate: keep highest confidence for each (text_block_id, entity_text, entity_type)
             # Count detections to track how many times same entity was found across chunks
             results_df = (
                 results_df_raw.group_by(
                     [
-                        "line_id",
+                        "text_block_id",
                         "source_id",
                         "issue_id",
                         "page_id",
-                        "text_block_id",
                         "entity_text",
                         "entity_type",
                     ]
@@ -499,7 +500,9 @@ class GLiNEREntityExtractor:
                         pl.col("confidence").count().alias("detection_count"),
                     ]
                 )
-                .sort(["line_id", "entity_type", "confidence"], descending=[False, False, True])
+                .sort(
+                    ["text_block_id", "entity_type", "confidence"], descending=[False, False, True]
+                )
             )
             logger.info(f"After deduplication: {len(results_df)} unique entities")
         else:
@@ -507,11 +510,10 @@ class GLiNEREntityExtractor:
             # Empty DataFrame with correct schema
             results_df = pl.DataFrame(
                 schema={
-                    "line_id": pl.Utf8,
+                    "text_block_id": pl.Utf8,
                     "source_id": pl.Utf8,
                     "issue_id": pl.Utf8,
                     "page_id": pl.Utf8,
-                    "text_block_id": pl.Utf8,
                     "entity_text": pl.Utf8,
                     "entity_type": pl.Utf8,
                     "confidence": pl.Float64,
@@ -527,7 +529,7 @@ class GLiNEREntityExtractor:
         source_parquet: Optional[Path] = None,
         limit: Optional[int] = None,
         text_column: str = "text",
-        id_column: str = "line_id",
+        id_column: str = "text_block_id",
         num_gpus: int = 1,
     ) -> Dict:
         """
@@ -537,7 +539,7 @@ class GLiNEREntityExtractor:
             source_parquet: Path to source parquet file. If None, loads from DataLoader.
             limit: Optional limit on rows to process (for testing).
             text_column: Column containing text.
-            id_column: Column containing source IDs (line_id, text_block_id, etc.).
+            id_column: Column containing source IDs (text_block_id, line_id, etc.).
             num_gpus: Number of GPUs to use for parallel processing (default: 1).
 
         Returns:

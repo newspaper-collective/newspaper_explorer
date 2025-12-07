@@ -73,13 +73,13 @@ class TestALTOParser:
         (
             date,
             issue_number,
-            daily_issue_number,
+            edition,
             page_number,
         ) = parser._parse_filename("3074409X_1901-02-15_000_415_H_2_009.xml")
 
         assert date == datetime(1901, 2, 15)
         assert issue_number == 415
-        assert daily_issue_number == 2
+        assert edition == 2
         assert page_number == 9
 
     def test_parse_filename_invalid(self):

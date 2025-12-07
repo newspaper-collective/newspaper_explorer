@@ -11,6 +11,7 @@ from typing import Optional
 
 from lxml import etree
 
+from newspaper_explorer.data.utils.ids import extract_edition
 from newspaper_explorer.models.data.content import IssueMetadata
 
 logger = logging.getLogger(__name__)
@@ -68,8 +69,9 @@ class METSParser:
                 if match:
                     metadata.issue_number = int(match.group(1))
 
-            # Extract edition (Ausgabe)
-            metadata.edition = self._get_text(root, ".//mods:partNumber")
+            # Extract edition from filename (not from <mods:partNumber> which is always "Ausgabe A")
+            # Edition is the numeric value (1=morning, 2=midday, 3=evening) from filename pattern _H_N_
+            metadata.edition = extract_edition(filename=filename)
 
             # Extract year/volume
             metadata.year_volume = self._get_text(

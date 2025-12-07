@@ -104,7 +104,7 @@ class TestIDParsing:
         assert components.source == "der_tag"
         assert components.date == "1902-09-05"
         assert components.issue_number == 415
-        assert components.daily_issue_number == 2
+        assert components.edition == 2
         assert components.page_number == 5
 
     def test_parse_page_id_invalid(self):
@@ -119,7 +119,7 @@ class TestIDParsing:
         assert components.source == "der_tag"
         assert components.date == "1902-09-05"
         assert components.issue_number == 415
-        assert components.daily_issue_number == 2
+        assert components.edition == 2
 
     def test_parse_issue_id_invalid(self):
         """Test parsing invalid issue ID"""
@@ -130,15 +130,15 @@ class TestIDParsing:
         """Test parsing line ID"""
         components = parse_line_id("der_tag_1902-09-05_415_2_005_TB_1_TL_1")
 
-        assert components["source"] == "der_tag"
-        assert components["date"] == "1902-09-05"
-        assert components["issue_number"] == 415
-        assert components["daily_issue_number"] == 2
-        assert components["page_number"] == 5
-        assert components["block_id"] == "TB_1"
-        assert components["line_id"] == "TL_1"
-        assert components["full_page_id"] == "der_tag_1902-09-05_415_2_005"
-        assert components["full_text_block_id"] == "der_tag_1902-09-05_415_2_005_TB_1"
+        assert components.source == "der_tag"
+        assert components.date == "1902-09-05"
+        assert components.issue_number == 415
+        assert components.edition == 2
+        assert components.page_number == 5
+        assert components.block_id == "TB_1"
+        assert components.line_id == "TL_1"
+        assert components.full_page_id == "der_tag_1902-09-05_415_2_005"
+        assert components.full_text_block_id == "der_tag_1902-09-05_415_2_005_TB_1"
 
     def test_parse_line_id_invalid(self):
         """Test parsing invalid line ID"""

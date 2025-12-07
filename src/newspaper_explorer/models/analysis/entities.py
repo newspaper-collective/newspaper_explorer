@@ -26,14 +26,11 @@ class EntityRecord(BaseModel):
     )
     confidence: float = Field(..., ge=0.0, le=1.0, description="Detection confidence score")
 
-    # Source reference (foreign key)
-    line_id: str = Field(..., description="Line ID where entity was detected")
-
-    # Optional foreign keys for easier querying
-    source_id: Optional[str] = Field(None, description="Source identifier (foreign key)")
-    issue_id: Optional[str] = Field(None, description="Issue identifier (foreign key)")
-    page_id: Optional[str] = Field(None, description="Page identifier (foreign key)")
-    text_block_id: Optional[str] = Field(None, description="Text block identifier (foreign key)")
+    # Foreign keys (required)
+    text_block_id: str = Field(..., description="Text block ID where entity was detected")
+    source_id: str = Field(..., description="Source identifier (foreign key)")
+    issue_id: str = Field(..., description="Issue identifier (foreign key)")
+    page_id: str = Field(..., description="Page identifier (foreign key)")
 
     # Optional context
     text: Optional[str] = Field(None, description="Full text context where entity was found")
@@ -50,11 +47,10 @@ class EntityRecord(BaseModel):
                 "entity_text": "Berlin",
                 "entity_type": "location",
                 "confidence": 0.95,
-                "line_id": "3074409-X_1902-09-05_415_2_005_TB_1_TL_1",
-                "source_id": "3074409-X",
-                "issue_id": "3074409-X_1902-09-05_415_2",
-                "page_id": "3074409-X_1902-09-05_415_2_005",
-                "text_block_id": "3074409-X_1902-09-05_415_2_005_TB_1",
+                "text_block_id": "der_tag_1902-09-05_415_2_005_r_1_1",
+                "source_id": "der_tag",
+                "issue_id": "der_tag_1902-09-05_415_2",
+                "page_id": "der_tag_1902-09-05_415_2_005",
                 "text": "Der Kaiser besuchte Berlin gestern.",
                 "start_char": 21,
                 "end_char": 27,
@@ -83,8 +79,8 @@ class AggregatedEntityRecord(BaseModel):
     max_confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Maximum confidence")
 
     # Source references (list of all occurrences)
-    line_ids: list[str] = Field(
-        default_factory=list, description="All line IDs where entity appears"
+    text_block_ids: list[str] = Field(
+        default_factory=list, description="All text block IDs where entity appears"
     )
 
     class Config:
@@ -98,9 +94,9 @@ class AggregatedEntityRecord(BaseModel):
                 "avg_confidence": 0.93,
                 "min_confidence": 0.85,
                 "max_confidence": 0.98,
-                "line_ids": [
-                    "3074409-X_1902-09-05_415_2_005_TB_1_TL_1",
-                    "3074409-X_1902-09-05_415_2_005_TB_2_TL_3",
+                "text_block_ids": [
+                    "der_tag_1902-09-05_415_2_005_r_1_1",
+                    "der_tag_1902-09-05_415_2_005_r_1_2",
                 ],
             }
         }

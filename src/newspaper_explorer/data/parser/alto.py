@@ -19,6 +19,7 @@ from newspaper_explorer.data.utils.ids import (
     generate_page_id,
     generate_source_id,
     generate_text_block_id,
+    parse_alto_filename,
 )
 from newspaper_explorer.models.data.content import TextLine
 
@@ -62,49 +63,31 @@ class ALTOParser:
     def _parse_filename(
         self, filename: str
     ) -> tuple[
-        Optional[datetime],  # date
+        Optional["datetime"],  # date
         Optional[int],  # issue_number
-        Optional[int],  # daily_issue_number
+        Optional[int],  # edition
         Optional[int],  # page_number
     ]:
         """
         Parse all metadata from ALTO filename in a single pass.
 
+        Uses the unified parse_alto_filename() function from ids.py.
+
         Format: 3074409X_1902-09-05_000_415_H_2_005.xml
-        Components:
-        - 3074409X: newspaper ID (ignored, we use source_id from config instead)
-        - 1902-09-05: date (YYYY-MM-DD)
-        - 000: unknown field (always 000)
-        - 415: issue number (may differ from METS)
-        - H: separator meaning "Heft" (issue)
-        - 2: daily issue number (1st, 2nd, 3rd issue that day)
-        - 005: page number
 
         Returns:
-            (date, issue_number, daily_issue_number, page_number)
+            (date, issue_number, edition, page_number)
         """
-        # Single regex to capture all components
-        pattern = r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_\d{3}_(\d+)_H_(\d+)_(\d+)"
-        match = re.match(pattern, filename)
-
-        if not match:
+        parsed = parse_alto_filename(filename)
+        if parsed is None:
             return None, None, None, None
 
-        # Skip newspaper_id (group 1) - we use source_id from config instead
-        year = int(match.group(2))
-        month = int(match.group(3))
-        day = int(match.group(4))
-        issue_number = int(match.group(5))
-        daily_issue_number = int(match.group(6))
-        page_number = int(match.group(7))
-
-        # Try to create datetime object
-        try:
-            date = datetime(year, month, day)
-        except ValueError:
-            date = None
-
-        return date, issue_number, daily_issue_number, page_number
+        return (
+            parsed.date,
+            parsed.issue_number,
+            parsed.edition,
+            parsed.page_number,
+        )
 
     def parse_file(
         self,
@@ -135,7 +118,7 @@ class ALTOParser:
             (
                 date,
                 issue_number,
-                daily_issue_number,
+                edition,
                 page_number,
             ) = self._parse_filename(filename)
 
@@ -151,17 +134,17 @@ class ALTOParser:
 
             # Generate IDs using unified ID system
             # Skip if we don't have the required components
-            if not (date and issue_number and daily_issue_number and page_number):
+            if not (date and issue_number and edition and page_number):
                 logger.warning(
                     f"Skipping {filename}: Missing required ID components "
-                    f"(date={date}, issue={issue_number}, daily={daily_issue_number}, page={page_number})"
+                    f"(date={date}, issue={issue_number}, daily={edition}, page={page_number})"
                 )
                 return []
 
             # Generate hierarchical IDs
-            issue_id_str = generate_issue_id(source_name, date, issue_number, daily_issue_number)
+            issue_id_str = generate_issue_id(source_name, date, issue_number, edition)
             page_id_str = generate_page_id(
-                source_name, date, issue_number, daily_issue_number, page_number
+                source_name, date, issue_number, edition, page_number
             )
 
             # Find all TextBlocks
@@ -236,7 +219,7 @@ class ALTOParser:
                             height=safe_int(height),
                             # Denormalized Metadata
                             issue_number=issue_number,
-                            daily_issue_number=daily_issue_number,
+                            edition=edition,
                             page_number=page_number,
                             year_volume=year_volume,
                             page_count=page_count,

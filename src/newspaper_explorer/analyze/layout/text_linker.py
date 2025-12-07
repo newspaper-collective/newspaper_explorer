@@ -301,18 +301,14 @@ class TextLinker:
         Extract lines from Polars DataFrame for a specific page.
 
         Args:
-            df: DataFrame with parsed ALTO lines
+            df: DataFrame with parsed ALTO lines (must have page_id column)
             page_id: Page identifier to filter
 
         Returns:
             List of line dictionaries
         """
-        # Filter for this page - use page_id column if available, otherwise filename
-        if "page_id" in df.columns:
-            page_df = df.filter(pl.col("page_id") == page_id)
-        else:
-            # Fallback to filename matching for older data
-            page_df = df.filter(pl.col("filename").str.contains(page_id))
+        # Filter for this page using page_id column
+        page_df = df.filter(pl.col("page_id") == page_id)
 
         if page_df.is_empty():
             return []

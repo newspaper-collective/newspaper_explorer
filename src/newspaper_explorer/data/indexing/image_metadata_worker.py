@@ -1,9 +1,10 @@
 """Worker functions for parallel data processing."""
 
 import contextlib
+from datetime import datetime
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -16,9 +17,9 @@ def extract_image_metadata_worker(
     img_path: Path,
     images_dir: Path,
     source_id: str,
-    mets_cache: dict,
-    alto_cache: dict,
-) -> Optional[dict]:
+    mets_cache: dict[str, Any],
+    alto_cache: dict[str, tuple[int, int]],
+) -> Optional[dict[str, Any]]:
     """
     Worker function for parallel image metadata extraction.
 
@@ -41,16 +42,17 @@ def extract_image_metadata_worker(
 
         # Parse path structure: YYYY/MM/DD/issue_number/filename.jpg
         parts = rel_path.parts
-        if len(parts) < 5:
+        try:
+            year, month, day, issue_num, filename = parts[:5]
+        except ValueError:
+            logger.debug(f"Unexpected image path structure: {rel_path}")
             return None
 
-        year, month, day, issue_num, filename = parts[0], parts[1], parts[2], parts[3], parts[4]
         # Extract page number from filename (e.g., "max_7.jpg" -> 7)
         page_number = None
         if "max_" in filename:
             with contextlib.suppress(IndexError, ValueError):
                 page_number = int(filename.split("max_")[1].split(".")[0])
-                pass
 
         # Create path-based key for METS lookup
         path_key = f"{year}/{month}/{day}/{issue_num}"
@@ -81,8 +83,8 @@ def extract_image_metadata_worker(
         try:
             with Image.open(img_path) as img:
                 width, height = img.size
-        except Exception:
-            pass
+        except (OSError, Image.DecompressionBombError) as e:
+            logger.debug(f"Failed to read image dimensions from {img_path}: {e}")
 
         # Generate page_id using the standard function if we have all required data
         page_id = None
@@ -90,22 +92,21 @@ def extract_image_metadata_worker(
             page_number is not None
             and mets_data.get("date")
             and mets_data.get("issue_number") is not None
-            and mets_data.get("daily_issue_number") is not None
+            and mets_data.get("edition") is not None
         ):
-            from datetime import datetime
-
             date_obj = datetime.fromisoformat(mets_data["date"])
             page_id = generate_page_id(
                 source_id,
                 date_obj,
                 mets_data["issue_number"],
-                mets_data["daily_issue_number"],
+                mets_data["edition"],
                 page_number,
             )
 
         # Build record
-        record = {
+        record: dict[str, Any] = {
             "image_path": rel_path_str,
+            "source_id": source_id,
             "year": int(year),
             "month": int(month),
             "day": int(day),
@@ -123,7 +124,7 @@ def extract_image_metadata_worker(
             "year_volume": mets_data.get("year_volume"),
             "page_count": mets_data.get("page_count"),
             "issue_number": mets_data.get("issue_number"),
-            "daily_issue_number": mets_data.get("daily_issue_number"),
+            "edition": mets_data.get("edition"),
             "file_exists": True,
         }
 

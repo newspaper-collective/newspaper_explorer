@@ -1,7 +1,7 @@
 """
-Unified ID generation utilities for newspaper data.
+Unified ID generation and parsing utilities for newspaper data.
 
-This module provides consistent ID generation across all data processing stages:
+This module provides consistent ID generation and parsing across all data processing stages:
 - Source data (ALTO/METS parsing)
 - Preprocessing
 - Analysis (layout detection, entity extraction, etc.)
@@ -12,14 +12,208 @@ ID Hierarchy:
     source_id -> issue_id -> page_id -> text_block_id -> line_id
                           -> page_id -> detection_id
                                      -> article_id
+
+Canonical source_id format: source_name (e.g., "der_tag")
+- Human-readable and matches directory structure
+- ZDB ID stored separately in config for provenance
 """
 
-import logging
-import uuid
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, NamedTuple, Optional, Union
+from functools import lru_cache
+import logging
+import re
+from typing import TYPE_CHECKING, NamedTuple, Optional
+import uuid
+
+if TYPE_CHECKING:
+    import polars as pl
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Filename Parsing (ALTO/METS source files)
+# ============================================================================
+
+
+@dataclass
+class ParsedFilename:
+    """
+    Components parsed from an ALTO/METS filename.
+
+    ALTO filename format: 3074409X_1902-09-05_000_415_H_2_005.xml
+    Components:
+    - zdb_prefix: "3074409X" (ZDB ID without hyphen, NOT used for ID generation)
+    - date: datetime(1902, 9, 5)
+    - unknown_field: "000" (always 000, purpose unknown)
+    - issue_number: 415 (sequential publication number, can repeat across editions)
+    - separator: "H" (means "Heft" = issue)
+    - edition: 2 (edition of the day: 1=morning, 2=midday, 3=evening)
+    - page_number: 5
+
+    Note: The zdb_prefix from filenames is NOT used for ID generation.
+    We use source_name (e.g., "der_tag") from config instead.
+
+    Important: `issue_number` and `edition` are NOT independent!
+    Multiple editions can share the same issue_number (e.g., morning and midday
+    editions both labeled as issue 37, while evening edition is issue 38).
+    """
+
+    zdb_prefix: str
+    date: datetime
+    unknown_field: str
+    issue_number: int
+    separator: str
+    edition: int
+    page_number: int
+
+
+# Regex pattern for ALTO filenames
+# Format: 3074409X_1902-09-05_000_415_H_2_005.xml
+_ALTO_FILENAME_PATTERN = re.compile(
+    r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_(\d{3})_(\d+)_([A-Z])_(\d+)_(\d+)"
+)
+
+# Regex pattern for METS filenames (no page suffix)
+# Format: 3074409X_1902-09-05_000_415_H_2.xml
+_METS_FILENAME_PATTERN = re.compile(
+    r"^([A-Z0-9]+)_(\d{4})-(\d{2})-(\d{2})_(\d{3})_(\d+)_([A-Z])_(\d+)\.xml$"
+)
+
+# Simpler pattern to just extract edition from _H_N_ part
+_EDITION_PATTERN = re.compile(r"_([A-Z])_(\d+)(?:_\d+)?\.xml$")
+
+
+def parse_alto_filename(filename: str) -> Optional[ParsedFilename]:
+    """
+    Parse an ALTO/METS filename into its components.
+
+    This is the single source of truth for parsing ALTO filenames.
+    Use this instead of duplicating regex patterns.
+
+    Args:
+        filename: ALTO filename (e.g., "3074409X_1902-09-05_000_415_H_2_005.xml")
+
+    Returns:
+        ParsedFilename with all components, or None if format doesn't match
+
+    Example:
+        >>> parsed = parse_alto_filename("3074409X_1902-09-05_000_415_H_2_005.xml")
+        >>> parsed.date
+        datetime.datetime(1902, 9, 5, 0, 0)
+        >>> parsed.issue_number
+        415
+        >>> parsed.page_number
+        5
+    """
+    match = _ALTO_FILENAME_PATTERN.match(filename)
+    if not match:
+        return None
+
+    zdb_prefix = match.group(1)
+    year = int(match.group(2))
+    month = int(match.group(3))
+    day = int(match.group(4))
+    unknown_field = match.group(5)
+    issue_number = int(match.group(6))
+    separator = match.group(7)
+    edition = int(match.group(8))
+    page_number = int(match.group(9))
+
+    try:
+        date = datetime(year, month, day)
+    except ValueError:
+        return None
+
+    return ParsedFilename(
+        zdb_prefix=zdb_prefix,
+        date=date,
+        unknown_field=unknown_field,
+        issue_number=issue_number,
+        separator=separator,
+        edition=edition,
+        page_number=page_number,
+    )
+
+
+# Maximum reasonable edition number per day
+_MAX_EDITION = 9
+
+
+def extract_edition(
+    *,
+    filename: Optional[str] = None,
+    folder_path: Optional[str] = None,
+) -> Optional[int]:
+    """
+    Extract the numeric edition (1=morning, 2=midday, 3=evening) from available sources.
+
+    This is the **authoritative** function for edition extraction.
+    Priority order:
+    1. ALTO/METS filename (e.g., "..._H_2_..." → 2)
+    2. Folder path (e.g., "/1920/03/03/02/" → 2)
+
+    Args:
+        filename: ALTO or METS filename (e.g., "3074409X_1902-09-05_000_415_H_2_005.xml")
+        folder_path: Path containing edition folder (e.g., "1920/03/03/02" or Path object)
+
+    Returns:
+        Numeric edition (1, 2, or 3), or None if extraction fails
+
+    Example:
+        >>> extract_edition(filename="3074409X_1902-09-05_000_415_H_2_005.xml")
+        2
+        >>> extract_edition(filename="3074409X_1920-03-03_000_53_H_1.xml")  # METS
+        1
+        >>> extract_edition(folder_path="1920/03/03/02")
+        2
+    """
+    # Priority 1: Extract from filename using simple pattern (works for ALTO and METS)
+    if filename:
+        # First try full ALTO parsing
+        parsed = parse_alto_filename(filename)
+        if parsed:
+            return parsed.edition
+        # Fallback: use simpler pattern for METS filenames (no page suffix)
+        match = _EDITION_PATTERN.search(filename)
+        if match:
+            return int(match.group(2))
+
+    # Priority 2: Extract from folder path
+    if folder_path:
+        edition = _extract_edition_from_path(folder_path)
+        if edition:
+            return edition
+
+    return None
+
+
+def _extract_edition_from_path(path: str) -> Optional[int]:
+    """
+    Extract edition number from a path like '1920/03/03/02/...'.
+
+    Path structure expected: YYYY/MM/DD/EDITION/[filename or fulltext/...]
+    The edition is the 4th component (index 3) after the year.
+    """
+    path_str = str(path).replace("\\", "/").strip("/")
+    parts = path_str.split("/")
+
+    # Look for YYYY/MM/DD/ED pattern
+    # Find the year component (4 digits starting with 18 or 19 or 20)
+    for i, part in enumerate(parts):
+        if len(part) == 4 and part.isdigit() and part[:2] in ("18", "19", "20"):
+            # Found year at index i, edition should be at index i+3 (YYYY/MM/DD/ED)
+            edition_idx = i + 3
+            if edition_idx < len(parts):
+                edition_part = parts[edition_idx]
+                if edition_part.isdigit() and len(edition_part) <= 2:
+                    edition = int(edition_part)
+                    if 1 <= edition <= _MAX_EDITION:
+                        return edition
+            break  # Only check first year found
+
+    return None
 
 
 # ============================================================================
@@ -74,7 +268,7 @@ def generate_issue_id(
     source: str,
     date: datetime,
     issue_number: int,
-    daily_issue_number: int,
+    edition: int,
 ) -> str:
     """
     Generate a unique issue identifier.
@@ -82,26 +276,31 @@ def generate_issue_id(
     Args:
         source: Source name (e.g., "der_tag")
         date: Publication date
-        issue_number: Issue number (e.g., 415)
-        daily_issue_number: Daily issue number (e.g., 2)
+        issue_number: Sequential publication number (e.g., 415)
+        edition: Edition of the day (1=morning, 2=midday, 3=evening)
 
     Returns:
-        Issue ID in format: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
+        Issue ID in format: {source}_{YYYY-MM-DD}_{issue:03d}_{edition}
 
     Example:
         >>> from datetime import datetime
         >>> generate_issue_id("der_tag", datetime(1902, 9, 5), 415, 2)
         'der_tag_1902-09-05_415_2'
+
+    Note:
+        Multiple editions can share the same issue_number. For example,
+        morning (edition=1) and midday (edition=2) might both be issue 37,
+        while evening (edition=3) is issue 38.
     """
     date_str = date.strftime("%Y-%m-%d")
-    return f"{source}_{date_str}_{issue_number:03d}_{daily_issue_number}"
+    return f"{source}_{date_str}_{issue_number:03d}_{edition}"
 
 
 def generate_page_id(
     source: str,
     date: datetime,
     issue_number: int,
-    daily_issue_number: int,
+    edition: int,
     page_number: int,
 ) -> str:
     """
@@ -110,19 +309,19 @@ def generate_page_id(
     Args:
         source: Source name (e.g., "der_tag")
         date: Publication date
-        issue_number: Issue number (e.g., 415)
-        daily_issue_number: Daily issue number (e.g., 2)
+        issue_number: Sequential publication number (e.g., 415)
+        edition: Edition of the day (1=morning, 2=midday, 3=evening)
         page_number: Page number (e.g., 5)
 
     Returns:
-        Page ID in format: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}_{page:03d}
+        Page ID in format: {source}_{YYYY-MM-DD}_{issue:03d}_{edition}_{page:03d}
 
     Example:
         >>> from datetime import datetime
         >>> generate_page_id("der_tag", datetime(1902, 9, 5), 415, 2, 5)
         'der_tag_1902-09-05_415_2_005'
     """
-    issue_id = generate_issue_id(source, date, issue_number, daily_issue_number)
+    issue_id = generate_issue_id(source, date, issue_number, edition)
     return f"{issue_id}_{page_number:03d}"
 
 
@@ -226,13 +425,40 @@ def generate_entity_id(line_id: str) -> str:
 # ============================================================================
 
 
+# Compiled regex for date pattern matching (YYYY-MM-DD)
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _find_date_index(parts: list[str]) -> Optional[int]:
+    """
+    Find the index of the date part (YYYY-MM-DD) in a list of ID components.
+
+    This is used internally to handle multi-part source names like "der_tag".
+    Uses compiled regex for efficient matching.
+
+    Args:
+        parts: List of ID components split by underscore
+
+    Returns:
+        Index of the date part, or None if not found
+
+    Example:
+        >>> _find_date_index(["der", "tag", "1902-09-05", "415", "2"])
+        2
+    """
+    for i, part in enumerate(parts):
+        if _DATE_PATTERN.match(part):
+            return i
+    return None
+
+
 class PageIdComponents(NamedTuple):
     """Components extracted from a page_id."""
 
     source: str
     date: str
     issue_number: int
-    daily_issue_number: int
+    edition: int
     page_number: int
 
 
@@ -242,7 +468,21 @@ class IssueIdComponents(NamedTuple):
     source: str
     date: str
     issue_number: int
-    daily_issue_number: int
+    edition: int
+
+
+class LineIdComponents(NamedTuple):
+    """Components extracted from a line_id."""
+
+    source: str
+    date: str
+    issue_number: int
+    edition: int
+    page_number: int
+    block_id: str
+    line_id: str
+    full_page_id: str
+    full_text_block_id: str
 
 
 def parse_page_id(page_id: str) -> PageIdComponents:
@@ -273,27 +513,21 @@ def parse_page_id(page_id: str) -> PageIdComponents:
         )
 
     # Handle multi-part source names (e.g., "der_tag")
-    # Find the date part (format: YYYY-MM-DD)
-    date_idx = None
-    for i, part in enumerate(parts):
-        if len(part) == 10 and part[4] == "-" and part[7] == "-":
-            date_idx = i
-            break
-
+    date_idx = _find_date_index(parts)
     if date_idx is None:
         raise ValueError(f"Could not find date in page_id: {page_id}")
 
     source = "_".join(parts[:date_idx])
     date_str = parts[date_idx]
     issue_number = int(parts[date_idx + 1])
-    daily_issue_number = int(parts[date_idx + 2])
+    edition = int(parts[date_idx + 2])
     page_number = int(parts[date_idx + 3])
 
     return PageIdComponents(
         source=source,
         date=date_str,
         issue_number=issue_number,
-        daily_issue_number=daily_issue_number,
+        edition=edition,
         page_number=page_number,
     )
 
@@ -326,30 +560,24 @@ def parse_issue_id(issue_id: str) -> IssueIdComponents:
         )
 
     # Handle multi-part source names (e.g., "der_tag")
-    # Find the date part (format: YYYY-MM-DD)
-    date_idx = None
-    for i, part in enumerate(parts):
-        if len(part) == 10 and part[4] == "-" and part[7] == "-":
-            date_idx = i
-            break
-
+    date_idx = _find_date_index(parts)
     if date_idx is None:
         raise ValueError(f"Could not find date in issue_id: {issue_id}")
 
     source = "_".join(parts[:date_idx])
     date_str = parts[date_idx]
     issue_number = int(parts[date_idx + 1])
-    daily_issue_number = int(parts[date_idx + 2])
+    edition = int(parts[date_idx + 2])
 
     return IssueIdComponents(
         source=source,
         date=date_str,
         issue_number=issue_number,
-        daily_issue_number=daily_issue_number,
+        edition=edition,
     )
 
 
-def parse_line_id(line_id: str) -> Dict[str, Union[str, int]]:
+def parse_line_id(line_id: str) -> LineIdComponents:
     """
     Parse a line ID into its components.
 
@@ -357,25 +585,16 @@ def parse_line_id(line_id: str) -> Dict[str, Union[str, int]]:
         line_id: Line ID (e.g., "der_tag_1902-09-05_415_2_005_TB_1_TL_1")
 
     Returns:
-        Dictionary with extracted components:
-        - source: Source identifier
-        - date: Date string (YYYY-MM-DD)
-        - issue_number: Issue number (int)
-        - daily_issue_number: Daily issue number (int)
-        - page_number: Page number (int)
-        - block_id: Text block ID
-        - line_id: Line ID within block
-        - full_page_id: Complete page ID
-        - full_text_block_id: Complete text block ID
+        LineIdComponents with extracted fields
 
     Raises:
         ValueError: If line_id format is invalid
 
     Example:
             >>> components = parse_line_id("der_tag_1902-09-05_415_2_005_TB_1_TL_1")
-            >>> components["source"]
+            >>> components.source
             'der_tag'
-            >>> components["line_id"]
+            >>> components.line_id
             'TL_1'
     """
     parts = line_id.split("_")
@@ -385,29 +604,25 @@ def parse_line_id(line_id: str) -> Dict[str, Union[str, int]]:
             f"Expected: {{source}}_{{date}}_{{issue}}_{{daily}}_{{page}}_{{block}}_{{line}}"
         )
 
-    # Find the date part (format: YYYY-MM-DD)
-    date_idx = None
-    for i, part in enumerate(parts):
-        if len(part) == 10 and part[4] == "-" and part[7] == "-":
-            date_idx = i
-            break
-
+    # Handle multi-part source names (e.g., "der_tag")
+    date_idx = _find_date_index(parts)
     if date_idx is None:
         raise ValueError(f"Could not find date in line_id: {line_id}")
 
     source = "_".join(parts[:date_idx])
     date_str = parts[date_idx]
     issue_number = int(parts[date_idx + 1])
-    daily_issue_number = int(parts[date_idx + 2])
+    edition = int(parts[date_idx + 2])
     page_number = int(parts[date_idx + 3])
 
-    # Find line ID marker (TL = TextLine)
+    # Find line ID marker (TL = TextLine) using tuple for O(1) lookup
     # The rest between page and line ID is the block ID
-    tl_idx = None
-    for i in range(date_idx + 4, len(parts)):
-        if parts[i] == "TL":
-            tl_idx = i
-            break
+    parts_tuple = tuple(parts)
+    try:
+        # Try to find TL marker starting from after page number
+        tl_idx = parts_tuple.index("TL", date_idx + 4)
+    except ValueError:
+        tl_idx = None
 
     if tl_idx is None:
         # No TL marker found, assume everything after page is block_id + line_id
@@ -424,20 +639,20 @@ def parse_line_id(line_id: str) -> Dict[str, Union[str, int]]:
         block_id = "_".join(parts[date_idx + 4 : tl_idx])
         line_id_str = "_".join(parts[tl_idx:])
 
-    page_id = f"{source}_{date_str}_{issue_number:03d}_{daily_issue_number}_{page_number:03d}"
-    text_block_id = f"{page_id}_{block_id}"
+    full_page_id = f"{source}_{date_str}_{issue_number:03d}_{edition}_{page_number:03d}"
+    full_text_block_id = f"{full_page_id}_{block_id}"
 
-    return {
-        "source": source,
-        "date": date_str,
-        "issue_number": issue_number,
-        "daily_issue_number": daily_issue_number,
-        "page_number": page_number,
-        "block_id": block_id,
-        "line_id": line_id_str,
-        "full_page_id": page_id,
-        "full_text_block_id": text_block_id,
-    }
+    return LineIdComponents(
+        source=source,
+        date=date_str,
+        issue_number=issue_number,
+        edition=edition,
+        page_number=page_number,
+        block_id=block_id,
+        line_id=line_id_str,
+        full_page_id=full_page_id,
+        full_text_block_id=full_text_block_id,
+    )
 
 
 # ============================================================================
@@ -461,7 +676,9 @@ def extract_issue_id_from_page_id(page_id: str) -> str:
     """
     # Use parsing to handle multi-part source names
     components = parse_page_id(page_id)
-    return f"{components.source}_{components.date}_{components.issue_number:03d}_{components.daily_issue_number}"
+    return (
+        f"{components.source}_{components.date}_{components.issue_number:03d}_{components.edition}"
+    )
 
 
 def extract_page_id_from_text_block_id(text_block_id: str) -> str:
@@ -479,14 +696,7 @@ def extract_page_id_from_text_block_id(text_block_id: str) -> str:
         'der_tag_1902-09-05_415_2_005'
     """
     parts = text_block_id.split("_")
-
-    # Find the date part (format: YYYY-MM-DD)
-    date_idx = None
-    for i, part in enumerate(parts):
-        if len(part) == 10 and part[4] == "-" and part[7] == "-":
-            date_idx = i
-            break
-
+    date_idx = _find_date_index(parts)
     if date_idx is None:
         raise ValueError(f"Could not find date in text_block_id: {text_block_id}")
 
@@ -592,20 +802,12 @@ def identify_id_type(id_string: str) -> str:
             # Last part is a short UUID (6 hex chars)
             return "detection_id"
 
-    # Find date marker (YYYY-MM-DD format)
+    # Find date marker (YYYY-MM-DD format) using compiled regex
     date_idx = None
     for i, part in enumerate(parts):
-        if len(part) == 10 and part.count("-") == 2:
-            try:
-                # Verify it looks like a date
-                if part[4] == "-" and part[7] == "-":
-                    int(part[:4])  # Year
-                    int(part[5:7])  # Month
-                    int(part[8:10])  # Day
-                    date_idx = i
-                    break
-            except ValueError:
-                continue
+        if _DATE_PATTERN.match(part):
+            date_idx = i
+            break
 
     # No date found - must be source_id or unknown
     if date_idx is None:
@@ -637,18 +839,95 @@ def identify_id_type(id_string: str) -> str:
         # Check for TL (TextLine) marker
         if "TL" in parts[date_idx + 4 :]:
             return "line_id"
-        else:
-            return "text_block_id"
+        return "text_block_id"
 
     return "unknown"
 
 
-def extract_foreign_keys(id_string: str) -> Dict[str, Optional[str]]:
+@lru_cache(maxsize=10000)
+def _extract_foreign_keys_cached(
+    id_string: str,
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """
+    Internal cached implementation of extract_foreign_keys.
+
+    Returns a tuple instead of dict for hashability/caching.
+    Order: (source_id, issue_id, page_id, text_block_id, line_id)
+    """
+    id_type = identify_id_type(id_string)
+
+    source_id: Optional[str] = None
+    issue_id: Optional[str] = None
+    page_id: Optional[str] = None
+    text_block_id: Optional[str] = None
+    line_id: Optional[str] = None
+
+    try:
+        if id_type == "line_id" or id_type == "entity_id":
+            # Extract line components
+            if id_type == "entity_id":
+                # Remove _ent_{uuid} suffix
+                parts = id_string.split("_")
+                line_id_str = "_".join(parts[:-2])
+            else:
+                line_id_str = id_string
+
+            components = parse_line_id(line_id_str)
+            source_id = components.source
+            issue_id = (
+                f"{components.source}_{components.date}_"
+                f"{components.issue_number:03d}_{components.edition}"
+            )
+            page_id = components.full_page_id
+            text_block_id = components.full_text_block_id
+            line_id = line_id_str
+
+        elif id_type == "text_block_id":
+            # Extract text block components
+            page_id_extracted = extract_page_id_from_text_block_id(id_string)
+            page_components = parse_page_id(page_id_extracted)
+            source_id = page_components.source
+            issue_id = extract_issue_id_from_page_id(page_id_extracted)
+            page_id = page_id_extracted
+            text_block_id = id_string
+
+        elif id_type == "page_id" or id_type == "detection_id" or id_type == "article_id":
+            # Extract page components
+            if id_type in ["detection_id", "article_id"]:
+                # Remove suffix to get page_id
+                page_id_extracted = extract_page_id_from_detection_or_article_id(id_string)
+            else:
+                page_id_extracted = id_string
+
+            page_components = parse_page_id(page_id_extracted)
+            source_id = page_components.source
+            issue_id = extract_issue_id_from_page_id(page_id_extracted)
+            page_id = page_id_extracted
+
+        elif id_type == "issue_id":
+            # Extract issue components
+            issue_components = parse_issue_id(id_string)
+            source_id = issue_components.source
+            issue_id = id_string
+
+        elif id_type == "source_id":
+            source_id = id_string
+
+    except (ValueError, IndexError) as e:
+        logger.warning(f"Could not extract foreign keys from {id_string}: {e}")
+
+    return (source_id, issue_id, page_id, text_block_id, line_id)
+
+
+def extract_foreign_keys(id_string: str) -> dict[str, Optional[str]]:
     """
     Extract all foreign key IDs from any ID type.
 
     Given any ID in the system, extract all parent IDs (foreign keys)
     that link this entity to higher levels in the hierarchy.
+
+    Results are cached for performance - repeated calls with the same
+    ID string return cached results without re-parsing.
 
     Args:
         id_string: Any ID string from the system
@@ -672,14 +951,13 @@ def extract_foreign_keys(id_string: str) -> Dict[str, Optional[str]]:
         >>> fks["text_block_id"]
         '3074409-X_1902-09-05_415_2_005_TB_1'
     """
-    id_type = identify_id_type(id_string)
-
-    result: Dict[str, Optional[str]] = {
-        "source_id": None,
-        "issue_id": None,
-        "page_id": None,
-        "text_block_id": None,
-        "line_id": None,
+    cached = _extract_foreign_keys_cached(id_string)
+    return {
+        "source_id": cached[0],
+        "issue_id": cached[1],
+        "page_id": cached[2],
+        "text_block_id": cached[3],
+        "line_id": cached[4],
     }
 
     try:
@@ -693,13 +971,13 @@ def extract_foreign_keys(id_string: str) -> Dict[str, Optional[str]]:
                 line_id = id_string
 
             components = parse_line_id(line_id)
-            result["source_id"] = str(components["source"])
+            result["source_id"] = components.source
             result["issue_id"] = (
-                f"{components['source']}_{components['date']}_"
-                f"{components['issue_number']:03d}_{components['daily_issue_number']}"
+                f"{components.source}_{components.date}_"
+                f"{components.issue_number:03d}_{components.edition}"
             )
-            result["page_id"] = str(components["full_page_id"])
-            result["text_block_id"] = str(components["full_text_block_id"])
+            result["page_id"] = components.full_page_id
+            result["text_block_id"] = components.full_text_block_id
             result["line_id"] = line_id
 
         elif id_type == "text_block_id":
@@ -757,15 +1035,87 @@ def extract_page_id_from_detection_or_article_id(id_string: str) -> str:
     """
     parts = id_string.split("_")
 
-    # Find the date part
-    date_idx = None
-    for i, part in enumerate(parts):
-        if len(part) == 10 and part.count("-") == 2:
-            date_idx = i
-            break
+    # Find the date part using compiled regex
+    date_idx = _find_date_index(parts)
 
     if date_idx is None:
         raise ValueError(f"Could not find date in ID: {id_string}")
 
     # Page ID is: source + date + issue + daily + page
     return "_".join(parts[: date_idx + 4])
+
+
+def add_foreign_key_columns(
+    df: "pl.DataFrame",
+    id_column: str = "text_block_id",
+    *,
+    source_df: Optional["pl.DataFrame"] = None,
+) -> "pl.DataFrame":
+    """
+    Add foreign key columns to a DataFrame.
+
+    Efficiently adds source_id, issue_id, page_id, and text_block_id columns.
+    If source_df is provided and has these columns, joins from there.
+    Otherwise, parses FK columns from the id_column.
+
+    This is the preferred method for adding FK columns to analysis results
+    as it avoids redundant parsing when the source DataFrame already has
+    the FK columns available.
+
+    Args:
+        df: DataFrame to add FK columns to
+        id_column: Column containing the document/block ID
+        source_df: Optional source DataFrame with FK columns to join from
+
+    Returns:
+        DataFrame with FK columns added
+
+    Example:
+        >>> # From source DataFrame (preferred - no parsing)
+        >>> results_df = add_foreign_key_columns(
+        ...     results_df,
+        ...     id_column="text_block_id",
+        ...     source_df=input_df
+        ... )
+
+        >>> # Without source (falls back to parsing)
+        >>> results_df = add_foreign_key_columns(results_df, id_column="doc_id")
+    """
+    # Import here to avoid circular dependency and keep ids.py lightweight
+    import polars as pl_impl
+
+    fk_columns = ["source_id", "issue_id", "page_id", "text_block_id"]
+
+    # Check if we can join from source_df
+    if source_df is not None:
+        available_fks = [col for col in fk_columns if col in source_df.columns]
+        if available_fks and id_column in source_df.columns:
+            # Exclude id_column from FK columns if it's already a FK (to avoid duplicate)
+            cols_to_select = [id_column] + [c for c in available_fks if c != id_column]
+            fk_df = source_df.select(cols_to_select).unique(subset=[id_column])
+            df = df.join(fk_df, on=id_column, how="left")
+
+            # Fill any missing FK columns with None
+            for col in fk_columns:
+                if col not in df.columns:
+                    df = df.with_columns(pl_impl.lit(None).alias(col))
+
+            return df
+
+    # Fall back to parsing from ID column
+    logger.info(f"Parsing foreign keys from {id_column} column...")
+    id_list = df[id_column].to_list()
+    foreign_keys = [extract_foreign_keys(id_str) if id_str else {} for id_str in id_list]
+
+    # Add FK columns
+    return df.with_columns(
+        [
+            pl_impl.Series("source_id", [fk.get("source_id") for fk in foreign_keys]),
+            pl_impl.Series("issue_id", [fk.get("issue_id") for fk in foreign_keys]),
+            pl_impl.Series("page_id", [fk.get("page_id") for fk in foreign_keys]),
+            pl_impl.Series(
+                "text_block_id",
+                [fk.get("text_block_id") for fk in foreign_keys],
+            ),
+        ]
+    )

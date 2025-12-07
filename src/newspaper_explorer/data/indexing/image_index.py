@@ -15,10 +15,9 @@ import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.indexing.workers import extract_image_metadata_worker
+from newspaper_explorer.data.indexing.image_metadata_worker import extract_image_metadata_worker
 from newspaper_explorer.data.parser.mets import METSParser
-from newspaper_explorer.data.utils.ids import generate_issue_id
-from newspaper_explorer.data.utils.sources import load_source_config
+from newspaper_explorer.data.utils.ids import extract_edition, generate_issue_id
 from newspaper_explorer.data.utils.xml import find_mets_files
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,7 @@ class ImageIndexer:
 
     The index includes:
     - image_path: Relative path to the image file
+    - source_id: Source identifier (foreign key, e.g., "der_tag")
     - year, month, day: Date components from path
     - date: Full date (YYYY-MM-DD format)
     - page_number: Page number extracted from filename
@@ -45,7 +45,7 @@ class ImageIndexer:
     - year_volume: From METS
     - page_count: Total pages in issue from METS
     - issue_number: Issue number from METS
-    - daily_issue_number: Daily issue number (1, 2, 3, etc.)
+    - edition: Daily issue number (1, 2, 3, etc.)
     - file_exists: Whether the image file exists
     """
 
@@ -59,13 +59,9 @@ class ImageIndexer:
         self.source_name = source_name
         self.config = get_config()
 
-        # Load source config to get the ZDB source ID
-        source_config = load_source_config(source_name)
-        self.source_id = (
-            source_config.metadata.zdb_source_id
-            if (source_config and source_config.metadata.zdb_source_id)
-            else source_name
-        )
+        # Always use source_name for consistent ID generation across the codebase
+        # (ZDB source ID is kept in source config for provenance but not used in IDs)
+        self.source_id = source_name
 
         self.images_dir = Path(self.config.data_dir) / "raw" / source_name / "images"
         self.index_path = Path(self.config.data_dir) / "raw" / source_name / "image_index.parquet"
@@ -125,7 +121,45 @@ class ImageIndexer:
         alto_cache = self._build_alto_dimension_cache()
 
         # Extract metadata from each image (parallel processing)
-        records = []
+        records = self._extract_image_metadata_parallel(image_files, mets_cache, alto_cache)
+
+        if not records:
+            logger.warning("No image metadata extracted")
+            return existing_index if existing_index is not None else pl.DataFrame()
+
+        # Create new index DataFrame
+        new_index = pl.DataFrame(records)
+
+        # Merge with existing index if available
+        if existing_index is not None:
+            full_index = pl.concat([existing_index, new_index])
+        else:
+            full_index = new_index
+
+        # Save index
+        logger.info(f"Saving image index to {self.index_path}")
+        full_index.write_parquet(self.index_path, compression="zstd")
+
+        logger.info(f"Image index complete: {len(full_index)} total images")
+        return full_index
+
+    def _extract_image_metadata_parallel(
+        self,
+        image_files: list[Path],
+        mets_cache: dict[str, dict[str, Union[str, int, None]]],
+        alto_cache: dict[str, tuple[int, int]],
+    ) -> list[dict[str, Union[str, int, float, bool, None]]]:
+        """Extract metadata from images using parallel processing.
+
+        Args:
+            image_files: List of image file paths to process
+            mets_cache: Pre-built METS metadata cache
+            alto_cache: Pre-built ALTO dimension cache
+
+        Returns:
+            List of metadata records for each successfully processed image
+        """
+        records: list[dict[str, Union[str, int, float, bool, None]]] = []
         max_workers = max(1, len(image_files) // 1000)  # Scale workers with dataset size
         max_workers = min(max_workers, 16)  # Cap at 16 workers
 
@@ -156,29 +190,11 @@ class ImageIndexer:
                     record = future.result()
                     if record:
                         records.append(record)
-                except Exception as e:
+                except (OSError, ValueError, KeyError, IndexError) as e:
                     img_path = future_to_path[future]
                     logger.warning(f"Failed to process {img_path}: {e}")
 
-        if not records:
-            logger.warning("No image metadata extracted")
-            return existing_index if existing_index is not None else pl.DataFrame()
-
-        # Create new index DataFrame
-        new_index = pl.DataFrame(records)
-
-        # Merge with existing index if available
-        if existing_index is not None:
-            full_index = pl.concat([existing_index, new_index])
-        else:
-            full_index = new_index
-
-        # Save index
-        logger.info(f"Saving image index to {self.index_path}")
-        full_index.write_parquet(self.index_path, compression="zstd")
-
-        logger.info(f"Image index complete: {len(full_index)} total images")
-        return full_index
+        return records
 
     def _build_mets_cache(self) -> dict[str, dict[str, Union[str, int, None]]]:
         """
@@ -187,7 +203,7 @@ class ImageIndexer:
         Returns:
             Dictionary mapping issue_id to METS metadata
         """
-        mets_cache: dict[str, dict[str, str | int | None]] = {}
+        mets_cache: dict[str, dict[str, Union[str, int, None]]] = {}
 
         mets_files = find_mets_files(self.xml_dir)
         if not mets_files:
@@ -203,22 +219,31 @@ class ImageIndexer:
 
                 # Generate proper issue_id using the standard format
                 if metadata and metadata.date and metadata.issue_number is not None:
-                    # Extract daily issue number from path (folder name)
+                    # Extract edition using central utility (authoritative: filename, fallback: path)
                     rel_path = mets_path.relative_to(self.xml_dir)
-                    parts = rel_path.parts
-                    if len(parts) == 5:  # Year/Month/Day/Issue/filename.xml
-                        daily_issue_num = int(parts[3])  # Folder name (e.g., "01" -> 1)
+                    edition = extract_edition(
+                        filename=mets_path.name,
+                        folder_path=str(rel_path),
+                    )
 
-                        # Generate proper issue_id: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
+                    if edition is not None:
+                        # Generate proper issue_id: {source}_{YYYY-MM-DD}_{issue:03d}_{edition}
                         issue_id = generate_issue_id(
-                            self.source_id,  # Use ZDB source ID, not source_name
+                            self.source_id,
                             metadata.date,
                             metadata.issue_number,
-                            daily_issue_num,
+                            edition,
                         )
 
                         # Also store the path-based key for lookup
-                        path_key = f"{parts[0]}/{parts[1]}/{parts[2]}/{parts[3]}"
+                        parts = rel_path.parts
+                        try:
+                            year, month, day, issue_folder = parts[:4]
+                        except ValueError:
+                            logger.debug(f"Unexpected METS path structure: {rel_path}")
+                            continue
+
+                        path_key = f"{year}/{month}/{day}/{issue_folder}"
 
                         # Convert IssueMetadata to dict for caching
                         cache_entry: dict[str, Union[str, int, None]] = {
@@ -228,7 +253,7 @@ class ImageIndexer:
                             "date": metadata.date.isoformat() if metadata.date else None,
                             "issue_number": metadata.issue_number,
                             "issue_id": issue_id,
-                            "daily_issue_number": daily_issue_num,
+                            "edition": edition,
                         }
 
                         # Store with both keys for compatibility
@@ -279,15 +304,18 @@ class ImageIndexer:
                         # Parse path to create page identifier: YYYY/MM/DD/issue_num/page_num
                         rel_path = alto_path.relative_to(self.xml_dir)
                         parts = rel_path.parts
-                        # parts: (year, month, day, issue, 'fulltext', filename)
-                        if len(parts) >= 6:
-                            year, month, day, issue_num = parts[0], parts[1], parts[2], parts[3]
-                            filename = parts[5]
-                            # Extract page number from filename (last number before .xml)
-                            page_match = filename.split("_")[-1].replace(".xml", "")
-                            page_key = f"{year}/{month}/{day}/{issue_num}/{page_match}"
-                            alto_cache[page_key] = (int(width), int(height))
-            except Exception as e:
+                        # Expected year/month/day/issue/fulltext/filename.xml
+                        try:
+                            year, month, day, issue_num, _fulltext, filename = parts[:6]
+                        except ValueError:
+                            logger.debug(f"Unexpected ALTO path structure: {rel_path}")
+                            continue
+
+                        # Extract page number from filename (last number before .xml)
+                        page_match = filename.split("_")[-1].replace(".xml", "")
+                        page_key = f"{year}/{month}/{day}/{issue_num}/{page_match}"
+                        alto_cache[page_key] = (int(width), int(height))
+            except (etree.XMLSyntaxError, OSError, ValueError, KeyError, IndexError) as e:
                 logger.debug(f"Failed to parse ALTO file {alto_path}: {e}")
 
         logger.info(f"Built ALTO dimension cache with {len(alto_cache)} entries")
@@ -306,7 +334,7 @@ class ImageIndexer:
 
         return pl.read_parquet(self.index_path)
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Union[int, float, None]]:
         """
         Get statistics about indexed images.
 
@@ -377,7 +405,7 @@ class ImageIndexer:
             step = max(1, len(years) // limit)
             selected_years = years[::step][:limit]
 
-            samples = []
+            samples: list[pl.DataFrame] = []
             for i, selected_year in enumerate(selected_years):
                 year_images = index.filter(pl.col("year") == selected_year)
                 if len(year_images) > 0:

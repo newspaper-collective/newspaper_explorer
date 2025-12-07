@@ -255,7 +255,7 @@ class LayoutDetector:
                         [
                             row.get("date"),
                             row.get("issue_number"),
-                            row.get("daily_issue_number"),
+                            row.get("edition"),
                             row.get("page_number"),
                         ]
                     ):
@@ -267,7 +267,7 @@ class LayoutDetector:
                         source=self.source_id,  # Use source_id (may be ZDB ID)
                         date=date,
                         issue_number=row["issue_number"],
-                        daily_issue_number=row["daily_issue_number"],
+                        edition=row["edition"],
                         page_number=row["page_number"],
                     )
                     return page_id

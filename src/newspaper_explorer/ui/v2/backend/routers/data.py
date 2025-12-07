@@ -4,7 +4,7 @@ Data access endpoints for text, issues, and pages
 
 from datetime import date
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 import polars as pl
@@ -21,7 +21,7 @@ router = APIRouter()
 # which provides richer functionality with images and better filtering
 
 
-@router.get("/{source_name}/pages", response_model=List[Page])
+@router.get("/{source_name}/pages", response_model=list[Page])
 async def get_pages(
     source_name: str,
     issue_id: Optional[str] = None,
@@ -135,7 +135,7 @@ async def get_pages(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{source_name}/text-blocks", response_model=List[TextBlock])
+@router.get("/{source_name}/text-blocks", response_model=list[TextBlock])
 async def get_text_blocks(
     source_name: str,
     page_id: Optional[str] = None,
@@ -172,7 +172,7 @@ async def get_text_blocks(
             df = df.sort(["text_block_id", "y", "x"])
             df = df.group_by("text_block_id", maintain_order=True).agg(
                 [
-                    pl.col("text").str.concat(" ").alias("text"),
+                    pl.col("text").str.join(delimiter=" ").alias("text"),
                     pl.col("page_id").first(),
                     pl.col("issue_id").first(),
                     pl.col("date").first(),
@@ -223,7 +223,7 @@ async def get_text_blocks(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{source_name}/lines", response_model=List[Line])
+@router.get("/{source_name}/lines", response_model=list[Line])
 async def get_lines(
     source_name: str,
     page_id: Optional[str] = None,
@@ -287,7 +287,7 @@ async def get_lines(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{source_name}/random-lines", response_model=List[dict])
+@router.get("/{source_name}/random-lines", response_model=list[dict])
 async def get_random_lines(
     source_name: str,
     count: int = Query(default=10, ge=1, le=100, description="Number of random lines to return"),
@@ -321,11 +321,11 @@ async def get_random_lines(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{source_name}/random-images", response_model=List[dict])
+@router.get("/{source_name}/random-images", response_model=list[dict])
 async def get_random_images(
     source_name: str,
     count: int = 10,
-) -> List[dict]:
+) -> list[dict]:
     """Get random image URLs with metadata from the specified source"""
     try:
         config = get_config()
@@ -575,14 +575,11 @@ async def browse_issues(
                     pl.col("page_count").first().alias("page_count"),
                 ]
             )
-            # Extract daily issue number for proper sorting within same day
+            # Extract edition for proper sorting within same day (1=morning, 2=midday, 3=evening)
             .with_columns(
-                pl.col("issue_id")
-                .str.extract(r"_(\d+)$", 1)
-                .cast(pl.Int32)
-                .alias("daily_issue_num")
+                pl.col("issue_id").str.extract(r"_(\d+)$", 1).cast(pl.Int32).alias("edition")
             )
-            .sort(["date", "daily_issue_num"], descending=[sort_order == "desc", False])
+            .sort(["date", "edition"], descending=[sort_order == "desc", False])
         )
 
         # Get total count for pagination
@@ -796,7 +793,5 @@ async def get_page_analysis(source_name: str, page_id: str):
             "entities": entities_dict,
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

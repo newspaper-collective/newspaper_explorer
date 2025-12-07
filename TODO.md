@@ -12,6 +12,9 @@
 
 - donut or yolo page classification to detect add pages and classifieds
 
+
+
+
 unify datamodel for results or analysis types -> entityresults, topicresults, emotionsresults, etc.
 
 usage of source id, filename prefix, source name
@@ -22,15 +25,7 @@ separate metadata and ids? what gets saved where? where is redundancy neeeded? i
 - issue id must be different from issue number (display) -> globally unique
 - global ids for: textline, textblock, page, issue (daily count),
 
-- **Redundant FK parsing**: Analysis modules re-parse IDs via `extract_foreign_keys()` even though FK columns already exist in source parquet
-  - Affects: mallet.py, gliner.py, bert_classifier.py, keybert.py, rake.py, yake.py, tf_idf.py, lda.py, bertopic.py, fastopic.py
-  - Fix: Check if FK columns exist before parsing, preserve FKs through aggregation
-- **Expensive string parsing**: `parse_line_id()` uses O(n) loops to find date/TL markers
-  - Fix: Use vectorized Polars string operations or compiled regex
-- **No caching**: Same IDs parsed repeatedly (e.g., multiple entities from same line)
-  - Fix: Add `@lru_cache` to `extract_foreign_keys()`
-- **Storage bloat**: Hierarchical IDs embed parent info redundantly
-  - Consider: Normalized integer IDs with lookup tables for long-term
+
 
 ### CLI Refactoring - Move Logic to Library
 - **Problem**: CLI contains ~8,500 lines with significant business logic that should be in library modules

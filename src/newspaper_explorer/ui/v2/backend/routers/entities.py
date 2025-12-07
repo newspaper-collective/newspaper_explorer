@@ -2,14 +2,15 @@
 Entity extraction endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
 from datetime import date
-import polars as pl
 from pathlib import Path
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.models.analysis.entities import EntityRecord, AggregatedEntityRecord
+from newspaper_explorer.models.analysis.entities import AggregatedEntityRecord, EntityRecord
 from newspaper_explorer.ui.v2.backend.utils.results import ResultsLoader
 
 router = APIRouter()
@@ -45,7 +46,7 @@ async def get_entities(
                     pl.col("confidence").mean().alias("avg_confidence"),
                     pl.col("confidence").min().alias("min_confidence"),
                     pl.col("confidence").max().alias("max_confidence"),
-                    pl.col("line_id").unique().alias("line_ids"),
+                    pl.col("text_block_id").unique().alias("text_block_ids"),
                 ]
             )
             .sort("detection_count", descending=True)
@@ -66,7 +67,7 @@ async def get_entities(
                     avg_confidence=row["avg_confidence"],
                     min_confidence=row["min_confidence"],
                     max_confidence=row["max_confidence"],
-                    line_ids=row["line_ids"],
+                    text_block_ids=row["text_block_ids"],
                 )
             )
 
@@ -144,23 +145,23 @@ async def get_entity_timeline(
 
         df = result.df
 
-        # Extract date from line_id (format: source_YYYY-MM-DD_volume_page_...)
-        # line_id example: "3074409-X_1902-09-05_415_2_005_TB_1_TL_1"
-        if "line_id" not in df.columns:
+        # Extract date from text_block_id (format: source_YYYY-MM-DD_issue_daily_page_block)
+        # text_block_id example: "der_tag_1902-09-05_415_2_005_r_1_1"
+        if "text_block_id" not in df.columns:
             return {}
 
-        # Parse date from line_id structure
+        # Parse date from text_block_id structure
         df = df.with_columns(
             [
-                pl.col("line_id")
+                pl.col("text_block_id")
                 .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 1)
                 .cast(pl.Int32)
                 .alias("year"),
-                pl.col("line_id")
+                pl.col("text_block_id")
                 .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 2)
                 .cast(pl.Int32)
                 .alias("month"),
-                pl.col("line_id")
+                pl.col("text_block_id")
                 .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 3)
                 .cast(pl.Int32)
                 .alias("day"),
