@@ -9,6 +9,7 @@ Provides comprehensive normalization for historical German newspaper texts:
 """  # noqa: RUF002
 
 import logging
+import re
 from typing import Optional, Union
 
 import ftfy
@@ -18,15 +19,11 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-# Character translation maps for Unicode normalization
-# Two modes: conservative (default) and aggressive
+# Character translation map for Unicode normalization
+# Handles OCR errors, confusables, spaces, and artifacts
+# NOTE: Hyphen/dash normalization is handled separately by normalize_hyphens()
 
-# CONSERVATIVE: Only fix clear OCR errors, preserve semantic distinctions
-UNICODE_TRANSLATION_CONSERVATIVE: dict[int, Optional[Union[str, int]]] = {
-    # Remove problematic hyphens/spaces
-    0x00AD: None,  # soft hyphen (invisible, remove)
-    0x2011: "-",  # non-breaking hyphen → regular hyphen
-    # NOTE: KEEP - (hyphen), – (en dash), — (em dash) - these have semantic meaning!
+UNICODE_TRANSLATION: dict[int, Optional[Union[str, int]]] = {
     # Normalize various space types to regular space (OCR-specific, not encoding)
     0x00A0: 32,  # non-breaking space
     0x202F: 32,  # narrow no-break space
@@ -51,44 +48,44 @@ UNICODE_TRANSLATION_CONSERVATIVE: dict[int, Optional[Union[str, int]]] = {
     0x25AE: None,  # ▮ black vertical rectangle
     0x261E: None,  # ☞ white right pointing index
     # Cyrillic confusables (OCR errors - looks like Latin but isn't)
-    0x0410: "A",  # А → A (Cyrillic A)
-    0x0412: "B",  # В → B (Cyrillic Ve)
-    0x0415: "E",  # Е → E (Cyrillic Ie)
-    0x041A: "K",  # К → K (Cyrillic Ka)
-    0x041C: "M",  # М → M (Cyrillic Em)
-    0x041D: "H",  # Н → H (Cyrillic En)
-    0x041E: "O",  # О → O (Cyrillic O)
-    0x0420: "P",  # Р → P (Cyrillic Er)
-    0x0421: "C",  # С → C (Cyrillic Es)
-    0x0422: "T",  # Т → T (Cyrillic Te)
-    0x0425: "X",  # Х → X (Cyrillic Kha)
-    0x0430: "a",  # а → a (Cyrillic a)
-    0x0435: "e",  # е → e (Cyrillic ie)
-    0x043E: "o",  # о → o (Cyrillic o)
-    0x0440: "p",  # р → p (Cyrillic er)
-    0x0441: "c",  # с → c (Cyrillic es)
-    0x0443: "y",  # у → y (Cyrillic u)
-    0x0445: "x",  # х → x (Cyrillic kha)
-    0x0455: "s",  # ѕ → s (Cyrillic dze)
-    0x0456: "i",  # і → i (Cyrillic byelorussian-ukrainian i)
-    0x0458: "j",  # ј → j (Cyrillic je)
-    0x04CF: "l",  # ӏ → l (Cyrillic palochka)
-    0x0405: "S",  # Ѕ → S (Cyrillic Dze)
-    0x0406: "I",  # І → I (Cyrillic Byelorussian-Ukrainian I)
+    0x0410: "A",  # А → A (Cyrillic A)  # noqa: RUF003
+    0x0412: "B",  # В → B (Cyrillic Ve)  # noqa: RUF003
+    0x0415: "E",  # Е → E (Cyrillic Ie)  # noqa: RUF003
+    0x041A: "K",  # К → K (Cyrillic Ka)  # noqa: RUF003
+    0x041C: "M",  # М → M (Cyrillic Em)  # noqa: RUF003
+    0x041D: "H",  # Н → H (Cyrillic En)  # noqa: RUF003
+    0x041E: "O",  # О → O (Cyrillic O)  # noqa: RUF003
+    0x0420: "P",  # Р → P (Cyrillic Er)  # noqa: RUF003
+    0x0421: "C",  # С → C (Cyrillic Es)  # noqa: RUF003
+    0x0422: "T",  # Т → T (Cyrillic Te)  # noqa: RUF003
+    0x0425: "X",  # Х → X (Cyrillic Kha)  # noqa: RUF003
+    0x0430: "a",  # а → a (Cyrillic a)  # noqa: RUF003
+    0x0435: "e",  # е → e (Cyrillic ie)  # noqa: RUF003
+    0x043E: "o",  # о → o (Cyrillic o)  # noqa: RUF003
+    0x0440: "p",  # р → p (Cyrillic er)  # noqa: RUF003
+    0x0441: "c",  # с → c (Cyrillic es)  # noqa: RUF003
+    0x0443: "y",  # у → y (Cyrillic u)  # noqa: RUF003
+    0x0445: "x",  # х → x (Cyrillic kha)  # noqa: RUF003
+    0x0455: "s",  # ѕ → s (Cyrillic dze)  # noqa: RUF003
+    0x0456: "i",  # і → i (Cyrillic byelorussian-ukrainian i)  # noqa: RUF003
+    0x0458: "j",  # ј → j (Cyrillic je)  # noqa: RUF003
+    0x04CF: "l",  # ӏ → l (Cyrillic palochka)  # noqa: RUF003
+    0x0405: "S",  # Ѕ → S (Cyrillic Dze)  # noqa: RUF003
+    0x0406: "I",  # І → I (Cyrillic Byelorussian-Ukrainian I)  # noqa: RUF003
     # Greek confusables (OCR errors - looks like Latin but isn't)
-    0x0391: "A",  # Α → A (Greek Alpha)
-    0x0392: "B",  # Β → B (Greek Beta)
-    0x0395: "E",  # Ε → E (Greek Epsilon)
-    0x0396: "Z",  # Ζ → Z (Greek Zeta)
-    0x0397: "H",  # Η → H (Greek Eta)
-    0x0399: "I",  # Ι → I (Greek Iota)
-    0x039A: "K",  # Κ → K (Greek Kappa)
-    0x039C: "M",  # Μ → M (Greek Mu)
-    0x039D: "N",  # Ν → N (Greek Nu)
-    0x039F: "O",  # Ο → O (Greek Omicron)
-    0x03A1: "P",  # Ρ → P (Greek Rho)
-    0x03A4: "T",  # Τ → T (Greek Tau)
-    0x03A7: "X",  # Χ → X (Greek Chi)
+    0x0391: "A",  # Α → A (Greek Alpha)  # noqa: RUF003
+    0x0392: "B",  # Β → B (Greek Beta)  # noqa: RUF003
+    0x0395: "E",  # Ε → E (Greek Epsilon)  # noqa: RUF003
+    0x0396: "Z",  # Ζ → Z (Greek Zeta)  # noqa: RUF003
+    0x0397: "H",  # Η → H (Greek Eta)  # noqa: RUF003
+    0x0399: "I",  # Ι → I (Greek Iota)  # noqa: RUF003
+    0x039A: "K",  # Κ → K (Greek Kappa)  # noqa: RUF003
+    0x039C: "M",  # Μ → M (Greek Mu)  # noqa: RUF003
+    0x039D: "N",  # Ν → N (Greek Nu)  # noqa: RUF003
+    0x039F: "O",  # Ο → O (Greek Omicron)  # noqa: RUF003
+    0x03A1: "P",  # Ρ → P (Greek Rho)  # noqa: RUF003
+    0x03A4: "T",  # Τ → T (Greek Tau)  # noqa: RUF003
+    0x03A7: "X",  # Χ → X (Greek Chi)  # noqa: RUF003
     # Accented i (German doesn't use these - OCR errors)
     0x00ED: "i",  # í → i (acute)
     0x00EC: "i",  # ì → i (grave)
@@ -98,7 +95,7 @@ UNICODE_TRANSLATION_CONSERVATIVE: dict[int, Optional[Union[str, int]]] = {
     0x012B: "i",  # ī → i (macron)
     0x012D: "i",  # ĭ → i (breve)
     0x012F: "i",  # į → i (ogonek)
-    0x0131: "i",  # ı → i (dotless)
+    0x0131: "i",  # ı → i (dotless)  # noqa: RUF003
     0x00CD: "I",  # Í → I (uppercase acute)
     0x00CC: "I",  # Ì → I (uppercase grave)
     0x00CE: "I",  # Î → I (uppercase circumflex)
@@ -109,28 +106,150 @@ UNICODE_TRANSLATION_CONSERVATIVE: dict[int, Optional[Union[str, int]]] = {
     0x012E: "I",  # Į → I (uppercase ogonek)
 }
 
-# AGGRESSIVE: Unify all dashes (good for NLP/topic modeling, loses nuance)
-UNICODE_TRANSLATION_AGGRESSIVE: dict[int, Optional[Union[str, int]]] = {
-    **UNICODE_TRANSLATION_CONSERVATIVE,
-    # Add aggressive dash normalization
-    0x2013: "-",  # en dash → hyphen
-    0x2014: "-",  # em dash → hyphen
-    0x2212: "-",  # minus sign → hyphen
-}
+
+# =============================================================================
+# HYPHEN/DASH NORMALIZATION
+# =============================================================================
+
+
+def normalize_hyphens(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    *,
+    mode: str = "unify",
+) -> pl.DataFrame:
+    """
+    Normalize various hyphen and dash characters.
+
+    Historical German newspapers (especially Fraktur OCR) use various hyphen-like
+    characters that should be normalized for consistent processing.
+
+    **Three modes available:**
+
+    **1. "unify" (default, recommended for NLP):**
+    - Converts ALL hyphen/dash variants to regular hyphen (-)
+    - Good for: topic modeling, embeddings, search, dehyphenation
+    - Example: "1914–1918" → "1914-1918", "Nachrichten⸗Teil" → "Nachrichten-Teil"
+
+    **2. "conservative":**
+    - Only normalizes OCR artifacts (double hyphen ⸗, non-breaking hyphen)
+    - Preserves semantic dashes (en dash for ranges, em dash for emphasis)
+    - Good for: historical analysis, quotations, scholarly editions
+    - Example: "1914–1918" stays, "Nachrichten⸗Teil" → "Nachrichten-Teil"
+
+    **3. "soft_only":**
+    - Only removes soft hyphens (invisible line-break hints)
+    - Minimal intervention, preserves all visible characters
+    - Good for: when you want to preserve original typography
+
+    **Characters handled:**
+
+    | Character | Unicode | Name | unify | conservative | soft_only |
+    |-----------|---------|------|-------|--------------|----------|
+    | ⸗ | U+2E17 | Double hyphen | → - | → - | kept |
+    | ‐ | U+2010 | Hyphen | → - | → - | kept |
+    | ‑ | U+2011 | Non-breaking hyphen | → - | → - | kept |
+    | – | U+2013 | En dash | → - | kept | kept |
+    | — | U+2014 | Em dash | → - | kept | kept |
+    | − | U+2212 | Minus sign | → - | kept | kept |
+    | ­ | U+00AD | Soft hyphen | removed | removed | removed |
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_hyphens)
+        mode: Normalization mode - "unify", "conservative", or "soft_only"
+
+    Returns:
+        DataFrame with normalized hyphens
+
+    Example:
+        >>> # For NLP/dehyphenation (recommended)
+        >>> df = normalize_hyphens(df, mode="unify")
+        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
+        >>> # "1914–1918" → "1914-1918"
+        >>>
+        >>> # For historical preservation
+        >>> df = normalize_hyphens(df, mode="conservative")
+        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
+        >>> # "1914–1918" → "1914–1918" (en dash preserved)
+
+    Note:
+        Run this BEFORE dehyphenation so that all hyphen variants are
+        recognized by the dehyphenation regex patterns.
+    """  # noqa: RUF002
+    if output_column is None:
+        output_column = f"{input_column}_hyphens"
+
+    logger.info(f"Normalizing hyphens ({mode}): {input_column} → {output_column}")
+
+    # Build translation map based on mode
+    if mode == "unify":
+        # All hyphens/dashes → regular hyphen
+        translation_map: dict[int, Optional[str]] = {
+            0x00AD: None,  # soft hyphen → removed
+            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR)
+            0x2010: "-",  # U+2010 hyphen → hyphen
+            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
+            0x2013: "-",  # U+2013 en dash → hyphen
+            0x2014: "-",  # U+2014 em dash → hyphen
+            0x2212: "-",  # U+2212 minus sign → hyphen
+        }
+    elif mode == "conservative":
+        # Only OCR artifacts, preserve semantic dashes
+        translation_map = {
+            0x00AD: None,  # soft hyphen → removed
+            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR artifact)
+            0x2010: "-",  # U+2010 hyphen → hyphen
+            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
+            # Keep: en dash (U+2013), em dash (U+2014), minus (U+2212)
+        }
+    elif mode == "soft_only":
+        # Minimal: only remove soft hyphens
+        translation_map = {
+            0x00AD: None,  # soft hyphen → removed
+        }
+    else:
+        raise ValueError(f"Unknown mode: {mode}. Use 'unify', 'conservative', or 'soft_only'")
+
+    # Apply translation using Polars (fast, vectorized)
+    # We need to use map_elements for the translation
+    def translate_hyphens(text: str) -> str:
+        if not text:
+            return text
+        return text.translate(translation_map)
+
+    df = df.with_columns(
+        [
+            pl.col(input_column)
+            .map_elements(translate_hyphens, return_dtype=pl.Utf8)
+            .alias(output_column)
+        ]
+    )
+
+    logger.info(f"Hyphen normalization ({mode}) applied to {len(df):,} rows")
+    return df
+
+
+# =============================================================================
+# UNICODE NORMALIZATION
+# =============================================================================
 
 
 def normalize_unicode(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
-    *,
-    aggressive: bool = False,
 ) -> pl.DataFrame:
     """
     Normalize Unicode characters for OCR text.
 
     Recommended as the FIRST STEP in preprocessing pipelines.
-    Handles common OCR issues while preserving semantic distinctions.
+    Handles common OCR issues: encoding errors, confusables, spaces, artifacts.
+
+    **NOTE: Hyphen/dash normalization is handled separately by normalize_hyphens().**
+    Use normalize_hyphens() before dehyphenation for best results.
 
     **CRITICAL: Uses NFC normalization (NOT NFKC) for historical text preservation.**
 
@@ -158,53 +277,30 @@ def normalize_unicode(
     - Accented i: "ínsíde" → "inside" (German doesn't use these)
     - Space normalization: Various Unicode spaces → regular space
     - OCR artifacts: Bullets, boxes → removed
-    - Dash handling: Conservative vs aggressive modes
-
-    **Two dash handling modes:**
-
-    **Conservative mode (default, aggressive=False):**
-    - Preserves semantic punctuation (en dash, em dash)
-    - "1914–1918" stays as "1914–1918" (en dash for ranges)
-    - "Der Kaiser — so berichtet" stays with em dash (emphasis)
-    - Good for: historical analysis, quotations, entity extraction
-
-    **Aggressive mode (aggressive=True):**
-    - Unifies all dashes to hyphen: – → -, — → -, − → -
-    - "1914–1918" becomes "1914-1918"
-    - Good for: topic modeling, embeddings, NLP where nuance doesn't matter
 
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_unicode)
-        aggressive: If True, unifies all dashes to hyphen (default: False)
 
     Returns:
         DataFrame with normalized Unicode text
 
     Example:
-        >>> # Conservative (default): preserves semantic dashes
         >>> df = normalize_unicode(df)
-        >>> # "1914–1918" → "1914–1918" (en dash kept)
         >>> # „Quoted text" → "\"Quoted text\""
         >>> # "schÃ¶n" → "schön" (mojibake fixed by ftfy)
         >>> # "Теxt with Суrilliс" → "Text with Cyrillic"
         >>> # "ﬁ ﬂ ﬀ" → "fi fl ff" (ligatures)
         >>>
-        >>> # Aggressive: unifies all dashes
-        >>> df = normalize_unicode(df, aggressive=True)
+        >>> # For hyphen normalization, use normalize_hyphens() separately:
+        >>> df = normalize_hyphens(df, mode="unify")
         >>> # "1914–1918" → "1914-1918" (en dash → hyphen)
-    """
+    """  # noqa: RUF002
     if output_column is None:
         output_column = f"{input_column}_unicode"
 
-    # Choose translation map based on mode
-    translation_map = (
-        UNICODE_TRANSLATION_AGGRESSIVE if aggressive else UNICODE_TRANSLATION_CONSERVATIVE
-    )
-    mode_name = "aggressive" if aggressive else "conservative"
-
-    logger.info(f"Normalizing Unicode ({mode_name}): {input_column} → {output_column}")
+    logger.info(f"Normalizing Unicode: {input_column} → {output_column}")
 
     def normalize_text(text: str) -> str:
         """Apply Unicode normalization to a single text."""
@@ -224,13 +320,13 @@ def normalize_unicode(
 
         # 2. Apply character translation map (our custom confusables handling)
         # This adds OCR-specific fixes that ftfy doesn't handle:
-        # - Cyrillic/Greek confusables (А→A, о→o, Α→A)
+        # - Cyrillic/Greek confusables (А→A, о→o, Α→A) # noqa: RUF003
         # - Accented i mappings (í→i, German doesn't use these)
         # - Space normalization (various Unicode spaces → regular space)
         # - OCR artifacts removal
-        text = text.translate(translation_map)
+        # NOTE: Hyphen/dash normalization is handled by normalize_hyphens()
 
-        return text
+        return text.translate(UNICODE_TRANSLATION)
 
     # Apply normalization to all texts with progress bar
     texts = df[input_column].to_list()
@@ -301,8 +397,7 @@ def normalize_whitespace(
             # Collapse multiple spaces/tabs to single space
             text = re.sub(r"[ \t]+", " ", text)
             # Remove spaces/tabs around newlines
-            text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
-            return text.strip()
+            return re.sub(r"[ \t]*\n[ \t]*", "\n", text).strip()
 
         df = df.with_columns(
             [
@@ -433,10 +528,23 @@ def normalize_long_s(
     """
     Normalize historical German long s (ſ) character.
 
-    The long s (ſ, U+017F) was mandatory in 1910-1920 German Fraktur typography.
-    This function provides three normalization strategies depending on your use case.
+    The long s (ſ, U+017F, "langes s", "Schaft-s") is a positional allograph of the
+    letter s used in Fraktur and other broken scripts, as well as in Kurrent handwriting.
+    It was standard in German typography until the 1941 Normalschrifterlass.
 
-    **Three normalization modes:**
+    **Historical Background:**
+
+    The distinction between long s (ſ) and round s (Schluss-s, Auslaut-s) follows rules
+    codified at the 1901 Orthographic Conference. The long s appears at syllable onsets
+    (Anlaut) and within syllables (Inlaut), while the round s appears at syllable endings
+    (Auslaut). This distinction aids readability of compound words - e.g., distinguishing
+    "Wachſtube" (guard room) from "Wachstube" (wax tube).
+
+    The ligatures ſʒ (ſz) and ſs are considered the origin of the German Eszett (ß).
+    In modern Antiqua, ſs was typically rendered as ß until 1901, after which ß became
+    standard in both Fraktur and Antiqua typography.
+
+    **Two normalization modes:**
 
     **1. "simple" (default, recommended for NLP):**
     - Replaces all ſ → s unconditionally
@@ -444,27 +552,41 @@ def normalize_long_s(
     - Example: "Hauſe" → "Hause", "faſten" → "fasten"
     - Use when: Text analysis, embeddings, search indices
 
-    **2. "context-aware" (linguistic rules):**
-    - Applies simplified linguistic rules for ſ/s distinction
-    - Considers position (word-final), following characters (t, p, ch), vowels
+    **2. "context-aware" (1901 orthographic rules):**
+    - Implements the historical rules from the 1901 Orthographic Conference
+    - Handles syllable positions, compound words, and special combinations
     - More historically accurate but slower
-    - Example: "faſten" → "fasten" (context rules)
+    - Example: "Wachſtube" → "Wachstube" (preserves morpheme boundaries)
     - Use when: Digital scholarly editions, reading texts
 
-    **3. "preserve" (archival):**
-    - No normalization, keeps original ſ character
-    - For philological analysis, digital archives
-    - Example: "Hauſe" → "Hauſe" (unchanged)
-    - Use when: Historical text preservation, manuscript studies
+    **1901 Orthographic Rules (context-aware mode):**
 
-    **Common OCR issue:** ſ frequently misread as 'f' in Fraktur OCR
-    If you see "Haufe" instead of "Hauſe", the OCR misrecognized ſ as f.
+    Round s (Schluss-s) is used:
+    - At word end: das Haus, der Kosmos, des Bundes
+    - At end of prefixes/first parts of compounds (Fugen-s): Liebesbrief, Arbeitsamt,
+      Haustür, Wirtsstube, Aussicht
+    - Before consonant-initial suffixes (-lein, -chen, -bar, -heit, -tum):
+      Mäuschen, Weisheit, Wachstum
+    - At syllable end before k, m, n, w, d: Dresden, Oswald, Schleſwig → Schleswig
+
+    Long s (ſ) is used:
+    - At syllable onset (Anlaut): ſauſen, einſpielen
+    - Within syllables before vowels (Inlaut): Maſuren, Hauſe
+    - In the combinations ſch, ſt, ſp (not from compounds): Weſpe, faſten, Buſch
+    - In digraphs ſſ: Waſſer, Biſſen
+    - Before l, n, r when e is elided: unſre, Pilſner, Wechſler
+    - Before apostrophe: ich laſſ'
+
+    **Common OCR issues:**
+    - ſ frequently misread as 'f' in Fraktur OCR (Haufe instead of Hauſe)
+    - Round s sometimes misread as 'ſ' or vice versa
+    - The context-aware mode helps identify potential OCR errors
 
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_long_s)
-        mode: Normalization strategy - "simple", "context-aware", or "preserve"
+        mode: Normalization strategy - "simple" or "context-aware"
 
     Returns:
         DataFrame with long s normalized
@@ -474,71 +596,127 @@ def normalize_long_s(
         >>> df = normalize_long_s(df, mode="simple")
         >>> # "Hauſe" → "Hause"
         >>>
-        >>> # Context-aware mode (scholarly editions)
+        >>> # Context-aware mode (1901 rules)
         >>> df = normalize_long_s(df, mode="context-aware")
-        >>> # Applies linguistic rules for ſ/s
-        >>>
-        >>> # Preserve mode (archival)
-        >>> df = normalize_long_s(df, mode="preserve")
-        >>> # "Hauſe" → "Hauſe" (unchanged)
+        >>> # "Wirtſſtube" → "Wirtsstube" (compound word)
+        >>> # "Waſſer" → "Wasser" (digraph)
 
     Note:
-        Based on historical typography rules for 1910-1920 German Fraktur.
+        Based on historical typography rules from the 1901 Orthographic Conference.
         For most NLP applications, "simple" mode is sufficient and recommended.
-    """
-    import re
+        The context-aware mode implements a best-effort approximation of the historical
+        rules without full syllable/morpheme analysis, which would require a lexicon.
+
+    References:
+        - German Wikipedia: "Langes s", "Schluss-s"
+        - 1901 Orthographic Conference rules
+        - Duden historical editions (1880, 1915, 1941)
+    """  # noqa: RUF002
 
     if output_column is None:
         output_column = f"{input_column}_long_s"
 
     logger.info(f"Normalizing long s ({mode}): {input_column} → {output_column}")
 
-    if mode == "preserve":
-        # No transformation, just copy
-        df = df.with_columns([pl.col(input_column).alias(output_column)])
-        logger.info(f"Preserved long s for {len(df):,} rows (archival mode)")
-        return df
-
-    elif mode == "simple":
-        # Simple replacement: all ſ → s
+    if mode == "simple":
+        # Simple replacement: all long s (U+017F) to round s
         df = df.with_columns(
-            [pl.col(input_column).str.replace_all("ſ", "s").alias(output_column)]  # U+017F
+            [
+                pl.col(input_column).str.replace_all("ſ", "s").alias(output_column)  # noqa: RUF001
+            ]
         )
         logger.info(f"Normalized long s (simple) for {len(df):,} rows")
         return df
 
-    elif mode == "context-aware":
-        # Context-aware normalization using linguistic rules
+    if mode == "context-aware":
+        # Context-aware normalization implementing 1901 Orthographic Conference rules
+        # Reference: German Wikipedia "Langes s", "Schluss-s"
+
         def normalize_contextual(text: str) -> str:
-            if not text or "ſ" not in text:
+            """Apply 1901 orthographic rules for long s normalization."""
+            if not text or "ſ" not in text:  # noqa: RUF001
                 return text
 
-            # Simplified linguistic rules for ſ/s distinction
-            # Full implementation would require:
-            # 1. Syllable boundary detection
-            # 2. Compound word analysis
-            # 3. Historical German lexicon lookup
+            # ============================================================
+            # 1901 ORTHOGRAPHIC RULES FOR LONG S (langes s) NORMALIZATION
+            # ============================================================
+            #
+            # The rules distinguish between:
+            # - Long s (langes s, Schaft-s): used at syllable onset (Anlaut)
+            #   and within syllables (Inlaut)
+            # - Round s (Schluss-s, Auslaut-s): used at syllable end (Auslaut)
+            #
+            # Since we're NORMALIZING (converting historical to modern), we
+            # convert ALL long s to round s. The rules below help identify
+            # edge cases and potential OCR errors.
+            # ============================================================
 
-            # Rule 1: ſ before t, p, ch → s (common patterns: faſten, ſprechen)
-            text = re.sub(r"ſ([tpc])", r"s\1", text)
+            # ----- DIGRAPHS AND LIGATURES (process first) -----
 
-            # Rule 2: ſ at word end → s (should be round s in proper typography)
-            text = re.sub(r"ſ\b", "s", text)
+            # Rule 1: Double long s (geminate): Wasser, Bissen
+            # Historical: Waſſer → Modern: Wasser  # noqa: RUF003
+            text = text.replace("ſſ", "ss")  # noqa: RUF001
 
-            # Rule 3: ſ before vowels → s
-            text = re.sub(r"ſ([aeiouäöüAEIOUÄÖÜ])", r"s\1", text)
+            # Rule 2: Long s + round s ligature (origin of Eszett)
+            # Historical: This combination (long s + round s) is rare in OCR
+            # as it usually appears as the Eszett ligature in proper Fraktur.
+            # When it does appear, normalize to ss (modern) or keep as-is for
+            # texts following pre-1996 spelling (where some words used ss).
+            text = text.replace("ſs", "ss")  # noqa: RUF001
 
-            # Rule 4: ſſ → ss (geminate long s: Waſſer → Wasser)
-            text = text.replace("ſſ", "ss")
+            # ----- SPECIAL COMBINATIONS (long s is correct here) -----
 
-            # Rule 5: ſs → ss (long s + round s: also becomes ss)
-            text = text.replace("ſs", "ss")
+            # Rule 3: ſch digraph (one sound): Busch, Esche, wunschen  # noqa: RUF003
+            # The ſ is correct in historical text, normalize to sch # noqa: RUF003
+            text = text.replace("ſch", "sch")  # noqa: RUF001
 
-            # NOTE: No catch-all rule here!
-            # Any remaining ſ characters might actually be OCR misreadings of 'f'
-            # These should be manually reviewed or handled separately
+            # Rule 4: ſt combination (not from compounds): fasten, Ast  # noqa: RUF003
+            # The ſ is correct when st is within a morpheme # noqa: RUF003
+            # Note: In compounds like "Haus-tur", the s is round (Fugen-s)
+            text = re.sub(r"ſt", "st", text)  # noqa: RUF001
 
-            return text
+            # Rule 5: ſp combination: Wespe, Knospe  # noqa: RUF003
+            text = re.sub(r"ſp", "sp", text)  # noqa: RUF001
+
+            # Rule 6: ſz combination (rare, usually appears as Eszett ligature) # noqa: RUF003
+            # In words like "faszinierend", "Oszillograph"
+            text = re.sub(r"ſz", "sz", text)  # noqa: RUF001
+
+            # ----- POSITIONAL RULES -----
+
+            # Rule 7: Long s at word end → round s
+            # This is technically an OCR error (should be round s in original)
+            # Words always end with round s: Haus, Kosmos, des
+            text = re.sub(r"ſ\b", "s", text)  # noqa: RUF001
+
+            # Rule 8: Long s before apostrophe → round s
+            # Exception: "ich laſſ'" keeps long s before apostrophe in historical # noqa: RUF003
+            # But for normalization, we convert to modern: "ich lass'"
+            text = re.sub(r"ſ'", "s'", text)  # noqa: RUF001
+
+            # Rule 9: Long s before consonants l, n, r (elided e)
+            # Examples: unsre (from unsere), Pilsner, Wechsler
+            # The long s is correct here historically, normalize to s
+            text = re.sub(r"ſ([lnr])", r"s\1", text)  # noqa: RUF001
+
+            # Rule 10: Long s before other consonants
+            # In syllable-final position before k, m, n, w, d: Dresden, Oswald
+            # Historically should be round s, but OCR may produce long s
+            text = re.sub(r"ſ([bdfgkmnwBDFGKMNW])", r"s\1", text)  # noqa: RUF001
+
+            # ----- VOWEL CONTEXTS -----
+
+            # Rule 11: Long s before vowels (syllable onset)
+            # This is CORRECT in historical text (Anlaut/Inlaut position)
+            # Examples: sausen, Masuren, Hause (within syllable)
+            # Normalize to modern s
+            return re.sub(r"ſ([aeiouäöüAEIOUÄÖÜyY])", r"s\1", text)  # noqa: RUF001
+
+            # NOTE: Any remaining long s characters are left as-is.
+            # These may be:
+            # - OCR errors (f misread as long s, or vice versa)
+            # - Unusual contexts not covered by the rules above
+            # Use simple mode if you want all long s converted unconditionally.
 
         # Apply context-aware normalization
         texts = df[input_column].to_list()
@@ -549,44 +727,216 @@ def normalize_long_s(
 
         df = df.with_columns([pl.Series(output_column, normalized_texts)])
         logger.info(f"Normalized long s (context-aware) for {len(df):,} rows")
-        logger.info("Note: Remaining ſ characters may be OCR errors (misread 'f')")
         return df
 
-    else:
-        raise ValueError(f"Unknown mode: {mode}. Use 'simple', 'context-aware', or 'preserve'")
+    raise ValueError(f"Unknown mode: {mode}. Use 'simple' or 'context-aware'")
+
+
+# =============================================================================
+# DEHYPHENATION
+# =============================================================================
+
+# Default German conjunctions to skip during dehyphenation
+# These often appear after hyphens in contexts like "Ost- und West-"
+DEFAULT_CONJUNCTIONS: set[str] = {"und", "oder", "bzw", "sowie", "als", "wie"}
+
+
+def _dehyphenate_text(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    conjunctions: Optional[set[str]] = None,
+) -> pl.DataFrame:
+    """
+    Remove line-break hyphens from aggregated text strings.
+
+    Internal implementation for aggregated/block-level text.
+    Use dehyphenate() as the public entry point.
+    """
+    if output_column is None:
+        output_column = input_column
+
+    if conjunctions is None:
+        conjunctions = DEFAULT_CONJUNCTIONS
+
+    # Lowercase for comparison
+    conj_lower = {c.lower() for c in conjunctions}
+
+    logger.info(f"Dehyphenating text: {input_column} → {output_column}")
+
+    def process(text: str) -> str:
+        if not text or "- " not in text:
+            return text
+
+        def replace(m: re.Match[str]) -> str:
+            before, after = m.group(1), m.group(2)
+            after_stripped = after.rstrip(",;.:")
+
+            # Pure digits → likely range, skip
+            if after_stripped.isdigit():
+                return m.group(0)
+            # Conjunction → skip
+            if after_stripped.lower() in conj_lower:
+                return m.group(0)
+            # Capitalized → keep hyphen (Nord-Süd)
+            if after[0].isupper() or after[0] in "ÄÖÜ":
+                return f"{before}-{after}"
+            return before + after
+
+        # Unicode-aware pattern (includes German umlauts)
+        return re.sub(r"([\w\u00C0-\u00FF]+)-\s+([\w\u00C0-\u00FF]+)", replace, text)
+
+    result = df.with_columns(
+        pl.col(input_column).map_elements(process, return_dtype=pl.Utf8).alias(output_column)
+    )
+
+    logger.info(f"Dehyphenated {len(df):,} rows")
+    return result
+
+
+def _dehyphenate_lines(
+    df: pl.DataFrame,
+    text_col: str = "text",
+    block_col: str = "text_block_id",
+    y_col: str = "y",
+    output_col: Optional[str] = None,
+    conjunctions: Optional[set[str]] = None,
+) -> pl.DataFrame:
+    """
+    Remove line-break hyphens while preserving line-level structure.
+
+    Internal implementation for line-level OCR data.
+    Use dehyphenate() as the public entry point.
+    """
+    if output_col is None:
+        output_col = text_col
+
+    if conjunctions is None:
+        conjunctions = DEFAULT_CONJUNCTIONS
+
+    conj_list = list(conjunctions)
+
+    logger.info(f"Dehyphenating lines: {text_col} → {output_col}")
+
+    # Validate required columns
+    required_cols = [text_col, block_col, y_col]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    # Unicode-aware word pattern (includes German umlauts)
+    word_char = r"[\w\u00C0-\u00FF]"
+
+    # Punctuation that can follow a word at end of line
+    trailing_punct = r"[,;.!?:»«\"\')]?"
+
+    result = (
+        df.with_columns(
+            pl.col(text_col).shift(-1).over(block_col, order_by=y_col).alias("_next"),
+        )
+        .with_columns(
+            # Ends with single hyphen (not -- or —), preceded by word char
+            pl.col(text_col)
+            .str.strip_chars_end()
+            .str.contains(rf"{word_char}-$")
+            .fill_null(value=False)
+            .alias("_ends_hyphen"),
+            # Extract first word or hyphenated compound WITH trailing punctuation
+            # e.g., "Süd-Bahn." from "Süd-Bahn. Der" or "papier," from "papier, sagte"
+            pl.col("_next")
+            .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+{trailing_punct})")
+            .alias("_next_word_full"),
+            # Also extract just the word part (without punctuation) for conjunction check
+            pl.col("_next")
+            .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+)")
+            .alias("_next_word"),
+        )
+        .with_columns(
+            pl.when(~pl.col("_ends_hyphen"))
+            .then(pl.lit("none"))
+            .when(pl.col("_next_word").is_null() | (pl.col("_next_word").str.len_chars() == 0))
+            .then(pl.lit("none"))
+            # Skip conjunctions (case-insensitive, strip trailing punct)
+            .when(
+                pl.col("_next_word").str.replace(r"[,;.:]$", "").str.to_lowercase().is_in(conj_list)
+            )
+            .then(pl.lit("skip"))
+            # Next word starts with digit → keep hyphen (ranges: 20-30, compounds: Artikel-123)
+            .when(pl.col("_next_word").str.contains(r"^\d"))
+            .then(pl.lit("keep_hyphen"))
+            # Both parts capitalized → keep hyphen (Nord-Süd)
+            .when(pl.col("_next_word").str.contains(r"^[A-ZÄÖÜ]"))
+            .then(pl.lit("keep_hyphen"))
+            .otherwise(pl.lit("join"))
+            .alias("_join_type"),
+        )
+        .with_columns(
+            pl.col("_join_type")
+            .shift(1)
+            .over(block_col, order_by=y_col)
+            .fill_null("none")
+            .alias("_prev_join_type"),
+        )
+        .with_columns(
+            pl.when(pl.col("_join_type") == "join")
+            .then(pl.col(text_col).str.replace(r"-\s*$", "") + pl.col("_next_word_full"))
+            .when(pl.col("_join_type") == "keep_hyphen")
+            .then(pl.col(text_col).str.replace(r"-\s*$", "-") + pl.col("_next_word_full"))
+            .when(pl.col("_prev_join_type").is_in(["join", "keep_hyphen"]))
+            # Remove first word/compound WITH trailing punctuation and following whitespace
+            .then(
+                pl.col(text_col).str.replace(
+                    rf"^\s*(?:{word_char}+-)*{word_char}+{trailing_punct}\s*", ""
+                )
+            )
+            .otherwise(pl.col(text_col))
+            .alias(output_col)
+        )
+        .drop(
+            "_next",
+            "_ends_hyphen",
+            "_next_word",
+            "_next_word_full",
+            "_join_type",
+            "_prev_join_type",
+        )
+    )
+
+    logger.info(f"Dehyphenated {len(df):,} lines")
+    return result
 
 
 def dehyphenate(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
-    language: str = "de_DE",
-    validate: bool = True,
+    conjunctions: Optional[set[str]] = None,
 ) -> pl.DataFrame:
     """
-    Remove line-break hyphens from newspaper OCR text.
+    Remove line-break hyphens from text.
 
-    Newspapers split words across line breaks with hyphens. After line
-    aggregation, these appear as "word- word". This function joins them
-    back together based on whitespace patterns.
+    Auto-detects data structure and applies the appropriate method:
+    - **Line-level data** (has text_block_id, y columns): Preserves line structure,
+      moves word continuations to the previous line
+    - **Aggregated text**: Uses regex-based pattern matching on "word- word" patterns
 
-    The key insight: Line-break hyphens are ALWAYS followed by whitespace,
-    while compound words (Nord-Süd) have no space after the hyphen.
+    Newspapers split words across line breaks with hyphens. This function joins them
+    back together intelligently.
+
+    **Smart heuristics to avoid incorrect joins:**
+    - Skips conjunctions (und, oder, etc.) - "Ost- und West-" stays intact
+    - Skips pure digits - "20- 30" is likely a range, not a word
+    - Keeps hyphen for capitalized compounds - "Nord- Süd" → "Nord-Süd"
+    - Joins lowercase continuations - "Zeitungs- papier" → "Zeitungspapier"
 
     Args:
-        df: Input DataFrame
+        df: Input DataFrame (line-level or aggregated text)
         input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_dehyphen)
-        language: Language code for pyphen (default: de_DE)
-        validate: Use pyphen to validate syllable breaks (default: True).
-                 Checks if the rejoined word would be hyphenated at that position.
-                 If False, removes ALL hyphen+whitespace patterns (faster but less safe).
+        output_column: Name for output column (default: same as input_column)
+        conjunctions: Set of words to skip (default: German conjunctions)
 
     Returns:
         DataFrame with dehyphenated text column
-
-    Raises:
-        ImportError: If pyphen is not installed
 
     Example:
         >>> # Line-break hyphen (HAS whitespace) → REMOVE
@@ -594,424 +944,33 @@ def dehyphenate(
         >>>
         >>> # Compound word (NO whitespace) → KEEP
         >>> # "Nord-Süd-Konflikt" → "Nord-Süd-Konflikt"
-
-    Note:
-        With validate=True, pyphen checks if the split is a valid syllable
-        boundary, reducing false positives from OCR errors. However, pyphen
-        validates syllable breaks, not semantic meaning - it will approve
-        joining "Nord- Süd" because that's a valid break point for "NordSüd".
-
-        This is okay because real compound words in newspapers never have
-        whitespace after hyphens - that pattern only appears from line breaks.
+        >>>
+        >>> # Capitalized compound → KEEP HYPHEN
+        >>> # "Nord- Süd" → "Nord-Süd"
+        >>>
+        >>> # Conjunction → SKIP
+        >>> # "Ost- und West-Grenze" → "Ost- und West-Grenze"
+        >>>
+        >>> # Line-level example:
+        >>> # Line 1: "Die Zeitungs-" → "Die Zeitungspapier"
+        >>> # Line 2: "papier wird knapp" → "wird knapp"
     """
-    try:
-        import pyphen
-    except ImportError:
-        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
+    # Auto-detect: use line-level if structure columns are present
+    required_line_cols = ["text_block_id", "y"]
 
-    if output_column is None:
-        output_column = f"{input_column}_dehyphen"
-
-    logger.info(f"Dehyphenating text: {input_column} → {output_column}")
-
-    dic = pyphen.Pyphen(lang=language) if validate else None
-
-    if validate:
-        logger.info("Using pyphen dictionary validation")
-    else:
-        logger.info("Using simple regex-based removal (no validation)")
-
-    def dehyphenate_text(text: str) -> str:
-        """Remove line-break hyphens from text."""
-        if not text:
-            return text
-
-        import re
-
-        def check_and_replace(match):
-            """Check if hyphen is at a valid syllable break, if so remove it."""
-            before = match.group(1)  # Word part before hyphen
-            after = match.group(2)  # Word part after hyphen
-
-            # Heuristic: Both parts capitalized → likely proper noun compound
-            # Examples: "Nord- Süd", "Ost- West", "New- York"
-            # These should stay separated even with whitespace
-            if before and after and before[0].isupper() and after[0].isupper():
-                return match.group(0)  # Keep hyphen and space
-
-            if not validate or dic is None:
-                # Simple mode: always join
-                return before + after
-
-            # Validation mode: check if it's a valid syllable break
-            full_word = before + after
-            positions = dic.positions(full_word)
-
-            # If the hyphen position matches a valid syllable break, remove it
-            if len(before) in positions:
-                return full_word
-            else:
-                # Not a valid break point, keep hyphen and space
-                return match.group(0)
-
-        # Pattern: word-characters, hyphen, whitespace, word-characters
-        # Matches both newlines and multiple spaces
-        pattern = r"(\w+)-\s+(\w+)"
-        text = re.sub(pattern, check_and_replace, text)
-
-        return text
-
-    df = df.with_columns(
-        [
-            pl.col(input_column)
-            .map_elements(dehyphenate_text, return_dtype=pl.Utf8)
-            .alias(output_column)
-        ]
-    )
-
-    logger.info(f"Dehyphenated {len(df):,} rows")
-    return df
-
-
-def dehyphenate_auto(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-    language: str = "de_DE",
-    validate: bool = True,
-) -> pl.DataFrame:
-    """
-    Auto-detect and apply the appropriate dehyphenation method.
-
-    Chooses between line-level dehyphenation (dehyphenate_lines) and simple
-    dehyphenation (dehyphenate) based on whether the DataFrame has the required
-    columns for line-level processing.
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_dehyphen)
-        language: Language code for pyphen (default: "de_DE")
-        validate: Use pyphen to validate syllable breaks (default: True)
-
-    Returns:
-        DataFrame with dehyphenated text column
-
-    Note:
-        Uses dehyphenate_lines if columns text_block_id, line_id, x, y, width
-        are present; otherwise falls back to simple dehyphenate.
-    """
-    required_cols = ["text_block_id", "line_id", "x", "y", "width"]
-
-    if all(col in df.columns for col in required_cols):
+    if all(col in df.columns for col in required_line_cols):
         logger.info("Using line-level dehyphenation (preserves line structure)")
-        return dehyphenate_lines(
+        return _dehyphenate_lines(
             df,
-            input_column=input_column,
-            output_column=output_column,
-            language=language,
-            validate=validate,
-        )
-    else:
-        logger.info("Using simple dehyphenation (line structure not available)")
-        return dehyphenate(
-            df,
-            input_column=input_column,
-            output_column=output_column,
-            language=language,
-            validate=validate,
+            text_col=input_column,
+            output_col=output_column,
+            conjunctions=conjunctions,
         )
 
-
-def dehyphenate_lines(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    text_block_id_column: str = "text_block_id",
-    line_id_column: str = "line_id",
-    x_column: str = "x",
-    y_column: str = "y",
-    width_column: str = "width",
-    output_column: Optional[str] = None,
-    language: str = "de_DE",
-    validate: bool = True,
-    max_y_distance: int = 100,
-) -> pl.DataFrame:
-    """
-    Remove line-break hyphens while preserving line-level structure.
-
-    This function is designed for line-level OCR data where words are split
-    across consecutive lines with hyphens. Unlike dehyphenate() which works
-    on aggregated text, this function:
-    - Preserves the line-level DataFrame structure
-    - Uses spatial coordinates to verify consecutive lines
-    - Moves wrapped word parts to the correct line
-    - Updates both lines in place
-
-    Example:
-        Line 1: "Die Zeitungs-" (x=100, y=200)
-        Line 2: "papier wird knapp" (x=100, y=250)
-
-        After dehyphenation:
-        Line 1: "Die Zeitungspapier" (x=100, y=200)
-        Line 2: "wird knapp" (x=100, y=250)
-
-    Args:
-        df: Input DataFrame with line-level OCR data
-        input_column: Column containing text (default: "text")
-        text_block_id_column: Column with text block IDs (default: "text_block_id")
-        line_id_column: Column with line IDs (default: "line_id")
-        x_column: Column with x coordinate (default: "x")
-        y_column: Column with y coordinate (default: "y")
-        width_column: Column with width (default: "width")
-        output_column: Name for output column (default: {input_column}_dehyphen)
-        language: Language code for pyphen (default: "de_DE")
-        validate: Use pyphen to validate syllable breaks (default: True)
-        max_y_distance: Maximum vertical distance to consider lines consecutive (default: 100)
-
-    Returns:
-        DataFrame with dehyphenated text, preserving line structure
-
-    Note:
-        Requires columns: text, text_block_id, line_id, x, y, width
-        All other columns are preserved unchanged.
-    """
-    try:
-        import pyphen
-    except ImportError:
-        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
-
-    if output_column is None:
-        output_column = f"{input_column}_dehyphen"
-
-    logger.info(f"Dehyphenating lines: {input_column} → {output_column}")
-
-    # Validate required columns
-    required_cols = [
-        input_column,
-        text_block_id_column,
-        line_id_column,
-        x_column,
-        y_column,
-        width_column,
-    ]
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
-
-    dic = pyphen.Pyphen(lang=language) if validate else None
-
-    if validate:
-        logger.info("Using pyphen dictionary validation")
-    else:
-        logger.info("Using simple pattern matching (no validation)")
-
-    # Sort by text_block, then y coordinate (top to bottom)
-    df = df.sort([text_block_id_column, y_column])
-
-    # Create output column as copy of input
-    df = df.with_columns([pl.col(text_column).alias(output_column)])
-
-    # OPTIMIZATION: Pre-filter lines ending with hyphen to reduce search space
-    # This dramatically reduces the number of iterations from 61M to ~100k-500k
-    logger.info("Finding lines ending with hyphens...")
-    hyphen_mask = df.select(
-        pl.col(output_column).str.strip_chars_end().str.ends_with("-")
-    ).to_series()
-
-    hyphen_indices = [i for i, has_hyphen in enumerate(hyphen_mask) if has_hyphen]
-    logger.info(
-        f"Found {len(hyphen_indices):,} lines ending with hyphens (out of {len(df):,} total)"
+    logger.info("Using text-based dehyphenation (aggregated text)")
+    return _dehyphenate_text(
+        df,
+        input_column=input_column,
+        output_column=output_column,
+        conjunctions=conjunctions,
     )
-
-    if not hyphen_indices:
-        logger.info("No line-break hyphens found")
-        return df
-
-    # OPTIMIZATION: Extract columns as numpy arrays for fast random access
-    texts = df[output_column].to_list()
-    blocks = df[text_block_id_column].to_list()
-    y_coords = df[y_column].to_list()
-    x_coords = df[x_column].to_list()
-    widths = df[width_column].to_list()
-
-    # Process only hyphenated lines
-    modifications = []
-    merge_examples = []  # Collect examples for review
-
-    from tqdm import tqdm
-
-    for i in tqdm(hyphen_indices, desc="Processing hyphenated lines", unit="line"):
-        # Bounds check
-        if i >= len(df) - 1:
-            continue
-
-        # Fast array access instead of df[i]
-        current_block = blocks[i]
-        next_block = blocks[i + 1]
-        same_block = current_block == next_block
-
-        # If not same block, check if we're at the last line of current block
-        if not same_block:
-            # Quick check: is there any line after i+1 with same block?
-            has_more_in_block = any(
-                blocks[j] == current_block for j in range(i + 2, min(i + 10, len(blocks)))
-            )
-            if has_more_in_block:
-                continue
-
-        # Check if lines are vertically close (consecutive)
-        current_y = y_coords[i]
-        next_y = y_coords[i + 1]
-        y_distance = abs(next_y - current_y)
-        if y_distance > max_y_distance:
-            continue
-
-        # ADDITIONAL CHECK: Verify next line is actually BELOW current line
-        # (not above or at same level - this catches ordering issues)
-        if next_y <= current_y:
-            continue
-
-        # ADDITIONAL CHECK: Verify horizontal alignment
-        # Lines should start at similar x positions (within reason)
-        current_x = x_coords[i]
-        next_x = x_coords[i + 1]
-        x_distance = abs(next_x - current_x)
-
-        # Allow some horizontal variation but not too much
-        # (columns, indentation, etc. should be roughly aligned)
-        max_x_distance = 200  # pixels - adjust based on typical column width
-        if x_distance > max_x_distance:
-            continue
-
-        # ADDITIONAL CHECK: Check if next line starts far to the right
-        # (might be a different column or continuation mark)
-        current_width = widths[i]
-        # If next line starts after current line ends, it's likely a new section
-        current_end_x = current_x + current_width
-        if next_x > current_end_x + 50:  # 50px grace period
-            continue
-
-        # Get text (already verified to end with hyphen by pre-filter)
-        current_text = texts[i]
-        if not current_text:
-            continue
-
-        next_text = texts[i + 1]
-        if not next_text or not next_text.strip():
-            continue
-
-        # Extract the word parts
-        current_words = current_text.rstrip().split()
-        if not current_words:
-            continue
-
-        last_word = current_words[-1]
-        if not last_word.endswith("-"):
-            continue
-
-        # Get first word from next line
-        next_words = next_text.strip().split()
-        if not next_words:
-            continue
-
-        first_word = next_words[0]
-
-        # Remove hyphen and join
-        word_part1 = last_word[:-1]  # Remove trailing hyphen
-        joined_word = word_part1 + first_word
-
-        # VALIDATION CHECKS to prevent bad merges:
-
-        # 1. Skip if first word is all caps (likely a heading/title)
-        if first_word.isupper() and len(first_word) > 2:
-            continue
-
-        # 2. Skip if word parts are identical (repetition, not continuation)
-        if word_part1.lower() == first_word.lower().rstrip(",-.:;!?"):
-            continue
-
-        # 3. Skip if capitalization suggests separate words
-        # (lowercase + Capitalized = probably two words)
-        if word_part1 and word_part1[-1].islower() and first_word and first_word[0].isupper():
-            # Exception: if word_part1 is very short (1-2 chars), might be valid
-            if len(word_part1) > 2:
-                continue
-
-        # Validate with pyphen if requested
-        if validate and dic:
-            # Check if this would be a valid hyphenation point
-            hyphenated = dic.inserted(joined_word)
-            # pyphen inserts "-" at valid break points
-            # Check if our split point (word_part1) matches a valid break
-            # Example: "Zeitungs" should appear before a "-" in "Zei-tungs-pa-pier"
-            parts = hyphenated.split("-")
-            # Build cumulative parts to find if word_part1 matches
-            cumulative = ""
-            valid_break = False
-            for part in parts[:-1]:  # Don't check last part
-                cumulative += part
-                if cumulative == word_part1:
-                    valid_break = True
-                    break
-
-            if not valid_break:
-                # Not a valid syllable break, skip
-                continue
-
-        # Valid dehyphenation - prepare modifications
-        # Modify current line: replace last word with joined word
-        current_words[-1] = joined_word
-        new_current_text = " ".join(current_words)
-
-        # Modify next line: remove first word
-        new_next_text = " ".join(next_words[1:]) if len(next_words) > 1 else ""
-
-        modifications.append({"index": i, "text": new_current_text})
-        modifications.append({"index": i + 1, "text": new_next_text})
-
-        # Save example for review (first 100)
-        if len(merge_examples) < 100:
-            merge_examples.append(
-                {
-                    "line_index": i,
-                    "word_part1": word_part1,
-                    "word_part2": first_word,
-                    "joined_word": joined_word,
-                    "line1_before": current_text.strip(),
-                    "line2_before": next_text.strip(),
-                    "line1_after": new_current_text.strip(),
-                    "line2_after": new_next_text.strip(),
-                }
-            )
-
-    # Apply modifications
-    if modifications:
-        logger.info(f"Found {len(modifications) // 2:,} line-break hyphens to join")
-
-        # Create a mapping of index to new text
-        mod_map = {mod["index"]: mod["text"] for mod in modifications}
-
-        # Apply modifications to the text list
-        for idx, new_text in mod_map.items():
-            texts[idx] = new_text
-
-        # Update dataframe with modified texts
-        df = df.with_columns([pl.Series(output_column, texts)])
-
-        # Log sample merges for review
-        if merge_examples:
-            logger.info(f"\nSample merges (showing first {len(merge_examples)}):")
-            for i, ex in enumerate(merge_examples[:10], 1):  # Show first 10 in log
-                logger.info(f"\n  {i}. Line {ex['line_index']}:")
-                logger.info(
-                    f"     Merged: '{ex['word_part1']}-' + '{ex['word_part2']}' → '{ex['joined_word']}'"
-                )
-                logger.info(f"     Before: '{ex['line1_before']}'")
-                logger.info(f"             '{ex['line2_before']}'")
-                logger.info(f"     After:  '{ex['line1_after']}'")
-                logger.info(f"             '{ex['line2_after']}'")
-    else:
-        logger.info("No line-break hyphens found to join")
-
-    logger.info(f"Dehyphenated {len(df):,} lines")
-    return df

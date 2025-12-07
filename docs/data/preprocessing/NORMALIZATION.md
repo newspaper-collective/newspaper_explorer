@@ -1,9 +1,9 @@
 # Text Normalization
 
-> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**  
+> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
 > This document focuses specifically on normalization methods.
 
-Historical German newspaper text often uses outdated spelling conventions and characters that can pose challenges for modern NLP analysis. The Newspaper Explorer now supports automatic text normalization using state-of-the-art Transnormer models.
+Historical German newspaper text often uses outdated spelling conventions and characters that can pose challenges for modern NLP analysis. The Newspaper Explorer supports multiple normalization approaches, from simple character replacement to state-of-the-art neural models.
 
 ## Overview
 
@@ -12,6 +12,77 @@ Text normalization converts historical German text to modern orthography, handli
 - **Outdated characters**: `ſ` → `s`, `aͤ` → `ä`, etc.
 - **Historical spelling**: `Königinn` → `Königin`, `Pallaſtes` → `Palastes`
 - **Grammatical modernization**: Historical verb forms and grammar
+
+## Historical Long S (ſ) Normalization
+
+The **long s** (ſ, U+017F, "langes s", "Schaft-s") is a positional variant of the letter "s" used in Fraktur typography and German Kurrent handwriting until 1941.
+
+### Historical Background
+
+The distinction between **long s (ſ)** and **round s** (Schluss-s, Auslaut-s) follows rules codified at the **1901 Orthographic Conference**:
+
+- **Long s (ſ)**: Used at syllable onset (Anlaut) and within syllables (Inlaut)
+- **Round s**: Used at syllable endings (Auslaut)
+
+This distinction aids readability of compound words. For example:
+- **Wachſtube** (Wach·stube) = guard room
+- **Wachstube** (Wachs·tube) = wax tube
+
+The ligatures **ſʒ** (ſz) and **ſs** are considered the origin of the German **Eszett (ß)**.
+
+### 1901 Orthographic Rules
+
+**Round s (Schluss-s) is used:**
+
+| Position | Examples |
+|----------|----------|
+| Word end | das Haus, der Kosmos, des Bundes |
+| End of prefixes/compounds (Fugen-s) | Liebesbrief, Arbeitsamt, Haustür, Wirtsstube |
+| Before consonant-initial suffixes | Mäuschen, Weisheit, Wachstum (-chen, -heit, -tum) |
+| Syllable-final before k, m, n, w, d | Dresden, Oswald, Schleswig |
+
+**Long s (ſ) is used:**
+
+| Position | Examples |
+|----------|----------|
+| Syllable onset (Anlaut) | ſauſen, einſpielen, ausſpielen |
+| Within syllables (Inlaut) | Maſuren, Hauſe |
+| In ſch, ſt, ſp combinations | Weſpe, faſten, Buſch, löſchen |
+| Digraph ſſ | Waſſer, Biſſen, Gaſſe |
+| Before l, n, r (elided e) | unſre, Pilſner, Wechſler |
+| Before apostrophe | ich laſſ' |
+
+### Normalization Modes
+
+The `normalize_long_s()` function provides two modes:
+
+```python
+from newspaper_explorer.data.preprocessing.normalization import normalize_long_s
+
+# Mode 1: Simple (recommended for NLP)
+# Fast, replaces all ſ → s unconditionally
+df = normalize_long_s(df, mode="simple")
+# "Hauſe" → "Hause", "Waſſer" → "Wasser"
+
+# Mode 2: Context-aware (1901 rules)
+# Implements historical rules, useful for scholarly work
+df = normalize_long_s(df, mode="context-aware")
+# Processes ſch, ſt, ſp, ſſ combinations correctly
+```
+
+If you need to preserve the original long s characters for archival purposes, simply don't apply this normalization step.
+
+### Common OCR Issues
+
+- **ſ misread as f**: "Haufe" instead of "Hauſe" (very common in Fraktur OCR)
+- **Round s as ſ**: OCR may produce ſ where round s should appear
+- **f misread as ſ**: Less common but possible
+
+The context-aware mode helps identify potential OCR errors by applying proper positional rules.
+
+---
+
+## Neural Normalization (Transnormer)
 
 ## Performance
 

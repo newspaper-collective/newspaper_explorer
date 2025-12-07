@@ -5,11 +5,15 @@ Functions for aggregating line-level data into text blocks and other
 higher-level text units. These operate on already-loaded parquet files.
 """
 
+import json
 import logging
 from pathlib import Path
+import time
 from typing import List, Optional, Union
 
 import polars as pl
+
+from newspaper_explorer.models.data.metadata import AggregationMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,7 @@ def load_and_aggregate_textblocks(
         >>> df = load_and_aggregate_textblocks(..., group_by=["text_block_id"])
     """
     parquet_path = Path(parquet_path)
+    start_time = time.time()
 
     if not parquet_path.exists():
         raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
@@ -168,5 +173,25 @@ def load_and_aggregate_textblocks(
         logger.info(f"Saving to {final_save_path}")
         aggregated.write_parquet(final_save_path, compression="zstd")
         logger.info(f"Saved {len(aggregated)} text blocks to {final_save_path}")
+
+        # Save aggregation metadata
+        end_time = time.time()
+        metadata = AggregationMetadata(
+            source=source_name,
+            aggregation_type="textblock",
+            group_by=group_by,
+            sort_by=sort_by,
+            input_parquet=str(parquet_path),
+            output_parquet=str(final_save_path),
+            input_row_count=len(df),
+            output_row_count=len(aggregated),
+            duration_seconds=end_time - start_time,
+        )
+        metadata_path = final_save_path.with_suffix(".json")
+        metadata_path.write_text(
+            json.dumps(metadata.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        logger.info(f"Saved aggregation metadata to {metadata_path}")
 
     return aggregated

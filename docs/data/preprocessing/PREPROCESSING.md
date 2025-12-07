@@ -227,11 +227,7 @@ The preprocessing steps fall into four categories that can all work together:
 ```python
 from newspaper_explorer.data.preprocessing.normalization import normalize_unicode
 
-# Conservative mode (default): preserves semantic punctuation
 df = normalize_unicode(df, input_column="text", output_column="text_unicode")
-
-# Aggressive mode: unifies all dashes (good for NLP)
-df = normalize_unicode(df, input_column="text", aggressive=True)
 ```
 
 **Transformations**:
@@ -242,11 +238,48 @@ df = normalize_unicode(df, input_column="text", aggressive=True)
 - Removes OCR artifacts (bullets, boxes)
 - Optional: strips control characters
 
-**Two modes**:
-- **Conservative** (default): Preserves en dash, em dash (semantic meaning)
-- **Aggressive**: Unifies all dashes → hyphen (better for NLP)
+**Note**: For hyphen/dash normalization, use `normalize_hyphens()` instead.
 
-#### 2.2 Diacritic Removal
+#### 2.2 Hyphen Normalization
+- **Function**: `normalize_hyphens()`
+- **Speed**: ⚡⚡ Fast (translation table)
+- **Quality**: ★★★★★ Essential for OCR
+- **Use case**: Normalize hyphen variants from Fraktur OCR - **RUN BEFORE DEHYPHENATE**
+
+```python
+from newspaper_explorer.data.preprocessing.normalization import normalize_hyphens
+
+# Mode "unify" (default): All hyphens → ASCII hyphen-minus (-)
+df = normalize_hyphens(df, input_column="text", mode="unify")
+
+# Mode "conservative": Only OCR artifacts (double hyphen, non-breaking)
+df = normalize_hyphens(df, input_column="text", mode="conservative")
+
+# Mode "soft_only": Only remove soft hyphens (minimal)
+df = normalize_hyphens(df, input_column="text", mode="soft_only")
+```
+
+**Characters Handled**:
+| Character | Unicode | Mode: unify | Mode: conservative | Mode: soft_only |
+|-----------|---------|-------------|-------------------|-----------------|
+| ⸗ (double hyphen) | U+2E17 | → `-` | → `-` | kept |
+| ‑ (non-breaking) | U+2011 | → `-` | → `-` | kept |
+| – (en dash) | U+2013 | → `-` | kept | kept |
+| — (em dash) | U+2014 | → `-` | kept | kept |
+| − (minus sign) | U+2212 | → `-` | kept | kept |
+| ­ (soft hyphen) | U+00AD | removed | removed | removed |
+
+**Why This Matters**:
+- Fraktur OCR produces double hyphen (⸗) for line breaks and compound words
+- Example: `"Nachrichten⸗Teil"` → `"Nachrichten-Teil"`
+- **Must run before `dehyphenate`** for proper line-break handling
+
+**Mode Selection Guide**:
+- **unify**: Best for NLP analysis (consistent tokenization)
+- **conservative**: Preserves semantic punctuation (en/em dashes)
+- **soft_only**: Minimal intervention, just removes invisible soft hyphens
+
+#### 2.3 Diacritic Removal
 - **Function**: `remove_diacritics()`
 - **Speed**: ⚡⚡ Fast (unidecode)
 - **Quality**: ★★★☆☆ Lossy but useful
@@ -262,7 +295,7 @@ df = remove_diacritics(df, input_column="text", output_column="text_no_diacritic
 - ä → a, ö → o, ü → u
 - é → e, à → a, etc.
 
-#### 2.3 Simple Historical German
+#### 2.4 Simple Historical German
 - **Function**: `simple()`
 - **Speed**: ⚡ Instant (regex replacement)
 - **Quality**: ★★☆☆☆ Basic
@@ -279,7 +312,7 @@ df = simple(df, input_column="text", output_column="text_simple")
 - `ẞ` → `SS` (capital sharp s)
 - `ß` → `ss` (sharp s)
 
-#### 2.4 Transnormer (Neural Historical German)
+#### 2.5 Transnormer (Neural Historical German)
 - **Function**: `transnormer()`
 - **Speed**: ⚡⚡⚡ Medium-Fast (GPU: 100-500 sent/sec, CPU: 10-100 sent/sec)
 - **Quality**: ★★★★★ Excellent (98.88% accuracy)
@@ -312,7 +345,7 @@ df = transnormer(
 - FP16 support (faster inference on Ampere+ GPUs)
 - torch.compile optimization (PyTorch 2.0+)
 
-#### 2.3 DTA-CAB (API)
+#### 2.6 DTA-CAB (API)
 - **Function**: `dta_cab()`
 - **Speed**: ⚡ Slow (API calls)
 - **Quality**: ★★★★★ Excellent

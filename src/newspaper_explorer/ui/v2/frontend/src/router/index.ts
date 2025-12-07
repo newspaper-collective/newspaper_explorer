@@ -68,6 +68,11 @@ const router = createRouter({
           name: 'emotions',
           component: () => import('@/views/EmotionsView.vue'),
         },
+        {
+          path: 'preprocessing',
+          name: 'preprocessing',
+          component: () => import('@/views/PreprocessingView.vue'),
+        },
       ],
     },
   ],

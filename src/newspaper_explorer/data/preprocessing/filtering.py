@@ -10,16 +10,11 @@ Provides methods to remove unwanted content from text:
 """
 
 import logging
-import re
 from typing import Optional
 
 import polars as pl
 
 logger = logging.getLogger(__name__)
-
-# Minimum word length to consider for garbage detection
-# Words shorter than this are not checked for repetition patterns
-MIN_WORD_LENGTH_FOR_GARBAGE_CHECK = 2
 
 
 def filter_by_total_character_length(
@@ -125,115 +120,6 @@ def filter_by_word_count(
     return df
 
 
-def filter_repeating_chars(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-    min_unique_chars: int = 3,
-    max_repetition_ratio: float = 0.3,
-    *,
-    remove_lines: bool = True,
-) -> pl.DataFrame:
-    """
-    Filter or remove words with excessive character repetition (OCR garbage).
-
-    Detects OCR artifacts like "ssss", "jjjj", "sssuuusss" that have low
-    character vocabulary (many repetitions of few characters).
-
-    Two detection methods:
-    1. Absolute: word has fewer than min_unique_chars unique characters
-    2. Ratio: unique_chars / word_length ≤ max_repetition_ratio
-
-    Examples:
-        - "sssuuusss" → filtered (2 unique / 9 total = 0.22 ratio)
-        - "jjjj" → filtered (1 unique / 4 total = 0.25 ratio)
-        - "|||" → filtered (1 unique / 3 total = 0.33 ratio)
-        - "Die Zeitung" → kept (normal text)
-        - "Schifffahrt" → kept (valid German compound with fff)
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_filtered)
-        min_unique_chars: Minimum unique characters per word (default: 3)
-        max_repetition_ratio: Maximum ratio of unique to total chars (default: 0.3)
-        remove_lines: If True, remove lines where all words are garbage.
-                     If False, just remove garbage words from lines.
-
-    Returns:
-        DataFrame with repeating character patterns filtered out
-
-    Example:
-        >>> # Remove garbage words, keep valid words
-        >>> df = filter_repeating_chars(df)
-        >>> # "Die ssss Zeitung" → "Die Zeitung"
-        >>>
-        >>> # Remove entire lines if all words are garbage
-        >>> df = filter_repeating_chars(df, remove_lines=True)
-        >>> # "ssss jjjj" → (line removed)
-
-    Note:
-        Preserves valid German compounds like "Schifffahrt" (contains fff)
-        which have legitimate character repetition in context.
-    """
-    if output_column is None:
-        output_column = f"{input_column}_filtered"
-
-    logger.info(
-        f"Filtering repeating chars: {input_column} "
-        f"(min_unique={min_unique_chars}, max_ratio={max_repetition_ratio})"
-    )
-
-    original_count = len(df)
-
-    def is_garbage_word(word: str) -> bool:
-        """Check if a word is OCR garbage based on character repetition."""
-        if not word or len(word) < MIN_WORD_LENGTH_FOR_GARBAGE_CHECK:
-            return False
-
-        # Count unique characters
-        unique_chars = len(set(word))
-
-        # Method 1: Absolute minimum unique characters
-        if unique_chars < min_unique_chars:
-            return True
-
-        # Method 2: Ratio of unique to total characters
-        ratio = unique_chars / len(word)
-        return ratio <= max_repetition_ratio
-
-    def filter_line(text: str) -> str:
-        """Filter garbage words from a line of text."""
-        if not text or not text.strip():
-            return text
-
-        words = text.split()
-        filtered_words = [word for word in words if not is_garbage_word(word)]
-
-        return " ".join(filtered_words)
-
-    # Apply filtering to each line
-    texts = df[input_column].to_list()
-    filtered_texts = [filter_line(text) for text in texts]
-
-    # Add filtered column
-    df = df.with_columns([pl.Series(output_column, filtered_texts)])
-
-    if remove_lines:
-        # Remove lines that became empty after filtering
-        df = df.filter(pl.col(output_column).str.strip_chars() != "")
-        removed_count = original_count - len(df)
-        logger.info(
-            f"Removed {removed_count:,} lines with only garbage words "
-            f"({removed_count / original_count * 100:.1f}%)"
-        )
-        logger.info(f"Remaining: {len(df):,} rows")
-    else:
-        logger.info(f"Filtered garbage words from {len(df):,} rows")
-
-    return df
-
-
 def filter_number_only_lines(
     df: pl.DataFrame,
     input_column: str = "text",
@@ -248,19 +134,24 @@ def filter_number_only_lines(
     - "1.234" (numbers with periods)
     - "12-34-56" (dates or reference numbers)
     - "1,000" (formatted numbers)
+    - "3⁴" (superscripts)
+    - "½" or "3 ½" (fractions)
+
+    Uses Unicode \\p{N} pattern to match all numeric characters including
+    superscripts (⁴, ³, ²), subscripts (₁, ₂), and fractions (½, ¼, ¾).
 
     Args:
         df: Input DataFrame
         input_column: Column to check (default: "text")
-        allow_separators: If True, allows common separators (., -, /, :, ,) with numbers
-                         If False, only pure digit strings are filtered
+        allow_separators: If True, allows common separators (., -, /, :, ,, space) with numbers
+                         If False, only pure numeric strings are filtered
 
     Returns:
         DataFrame with number-only lines filtered out
 
     Example:
         >>> # These get REMOVED:
-        >>> # "123", "45.67", "1-2-3", "1,000"
+        >>> # "123", "45.67", "1-2-3", "1,000", "3⁴", "½", "3¾", "3 ½"
         >>>
         >>> # These are KEPT:
         >>> # "Seite 123" (has text)
@@ -277,24 +168,18 @@ def filter_number_only_lines(
 
     original_count = len(df)
 
-    # Pattern: only digits and common separators (., -, /, :, ,) or strict digits only
-    pattern = r"^[\d.,\-/:]+$" if allow_separators else r"^\d+$"
+    # Pattern: Unicode numbers (\p{N}) and common separators (incl. space), or strict numbers only
+    # \p{N} matches all Unicode number categories: digits, superscripts, subscripts, fractions
+    pattern = r"^[\p{N}.,\-/: ]+$" if allow_separators else r"^\p{N}+$"
 
-    def is_number_only(text: str) -> bool:
-        if not text or not text.strip():
-            return False  # Empty text, don't filter
-
-        text = text.strip()
-
-        # Check pattern
-        if re.match(pattern, text):
-            # Additional check: must contain at least one digit
-            return any(c.isdigit() for c in text)
-        return False
-
-    # Filter: keep rows that are NOT number-only
-    mask = ~pl.col(input_column).map_elements(is_number_only, return_dtype=pl.Boolean)
-    df = df.filter(mask)
+    # Use native Polars regex for efficiency
+    # Filter: keep rows that do NOT match number-only pattern
+    df = df.filter(
+        ~(
+            pl.col(input_column).str.strip_chars().str.len_chars().gt(0)
+            & pl.col(input_column).str.strip_chars().str.contains(pattern)
+        )
+    )
 
     filtered_count = original_count - len(df)
     logger.info(
@@ -305,118 +190,38 @@ def filter_number_only_lines(
     return df
 
 
-def filter_by_char_token_ratio(
+def filter_lines_without_alphabetic_chars(
     df: pl.DataFrame,
     input_column: str = "text",
-    max_ratio: float = 8.0,
-    min_tokens: int = 2,
 ) -> pl.DataFrame:
     """
-    Filter lines with suspiciously high character-to-token ratio.
+    Filter out lines that do not contain any alphabetic characters.
 
-    Clean German text averages 5-7 characters per token.
-    Ratios >8:1 indicate OCR fragmentation or artifacts.
+    Removes lines that are purely numeric, punctuation, or symbols.
+    Useful for cleaning OCR output that may include non-text artifacts.
 
     Args:
         df: Input DataFrame
         input_column: Column to check (default: "text")
-        max_ratio: Maximum allowed char/token ratio (default: 8.0)
-        min_tokens: Minimum tokens required to check ratio (default: 2)
 
     Returns:
-        DataFrame with high-ratio lines filtered out
+        DataFrame with non-alphabetic lines filtered out
 
     Example:
-        >>> # Clean German: 5-7 chars/token
-        >>> # "Die Zeitung erscheint täglich"
-        >>> # 30 chars / 4 tokens = 7.5 (KEPT)
+        >>> # These get REMOVED:
+        >>> # "12345", "!!!", "-----"
         >>>
-        >>> # OCR fragmentation: >8 chars/token
-        >>> # "DieZeitungerscheinttäglich"
-        >>> # 27 chars / 1 token = 27 (REMOVED)
+        >>> # These are KEPT:
+        >>> # "Die Zeitung", "Am 12. März", "Hello, World!"
         >>>
-        >>> df = filter_by_char_token_ratio(df, max_ratio=8.0)
-
-    Note:
-        Based on normalize.md validation recommendations.
-        Token-to-character ratio is a quality indicator for OCR text.
+        >>> df = filter_lines_without_alphabetic_chars(df)
     """
-    logger.info(f"Filtering by char/token ratio (max={max_ratio}): {input_column}")
+    logger.info(f"Filtering lines without alphabetic chars: {input_column}")
 
     original_count = len(df)
 
-    def has_valid_ratio(text: str) -> bool:
-        if not text:
-            return True  # Keep empty
-
-        tokens = text.split()
-        if len(tokens) < min_tokens:
-            return True  # Skip very short texts
-
-        char_count = len(text)
-        token_count = len(tokens)
-        ratio = char_count / token_count
-
-        return ratio <= max_ratio
-
-    mask = pl.col(input_column).map_elements(has_valid_ratio, return_dtype=pl.Boolean)
-    df = df.filter(mask)
-
-    filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
-    logger.info(f"Remaining: {len(df):,} rows")
-
-    return df
-
-
-def filter_by_max_word_length(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    max_word_length: int = 45,
-) -> pl.DataFrame:
-    """
-    Filter lines containing words exceeding typical German compound length.
-
-    German compound words can be long (Donaudampfschifffahrtsgesellschaft = 36 chars)
-    but rarely exceed 45 characters. Longer strings are likely OCR errors where
-    multiple words were incorrectly merged.
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to check (default: "text")
-        max_word_length: Maximum allowed word length (default: 45)
-
-    Returns:
-        DataFrame with excessive-word-length lines filtered out
-
-    Example:
-        >>> # Valid long German compounds (KEPT):
-        >>> # "Donaudampfschifffahrtsgesellschaft" (36 chars)
-        >>>
-        >>> # OCR errors (REMOVED):
-        >>> # "DieZeitungerscheinttäglichundberichtetüberdiePolitik" (merged words)
-        >>>
-        >>> df = filter_by_max_word_length(df, max_word_length=45)
-
-    Note:
-        Based on normalize.md: "Words >45 characters likely artifacts
-        (German compounds rarely exceed this)"
-    """
-    logger.info(f"Filtering lines with words >{max_word_length} chars: {input_column}")
-
-    original_count = len(df)
-
-    def has_valid_word_lengths(text: str) -> bool:
-        if not text:
-            return True
-
-        words = text.split()
-        return all(len(word) <= max_word_length for word in words)
-
-    mask = pl.col(input_column).map_elements(has_valid_word_lengths, return_dtype=pl.Boolean)
-    df = df.filter(mask)
+    # Use \p{L} to match any Unicode letter (more efficient than map_elements)
+    df = df.filter(pl.col(input_column).str.contains(r"\p{L}"))
 
     filtered_count = original_count - len(df)
     logger.info(

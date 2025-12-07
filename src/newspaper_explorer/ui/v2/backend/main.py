@@ -4,26 +4,28 @@ FastAPI backend for Historical Newspaper Explorer
 A modern REST API for exploring historical newspaper collections.
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.sources import list_available_sources
 
 from .routers import (
-    sources,
+    concepts,
     data,
-    results,
+    emotions,
     entities,
+    images,
     keywords,
     layout,
-    topics,
-    emotions,
-    concepts,
-    images,
+    preprocessing,
+    results,
     search,
+    sources,
+    topics,
 )
 
 # Create FastAPI app
@@ -61,6 +63,7 @@ app.include_router(emotions.router, prefix="/api/emotions", tags=["emotions"])
 app.include_router(concepts.router, prefix="/api/concepts", tags=["concepts"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(preprocessing.router, prefix="/api/preprocessing", tags=["preprocessing"])
 
 # Mount static files for images
 config = get_config()

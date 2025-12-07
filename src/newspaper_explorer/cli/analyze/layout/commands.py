@@ -321,6 +321,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
             source=source,
             completed_at=completed_at,
             duration_seconds=duration,
+            granularity="page",  # Layout detection operates at page level
             parameters={
                 "model_size": model_size,
                 "device": device,

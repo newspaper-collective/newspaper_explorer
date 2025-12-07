@@ -1,7 +1,7 @@
 # Preprocessing Metadata System
 
-> **Status**: Production-ready (November 2025)  
-> **Implementation**: `src/newspaper_explorer/data/utils/metadata.py`  
+> **Status**: Production-ready (November 2025)
+> **Implementation**: `src/newspaper_explorer/data/utils/metadata.py`
 > **Pipeline**: `src/newspaper_explorer/data/preprocessing/pipeline.py`
 
 This document describes the preprocessing metadata system that tracks all preprocessing steps applied to newspaper text data, enabling full reproducibility and provenance tracking.
@@ -149,95 +149,44 @@ data/processed/der_tag/text/
 ### 1. Programmatic Usage
 
 ```python
-from pathlib import Path
-from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
-from newspaper_explorer.data.utils.metadata import save_preprocessing_results
-from newspaper_explorer.config.base import get_config
-import polars as pl
-import time
+from newspaper_explorer.data.preprocessing.pipeline import run_preprocessing
 
-# Setup
-config = get_config()
-source_name = "der_tag"
-
-# Load raw data
-input_path = config.data_dir / "raw" / source_name / "text" / "textblocks.parquet"
-df = pl.read_parquet(input_path)
-
-# Apply preprocessing
-preprocessor = TextPreprocessor(text_column="text")
-start_time = time.time()
-
-processed_df = preprocessor.pipeline(
-    df,
-    steps=["normalize", "lowercase", "remove-stopwords"],
-    output_column="text_processed",
+# Simple usage - handles everything automatically
+result = run_preprocessing(
+    source="der_tag",
+    steps=["normalize-unicode", "normalize-casing", "remove-stopwords"],
 )
 
-duration = time.time() - start_time
-
-# Create metadata
-metadata = preprocessor.create_metadata(
-    source=source_name,
-    steps=["normalize", "lowercase", "remove-stopwords"],
-    parameters={
-        "text_column": "text",
-        "output_column": "text_processed",
-    },
-    input_df=df,
-    output_df=processed_df,
-    duration_seconds=duration,
-)
-
-# Save with metadata
-processed_base = config.data_dir / "processed"
-paths = save_preprocessing_results(
-    results_df=processed_df,
-    metadata=metadata,
-    processed_base_dir=processed_base,
-)
-
-print(f"Saved to: {paths['output_dir']}")
-print(f"Preprocessing ID: {metadata.preprocessing_id}")
+print(f"Processed {result.input_rows} → {result.output_rows} rows")
+print(f"Output: {result.results_path}")
+print(f"Preprocessing ID: {result.metadata.preprocessing_id}")
 ```
 
 ### 2. Chaining Preprocessing
 
+When you run preprocessing on already-preprocessed data, the metadata is automatically
+chained to track the full pipeline history:
+
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
-import polars as pl
+from newspaper_explorer.data.preprocessing.pipeline import run_preprocessing
 
-preprocessor = TextPreprocessor()
-
-# Load previously preprocessed data
-input_path = "data/processed/der_tag/text/normalize_lowercase_20251110/textblocks.parquet"
-df = pl.read_parquet(input_path)
-
-# Load previous metadata
-previous_metadata = preprocessor.load_previous_metadata(input_path)
-
-# Apply additional preprocessing
-processed_df = preprocessor.pipeline(
-    df,
-    steps=["lemmatize-spacy"],
-    output_column="text_lemma",
+# First preprocessing run
+result1 = run_preprocessing(
+    source="der_tag",
+    steps=["normalize-unicode", "normalize-casing"],
 )
 
-# Create chained metadata
-metadata = preprocessor.create_metadata(
+# Second preprocessing run (on the output of the first)
+result2 = run_preprocessing(
     source="der_tag",
     steps=["lemmatize-spacy"],
-    parameters={"text_column": "text_processed"},
-    input_df=df,
-    output_df=processed_df,
-    duration_seconds=42.5,
-    previous_preprocessing=previous_metadata,  # Chain the metadata
+    input_path=result1.results_path,  # Use output from first run
 )
 
 # Get all steps (including previous)
-all_steps = metadata.get_all_steps()
+all_steps = result2.metadata.get_all_steps()
 print(f"Complete pipeline: {all_steps}")
-# Output: ['normalize', 'lowercase', 'lemmatize-spacy']
+# Output: ['normalize-unicode', 'normalize-casing', 'lemmatize-spacy']
 ```
 
 ### 3. Using Preprocessed Data in Analysis

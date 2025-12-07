@@ -15,9 +15,13 @@ from pathlib import Path
 from typing import Optional, Union
 
 import polars as pl
+import torch
 from tqdm import tqdm
+from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from newspaper_explorer.config import external_tools  # noqa: F401 (sets HF_HOME)
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.text import chunk_text
 
 logger = logging.getLogger(__name__)
@@ -59,10 +63,6 @@ def _process_chunks_on_gpu(
     Returns:
         List of (index, normalized_text) tuples if result_queue is None, else None
     """
-    import torch
-    from tqdm import tqdm
-    from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
-    from transformers.models.auto.tokenization_auto import AutoTokenizer
 
     # Load model on this device
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -217,27 +217,15 @@ def transnormer(
 
     logger.info(f"Normalizing with Transnormer: {input_column} → {output_column}")
 
-    try:
-        import torch
-        from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
-        from transformers.models.auto.tokenization_auto import AutoTokenizer
-    except ImportError:
-        raise ImportError(
-            "Transnormer normalization requires 'transformers' and 'torch'.\n"
-            "Install with: pip install transformers torch"
-        )
-
-    from tqdm import tqdm
-
     # Supported Transnormer models for historical German text normalization
-    TRANSNORMER_MODELS = {
+    transnormer_models: dict[str, str] = {
         "19c": "ybracke/transnormer-19c-beta-v02",  # 1780-1899
         "18-19c": "ybracke/transnormer-18-19c-beta-v01",  # 1700-1899
     }
 
     # Resolve model name
-    if model in TRANSNORMER_MODELS:
-        model_name = TRANSNORMER_MODELS[model]
+    if model in transnormer_models:
+        model_name = transnormer_models[model]
         logger.info(f"Using Transnormer model '{model}': {model_name}")
     else:
         model_name = model
@@ -245,8 +233,6 @@ def transnormer(
 
     # Setup cache directory
     if cache_dir is None:
-        from newspaper_explorer.config.base import get_config
-
         config = get_config()
         cache_dir = Path(config.data_dir) / ".cache" / "transnormer" / model.replace("/", "_")
     else:

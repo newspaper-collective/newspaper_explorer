@@ -3,8 +3,25 @@
 - unify ids, generation and usage, more linability
 - remove emojis from cli
 - unifiy output styling
+- textblock coords?
+
++ Bohnſtedt (Graudenz) des Danziger Inſ.⸗Regts. Nr. 128, -> wrong long s test
+
+- ◼
+
+
+- donut or yolo page classification to detect add pages and classifieds
+
+unify datamodel for results or analysis types -> entityresults, topicresults, emotionsresults, etc.
+
+usage of source id, filename prefix, source name
+
+separate metadata and ids? what gets saved where? where is redundancy neeeded? image index?
 
 ### ID System Optimization
+- issue id must be different from issue number (display) -> globally unique
+- global ids for: textline, textblock, page, issue (daily count),
+
 - **Redundant FK parsing**: Analysis modules re-parse IDs via `extract_foreign_keys()` even though FK columns already exist in source parquet
   - Affects: mallet.py, gliner.py, bert_classifier.py, keybert.py, rake.py, yake.py, tf_idf.py, lda.py, bertopic.py, fastopic.py
   - Fix: Check if FK columns exist before parsing, preserve FKs through aggregation

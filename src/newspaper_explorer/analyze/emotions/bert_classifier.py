@@ -629,6 +629,7 @@ class EmotionPredictor:
             },
             input_data=extract_input_stats(df_input),
             output_data=output_stats,
+            granularity="textblock",  # Emotions are classified at textblock level
             status="completed",
             duration_seconds=duration_seconds,
             analysis_id=None,  # Will be auto-generated
@@ -858,6 +859,7 @@ class EmotionPredictor:
             },
             input_data=extract_input_stats(df_input),
             output_data=output_stats,
+            granularity="textblock",  # Emotions are classified at textblock level
             status="completed",
             duration_seconds=duration_seconds,
             analysis_id=None,  # Will be auto-generated

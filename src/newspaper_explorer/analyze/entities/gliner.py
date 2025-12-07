@@ -569,6 +569,8 @@ class GLiNEREntityExtractor:
         duration = time.time() - start_time
 
         # Create metadata using new system
+        from newspaper_explorer.data.utils.stats import infer_granularity
+
         metadata = AnalysisMetadata(
             analysis_type="entities",
             method_type="gliner",
@@ -588,6 +590,7 @@ class GLiNEREntityExtractor:
             },
             input_data=extract_input_stats(df, id_column=id_column),
             output_data=extract_output_stats(results_df),
+            granularity=infer_granularity(id_column),
             duration_seconds=duration,
             status="completed",
             analysis_id=None,  # Will be auto-generated

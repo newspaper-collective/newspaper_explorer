@@ -938,6 +938,7 @@ class MALLETExtractor:
             parameters=params,
             input_data={"num_documents": len(results_df)},
             output_data=output_data,
+            granularity="textblock",  # Topic modeling runs on textblock level
             duration_seconds=getattr(self, "_last_extraction_time", None),
             status="completed",
         )

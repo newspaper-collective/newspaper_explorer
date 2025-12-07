@@ -769,6 +769,7 @@ class KeyBERTExtractor:
             },
             input_data=input_stats,
             output_data=output_stats,
+            granularity="textblock",  # KeyBERT keyword extraction runs on textblock level
             status="completed",
             duration_seconds=duration,
             completed_at=completed_at,

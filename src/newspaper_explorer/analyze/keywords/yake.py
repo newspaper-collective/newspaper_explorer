@@ -516,6 +516,7 @@ class YAKEExtractor:
             parameters=params,
             input_data=input_stats,
             output_data=output_stats,
+            granularity="textblock",  # Keyword extraction runs on textblock level
             status="completed",
             duration_seconds=duration,
             completed_at=completed_at,

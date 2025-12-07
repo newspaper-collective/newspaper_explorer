@@ -114,3 +114,41 @@ def extract_output_stats(df: pl.DataFrame) -> dict[str, Any]:
         "columns": df.columns,
         "schema": {col: str(dtype) for col, dtype in df.schema.items()},
     }
+
+
+def infer_granularity(id_column: str) -> str:
+    """
+    Infer data granularity level from the ID column name.
+
+    Maps common ID column names to their corresponding granularity level.
+
+    Args:
+        id_column: Name of the ID column used in analysis
+
+    Returns:
+        Granularity level: 'line', 'textblock', 'page', or 'issue'
+
+    Example:
+        >>> infer_granularity("line_id")
+        'line'
+        >>> infer_granularity("text_block_id")
+        'textblock'
+        >>> infer_granularity("page_id")
+        'page'
+    """
+    id_column_lower = id_column.lower()
+
+    if "line" in id_column_lower:
+        return "line"
+    if "text_block" in id_column_lower or "textblock" in id_column_lower:
+        return "textblock"
+    if "page" in id_column_lower:
+        return "page"
+    if "issue" in id_column_lower:
+        return "issue"
+
+    # Default to textblock as most common analysis level
+    logger.warning(
+        f"Could not infer granularity from id_column '{id_column}', defaulting to 'textblock'"
+    )
+    return "textblock"

@@ -431,6 +431,7 @@ class FASTopicExtractor:
             parameters=params,
             input_data=input_data,
             output_data=output_data,
+            granularity="textblock",  # FASTopic runs on textblock level
             duration_seconds=self._last_extraction_time,
             status="completed",
         )

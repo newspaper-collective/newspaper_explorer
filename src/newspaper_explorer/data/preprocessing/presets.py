@@ -12,80 +12,93 @@ Or programmatically:
     steps = get_preset("standard")
 """
 
-from typing import Union
+from typing import Any, Union
+
+# Step type: either a string (step name) or dict with name and args
+# String example: "normalize_unicode"
+# Dict example: {"name": "normalize_whitespace", "args": {"keep_newlines": True}}
+StepType = Union[str, dict[str, Any]]
 
 # General-purpose preprocessing pipelines
-GENERAL_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
+GENERAL_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
     "minimal": {
         "description": "Minimal processing, preserves original text as much as possible",
         "steps": [
-            "normalize-unicode",  # Only fix critical OCR issues
-            "clean-ocr",  # Remove invalid characters
+            "normalize_unicode",
+            {"name": "normalize_whitespace", "args": {"keep_newlines": True}},
         ],
         "use_case": "When you need to preserve original spelling and formatting",
     },
     "basic": {
-        "description": "Basic OCR cleanup and normalization without heavy processing",
+        "description": "Light OCR cleanup, preserves original word forms",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "filter_empty_lines",
         ],
-        "use_case": "Fast cleanup for raw OCR data, preserves original word forms",
+        "use_case": "Quick cleanup for raw OCR data while keeping original spelling",
     },
     "standard": {
         "description": "Standard preprocessing for most analysis tasks",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters (ſ→s, etc.)
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
         ],
-        "use_case": "General text analysis, topic modeling, embeddings",
+        "use_case": "General text analysis, NER, embeddings, topic modeling",
     },
-    "search": {
-        "description": "Optimized for search and matching",
+    "advanced": {
+        "description": "Aggressive cleanup with lowercase and OCR quality filtering",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "remove-diacritics",  # ä→a, ö→o, etc. for better matching
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            "normalize_casing",
         ],
-        "use_case": "Full-text search, fuzzy matching, entity extraction",
+        "use_case": "When OCR quality is poor and aggressive filtering is needed",
     },
-    "analysis": {
-        "description": "Prepared for NLP analysis with filtering",
+    "full": {
+        "description": "Maximum cleaning for bag-of-words analysis",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
-            "remove-punctuation",  # Remove punctuation
-            "remove-numbers",  # Remove numbers
-            "remove-stopwords",  # Remove German stopwords
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            "normalize_casing",
+            "remove_punctuation",
+            "remove_numbers",
+            "remove_stopwords",
         ],
-        "use_case": "Word frequency analysis, keyword extraction, statistical analysis",
+        "use_case": "Word frequency analysis, keyword extraction, TF-IDF",
     },
 }
 
 
 # Analysis-specific preprocessing pipelines
-ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
+# These are task-optimized variants that may skip or add specific steps
+ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
     "entities": {
         "description": "Optimized for named entity recognition and extraction",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens (preserves entity boundaries)
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
             # Note: NO lowercase - entities are case-sensitive
             # Note: NO punctuation removal - needed for abbreviations (Dr., Inc.)
         ],
@@ -94,25 +107,27 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
     "topics": {
         "description": "Optimized for topic modeling (BERTopic, etc.)",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
-            "remove-stopwords",  # Remove stopwords (improves topic coherence)
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            "normalize_casing",
+            "remove_stopwords",
         ],
         "use_case": "Topic modeling, document clustering, thematic analysis",
     },
     "emotions": {
         "description": "Optimized for emotion classification and sentiment analysis",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            # Note: NO lowercase - preserves emphasis (ANGRY vs angry)
             # Note: Keep punctuation - ! and ? matter for emotions
             # Note: Keep stopwords - "nicht gut" vs "gut" has different sentiment
         ],
@@ -121,26 +136,28 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
     "keywords": {
         "description": "Optimized for keyword extraction and term frequency analysis",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
-            "remove-punctuation",  # Remove punctuation
-            "remove-numbers",  # Remove numbers
-            "remove-stopwords",  # Remove stopwords
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            "normalize_casing",
+            "remove_punctuation",
+            "remove_numbers",
+            "remove_stopwords",
         ],
         "use_case": "Keyword extraction, TF-IDF, important term identification",
     },
     "embeddings": {
         "description": "Optimized for generating text embeddings",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
             # Note: Keep case, punctuation - models are trained on natural text
         ],
         "use_case": "Sentence/document embeddings, semantic similarity, vector search",
@@ -148,12 +165,13 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
     "concepts": {
         "description": "Optimized for concept extraction and semantic analysis",
         "steps": [
-            "normalize-unicode",  # Fix OCR artifacts, unify quotes/hyphens
-            "normalize",  # Normalize historical German characters
-            "normalize-whitespace",  # Clean up whitespace
-            "clean-ocr",  # Remove OCR artifacts
-            "dehyphenate",  # Remove line-break hyphens
-            "lowercase",  # Convert to lowercase
+            "normalize_unicode",
+            "normalize_long_s",
+            "normalize_whitespace",
+            "only_keep_allowed_chars",
+            "dehyphenate",
+            "filter_empty_lines",
+            "normalize_casing",
         ],
         "use_case": "Concept extraction, semantic network analysis, knowledge graphs",
     },
@@ -161,38 +179,41 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
 
 
 # All available pipelines
-ALL_PIPELINES: dict[str, dict[str, Union[str, list[str]]]] = {
+ALL_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
     **GENERAL_PIPELINES,
     **ANALYSIS_PIPELINES,
 }
 
 
-def get_preset(name: str) -> list[str]:
+def get_preset(name: str) -> list[StepType]:
     """
     Get a preprocessing pipeline preset by name.
 
+    Returns a list of steps that can be passed directly to TextPreprocessor.pipeline().
+    Steps can be either strings (step name) or dicts with 'name' and 'args' keys.
+
     Available presets:
 
-    General-purpose:
-    - minimal: Preserve original text, only fix critical OCR issues
-    - basic: Fast OCR cleanup (recommended start)
-    - standard: General text analysis (default choice)
-    - search: Optimized for search and matching
-    - analysis: Word frequency with filtering
+    General-purpose (progressive complexity):
+    - minimal: Preserve original text, only fix encoding and whitespace
+    - basic: Light OCR cleanup (+ long_s normalization)
+    - standard: General analysis ready (+ dehyphenate, remove invalid chars)
+    - advanced: Aggressive cleanup (+ lowercase, OCR quality filters)
+    - full: Maximum cleaning for bag-of-words (+ remove punct/numbers/stopwords)
 
-    Analysis-specific:
-    - entities: Named entity recognition (NER)
-    - topics: Topic modeling (BERTopic, etc.)
-    - emotions: Emotion classification, sentiment analysis
-    - keywords: Keyword extraction, TF-IDF
-    - embeddings: Text embeddings, semantic similarity
-    - concepts: Concept extraction, semantic networks
+    Analysis-specific (task-optimized):
+    - entities: NER (no lowercase, keeps punctuation for abbreviations)
+    - topics: Topic modeling (lowercase, removes stopwords)
+    - emotions: Sentiment analysis (no lowercase, keeps punct for ! and ?)
+    - keywords: TF-IDF (removes punct, numbers, stopwords)
+    - embeddings: Vector embeddings (keeps case and punctuation)
+    - concepts: Concept extraction (lowercase)
 
     Args:
         name: Pipeline preset name
 
     Returns:
-        List of preprocessing step names
+        List of preprocessing steps (strings or dicts with args)
 
     Raises:
         ValueError: If preset name is unknown
@@ -202,17 +223,24 @@ def get_preset(name: str) -> list[str]:
         >>> from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
         >>>
         >>> preprocessor = TextPreprocessor(text_column="text")
-        >>> steps = get_preset("entities")
+        >>> steps = get_preset("standard")
         >>> df_processed = preprocessor.pipeline(df, steps=steps)
+        >>>
+        >>> # Steps with args are also supported:
+        >>> steps = get_preset("minimal")  # includes {"name": "normalize_whitespace", "args": {"keep_newlines": True}}
     """
     if name not in ALL_PIPELINES:
         available = ", ".join(sorted(ALL_PIPELINES.keys()))
         raise ValueError(f"Unknown preset '{name}'. Available: {available}")
 
-    return ALL_PIPELINES[name]["steps"]
+    steps = ALL_PIPELINES[name]["steps"]
+    # Ensure we always return a list
+    if isinstance(steps, str):
+        return [steps]
+    return list(steps)
 
 
-def list_presets(category: str = "all") -> dict[str, dict[str, Union[str, list[str]]]]:
+def list_presets(category: str = "all") -> dict[str, dict[str, Union[str, list[StepType]]]]:
     """
     List available preprocessing pipeline presets.
 
@@ -236,15 +264,14 @@ def list_presets(category: str = "all") -> dict[str, dict[str, Union[str, list[s
     """
     if category == "all":
         return ALL_PIPELINES.copy()
-    elif category == "general":
+    if category == "general":
         return GENERAL_PIPELINES.copy()
-    elif category == "analysis":
+    if category == "analysis":
         return ANALYSIS_PIPELINES.copy()
-    else:
-        raise ValueError(f"Unknown category '{category}'. Use 'all', 'general', or 'analysis'")
+    raise ValueError(f"Unknown category '{category}'. Use 'all', 'general', or 'analysis'")
 
 
-def get_preset_info(name: str) -> dict[str, Union[str, list[str]]]:
+def get_preset_info(name: str) -> dict[str, Union[str, list[StepType]]]:
     """
     Get detailed information about a specific preset.
 
@@ -259,10 +286,54 @@ def get_preset_info(name: str) -> dict[str, Union[str, list[str]]]:
         >>>
         >>> info = get_preset_info("entities")
         >>> print(info["description"])
-        >>> print(f"Steps: {', '.join(info['steps'])}")
+        >>> print(f"Use case: {info['use_case']}")
+        >>> print(f"Steps: {len(info['steps'])}")
     """
     if name not in ALL_PIPELINES:
         available = ", ".join(sorted(ALL_PIPELINES.keys()))
         raise ValueError(f"Unknown preset '{name}'. Available: {available}")
 
     return ALL_PIPELINES[name].copy()
+
+
+def get_step_name(step: StepType) -> str:
+    """
+    Extract the step name from a step (string or dict).
+
+    Args:
+        step: Either a string step name or dict with 'name' key
+
+    Returns:
+        The step name as a string
+
+    Example:
+        >>> get_step_name("normalize_unicode")
+        'normalize_unicode'
+        >>> get_step_name({"name": "normalize_whitespace", "args": {"keep_newlines": True}})
+        'normalize_whitespace'
+    """
+    if isinstance(step, str):
+        return step
+    return str(step["name"])
+
+
+def get_step_args(step: StepType) -> dict[str, Any]:
+    """
+    Extract the arguments from a step.
+
+    Args:
+        step: Either a string step name or dict with 'name' and optional 'args' keys
+
+    Returns:
+        Dictionary of arguments (empty dict if step is a string or has no args)
+
+    Example:
+        >>> get_step_args("normalize_unicode")
+        {}
+        >>> get_step_args({"name": "normalize_whitespace", "args": {"keep_newlines": True}})
+        {'keep_newlines': True}
+    """
+    if isinstance(step, str):
+        return {}
+    args = step.get("args", {})
+    return dict(args) if args else {}

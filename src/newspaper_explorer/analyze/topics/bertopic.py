@@ -659,6 +659,7 @@ class BERTopicExtractor:
             parameters=params,
             input_data=input_data,
             output_data=output_data,
+            granularity="textblock",  # BERTopic runs on textblock level
             duration_seconds=getattr(self, "_last_extraction_time", None),
             status="completed",
         )

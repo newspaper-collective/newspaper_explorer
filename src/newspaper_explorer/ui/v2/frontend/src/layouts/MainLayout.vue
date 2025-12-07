@@ -22,6 +22,7 @@ import {
   Database,
   AlignLeft,
   Info,
+  Wand2,
 } from 'lucide-vue-next'
 import {
   SliderRoot,
@@ -30,7 +31,7 @@ import {
   SliderThumb,
 } from 'radix-vue'
 
-type NavigationItem = 
+type NavigationItem =
   | { name: string; to: string; icon: any; separator?: never }
   | { name: string; separator: true; to?: never; icon?: never }
 
@@ -43,6 +44,7 @@ const navigation: NavigationItem[] = [
   { name: 'separator-1', separator: true },
   { name: 'Browse', to: '/browse', icon: Calendar },
   { name: 'Search', to: '/search', icon: Search },
+  { name: 'Preprocessing', to: '/preprocessing', icon: Wand2 },
   { name: 'separator-2', separator: true },
   { name: 'Layout', to: '/layout', icon: LayoutDashboard },
   { name: 'Pictures', to: '/pictures', icon: Image },
@@ -136,7 +138,7 @@ const yearRange = computed({
           </div>
           <div class="p-4 pt-0 space-y-2">
             <div class="font-bold text-base">{{ sourceStore.sourceInfo.metadata.newspaper_title }}</div>
-            
+
             <!-- Language and Years -->
             <div class="flex items-center gap-3 text-xs text-muted-foreground">
               <div class="flex items-center gap-1.5">
@@ -244,18 +246,18 @@ const yearRange = computed({
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <label for="start-date" class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 w-12 flex-shrink-0">From</label>
-                <input 
-                  id="start-date" 
-                  type="date" 
+                <input
+                  id="start-date"
+                  type="date"
                   v-model="sourceStore.startDate"
                   class="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <div class="flex items-center gap-2">
                 <label for="end-date" class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 w-12 flex-shrink-0">To</label>
-                <input 
-                  id="end-date" 
-                  type="date" 
+                <input
+                  id="end-date"
+                  type="date"
                   v-model="sourceStore.endDate"
                   class="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                 />
@@ -279,9 +281,9 @@ const yearRange = computed({
             <div v-else-if="sourceStore.sourceInfo.analysis_results && Object.keys(sourceStore.sourceInfo.analysis_results).length > 0">
               <div class="text-xs font-semibold mb-2 text-muted-foreground">Analysis Results:</div>
               <div class="space-y-1.5">
-                <div 
-                  v-for="[type, summary] in Object.entries(sourceStore.sourceInfo.analysis_results)" 
-                  :key="type" 
+                <div
+                  v-for="[type, summary] in Object.entries(sourceStore.sourceInfo.analysis_results)"
+                  :key="type"
                   class="flex items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <component :is="analysisIconMap[type] || FileText" class="h-3.5 w-3.5 shrink-0" />
@@ -333,14 +335,14 @@ const yearRange = computed({
           @click="toggleSidebar"
           class="rounded-md p-2 hover:bg-accent"
         >
-          <ChevronLeft 
+          <ChevronLeft
             :class="[
               'h-5 w-5 transition-transform duration-200',
               !sidebarOpen && 'rotate-180'
-            ]" 
+            ]"
           />
         </button>
-        
+
         <h2 class="text-lg font-semibold">
           {{ sourceStore.sourceInfo?.metadata?.newspaper_title || 'Historical Newspapers' }}
         </h2>
@@ -349,7 +351,7 @@ const yearRange = computed({
         <nav class="ml-auto flex items-center gap-1">
           <template v-for="item in navigation" :key="item.name">
             <!-- Separator -->
-            <div 
+            <div
               v-if="item.separator"
               class="h-6 w-px bg-border mx-1"
             />
