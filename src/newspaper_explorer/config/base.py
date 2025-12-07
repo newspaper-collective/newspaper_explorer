@@ -90,3 +90,8 @@ _config = Config()
 def get_config() -> Config:
     """Get the global configuration instance."""
     return _config
+
+
+def get_project_root() -> Path:
+    """Get the project root directory."""
+    return _config.project_root

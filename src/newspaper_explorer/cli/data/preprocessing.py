@@ -166,7 +166,7 @@ def register_preprocessing_commands(data_group):
           # Transnormer with custom batch size for speed
           newspaper-explorer data preprocess --source der_tag \\
               --steps normalize-transnormer --batch-size 128 --num-beams 2
-          
+
           # Use all 4 GPUs for maximum speed
           newspaper-explorer data preprocess --source der_tag \\
               --steps normalize-transnormer --num-gpus 4 --batch-size 128
@@ -175,11 +175,8 @@ def register_preprocessing_commands(data_group):
 
         import polars as pl
 
-        from newspaper_explorer.data.preprocessing.pipeline import (
-            TextPreprocessor,
-            get_recommended_pipeline,
-            list_pipelines,
-        )
+        from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
+        from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
         from newspaper_explorer.data.utils.results import save_preprocessing_results
         from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
@@ -192,7 +189,7 @@ def register_preprocessing_commands(data_group):
             if not steps and not pipeline:
                 click.echo("Error: Must specify either --steps or --pipeline", err=True)
                 click.echo("\nAvailable pipelines:")
-                for name, config in list_pipelines().items():
+                for name, config in list_presets().items():
                     click.echo(f"  {name:10s} - {config['description']}")
                 raise click.Abort()
 
@@ -202,7 +199,7 @@ def register_preprocessing_commands(data_group):
 
             # Get step list
             if pipeline:
-                step_list = get_recommended_pipeline(pipeline)
+                step_list = get_preset(pipeline)
                 click.echo(f"\nUsing recommended pipeline: {pipeline}")
             else:
                 step_list = [s.strip() for s in steps.split(",")]
@@ -373,9 +370,9 @@ def register_preprocessing_commands(data_group):
         Example:
           newspaper-explorer data list-pipelines
         """
-        from newspaper_explorer.data.preprocessing.pipeline import list_pipelines
+        from newspaper_explorer.data.preprocessing.presets import list_presets
 
-        pipelines = list_pipelines()
+        pipelines = list_presets()
 
         click.echo("\n" + "=" * 80)
         click.echo("RECOMMENDED PREPROCESSING PIPELINES")

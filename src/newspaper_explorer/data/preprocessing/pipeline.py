@@ -1,27 +1,25 @@
-"""
-Text preprocessing pipeline for newspaper data.
+"""Text preprocessing pipeline for newspaper data.
 
 Provides a simple pipeline function that chains together preprocessing steps
-of the modular preprocessing modules.
+from the modular preprocessing modules.
 
 For direct use of preprocessing functions, import from individual modules:
-    from newspaper_explorer.data.preprocessing.normalization import normalize_historical
-    from newspaper_explorer.data.preprocessing.cleaning import lowercase, remove_stopwords
+    from newspaper_explorer.data.preprocessing.normalization import normalize_unicode, dehyphenate
+    from newspaper_explorer.data.preprocessing.modernization import transnormer, dta_cab
+    from newspaper_explorer.data.preprocessing.cleaning import remove_stopwords, remove_punctuation
     from newspaper_explorer.data.preprocessing.filtering import filter_by_total_character_length
-    from newspaper_explorer.data.preprocessing.linguistic import lemmatize_spacy
+    from newspaper_explorer.data.preprocessing.lemmatization import lemmatize_spacy, lemmatize_germalemma
 """
 
 from datetime import datetime
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import polars as pl
 
 from newspaper_explorer.data.preprocessing.cleaning import (
-    clean_ocr_artifacts,
-    lowercase,
-    normalize_whitespace,
+    only_keep_allowed_chars,
     remove_diacritics,
     remove_numbers,
     remove_punctuation,
@@ -35,30 +33,71 @@ from newspaper_explorer.data.preprocessing.filtering import (
     filter_number_only_lines,
     filter_repeating_chars,
 )
-from newspaper_explorer.data.preprocessing.linguistic import (
-    dehyphenate,
-    dehyphenate_lines,
+from newspaper_explorer.data.preprocessing.lemmatization import (
     lemmatize_germalemma,
     lemmatize_spacy,
 )
-
-# Import all preprocessing functions
-from newspaper_explorer.data.preprocessing.normalization import (
+from newspaper_explorer.data.preprocessing.modernization import (
     dta_cab,
-    normalize_long_s,
-    normalize_unicode,
-    simple,
     transnormer,
 )
-from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
+from newspaper_explorer.data.preprocessing.normalization import (
+    dehyphenate_auto,
+    normalize_casing,
+    normalize_long_s,
+    normalize_umlauts,
+    normalize_unicode,
+    normalize_whitespace,
+)
 from newspaper_explorer.data.preprocessing.validation import (
     calculate_quality_metrics,
     filter_by_quality_score,
-    summarize_quality,
+)
+from newspaper_explorer.data.utils.metadata import (
+    find_metadata_for_parquet,
+    load_metadata,
 )
 from newspaper_explorer.models.data.metadata import PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
+
+
+# Step configuration: maps step names to their processing function and behavior
+# - "func": The preprocessing function to call
+# - "filter_only": If True, step filters rows but doesn't transform text (no output column)
+# - "extra_args": Additional fixed arguments to pass
+# - "special": If set, requires special handling (e.g., "dehyphenate", "transnormer")
+STEP_CONFIG: dict[str, dict[str, Any]] = {
+    # === Normalization (normalization.py) ===
+    "normalize-unicode": {"func": normalize_unicode},
+    "normalize-whitespace": {"func": normalize_whitespace},
+    "normalize-casing": {"func": normalize_casing},
+    "normalize-umlauts": {"func": normalize_umlauts},
+    "normalize-long-s": {"func": normalize_long_s, "extra_args": {"mode": "simple"}},
+    "dehyphenate": {"func": dehyphenate_auto},
+    # === Modernization (modernization.py) ===
+    "modernize-transnormer": {"func": transnormer, "special": "transnormer"},
+    "modernize-dtacab": {"func": dta_cab},
+    # === Cleaning (cleaning.py) ===
+    "remove-diacritics": {"func": remove_diacritics},
+    "remove-punctuation": {"func": remove_punctuation},
+    "remove-numbers": {"func": remove_numbers},
+    "remove-stopwords": {"func": remove_stopwords},
+    "filter-allowed-chars": {"func": only_keep_allowed_chars},
+    # === Lemmatization (lemmatization.py) ===
+    "lemmatize-spacy": {"func": lemmatize_spacy},
+    "lemmatize-germalemma": {"func": lemmatize_germalemma},
+    # === Filtering (filtering.py) ===
+    "filter-length": {"func": filter_by_total_character_length, "filter_only": True},
+    "filter-word-count": {"func": filter_by_word_count, "filter_only": True},
+    "filter-repeating-chars": {"func": filter_repeating_chars},
+    "filter-number-only": {"func": filter_number_only_lines, "filter_only": True},
+    "filter-char-token-ratio": {"func": filter_by_char_token_ratio, "filter_only": True},
+    "filter-word-length": {"func": filter_by_max_word_length, "filter_only": True},
+    # === Validation (validation.py) ===
+    "calculate-quality": {"func": calculate_quality_metrics, "filter_only": True},
+    "filter-by-quality": {"func": filter_by_quality_score, "filter_only": True, "no_args": True},
+}
 
 
 class TextPreprocessor:
@@ -73,7 +112,7 @@ class TextPreprocessor:
         >>> preprocessor = TextPreprocessor(text_column="text")
         >>> df = preprocessor.pipeline(
         ...     df,
-        ...     steps=["normalize", "lowercase", "remove-stopwords"],
+        ...     steps=["normalize-unicode", "normalize-casing", "remove-stopwords"],
         ...     output_column="text_processed"
         ... )
 
@@ -82,10 +121,10 @@ class TextPreprocessor:
         in the output, so you can still trace processed text back to its source.
 
         For more control, you can import and use preprocessing functions directly:
-        from newspaper_explorer.data.preprocessing.cleaning import lowercase
+        from newspaper_explorer.data.preprocessing.cleaning import remove_stopwords
     """
 
-    def __init__(self, text_column: str = "text"):
+    def __init__(self, text_column: str = "text") -> None:
         """
         Initialize preprocessor.
 
@@ -98,11 +137,12 @@ class TextPreprocessor:
     def pipeline(
         self,
         df: pl.DataFrame,
-        steps: List[str],
+        steps: list[str],
         output_column: str = "text_processed",
         batch_size: int = 32,
         num_beams: int = 4,
         num_gpus: int = 1,
+        *,
         use_cache: bool = True,
     ) -> pl.DataFrame:
         """
@@ -110,19 +150,20 @@ class TextPreprocessor:
 
         Available steps:
         - normalize-unicode: Unicode normalization (NFC + ftfy + character translation)
-        - normalize: Normalize historical German characters
-        - normalize-long-s: Normalize long s (ſ) to modern s (simple/context-aware/preserve)
-        - remove-diacritics: Remove diacritics
         - normalize-whitespace: Normalize whitespace
-        - normalize-transnormer: Neural normalization with Transnormer
-        - normalize-dtacab: API normalization with DTA-CAB
-        - lowercase: Convert to lowercase
+        - normalize-casing: Convert to lowercase
+        - normalize-umlauts: Normalize historical umlauts (ae→ä, oe→ö, ue→ü)
+        - normalize-long-s: Normalize long s (ſ) to modern s (simple/context-aware/preserve)
+        - dehyphenate: Remove line-break hyphens
+        - modernize-transnormer: Neural normalization with Transnormer
+        - modernize-dtacab: API normalization with DTA-CAB
+        - remove-diacritics: Remove diacritics
         - remove-punctuation: Remove punctuation
         - remove-numbers: Remove numbers
         - remove-stopwords: Remove German stopwords
-        - dehyphenate: Remove line-break hyphens
+        - filter-allowed-chars: Remove OCR artifacts and invalid characters
         - lemmatize-spacy: Lemmatize with spaCy (fast)
-        - lemmatize: Lemmatize with GermaLemma (slow)
+        - lemmatize-germalemma: Lemmatize with GermaLemma (slow)
         - filter-length: Filter out too short/long texts (by character count)
         - filter-word-count: Filter out too few/many words (by word count)
         - filter-repeating-chars: Remove words with excessive character repetition (OCR garbage)
@@ -131,7 +172,6 @@ class TextPreprocessor:
         - filter-word-length: Remove lines with excessively long words (merged OCR errors)
         - calculate-quality: Calculate OCR quality metrics (char/token ratio, OOV rate, quality score)
         - filter-by-quality: Filter rows by quality score (good/review/poor)
-        - clean-ocr: Remove OCR artifacts and invalid characters
 
         Args:
             df: Input DataFrame (must contain text_column)
@@ -153,7 +193,7 @@ class TextPreprocessor:
 
             Recommended first step: 'normalize-unicode' to handle OCR artifacts,
             unify quotes/hyphens, and remove control characters.
-        """
+        """  # noqa: RUF002
         logger.info(f"Starting preprocessing pipeline with {len(steps)} steps")
         logger.info(f"Steps: {', '.join(steps)}")
 
@@ -161,186 +201,88 @@ class TextPreprocessor:
 
         for i, step in enumerate(steps, 1):
             logger.info(f"Step {i}/{len(steps)}: {step}")
+            out_col = output_column if i == len(steps) else f"_tmp_{i}"
 
-            if i == len(steps):
-                out_col = output_column
-            else:
-                out_col = f"_tmp_{i}"
+            df, current_column = self._apply_step(
+                df=df,
+                step=step,
+                current_column=current_column,
+                out_col=out_col,
+                batch_size=batch_size,
+                num_beams=num_beams,
+                num_gpus=num_gpus,
+                use_cache=use_cache,
+            )
 
-            if step == "normalize-unicode":
-                df = normalize_unicode(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "normalize":
-                df = simple(df, input_column=current_column, output_column=out_col)
-            elif step == "normalize-long-s":
-                df = normalize_long_s(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                    mode="simple",
-                )
-            elif step == "remove-diacritics":
-                df = remove_diacritics(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "normalize-whitespace":
-                df = normalize_whitespace(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "normalize-transnormer":
-                df = transnormer(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                    batch_size=batch_size,
-                    num_beams=num_beams,
-                    num_gpus=num_gpus,
-                    use_cache=use_cache,
-                )
-            elif step == "normalize-dtacab":
-                df = dta_cab(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "lowercase":
-                df = lowercase(
-                    df,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "remove-punctuation":
-                df = remove_punctuation(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "remove-numbers":
-                df = remove_numbers(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "remove-stopwords":
-                df = remove_stopwords(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "dehyphenate":
-                # Use line-level dehyphenation if coordinate columns are available
-                required_cols = ["text_block_id", "line_id", "x", "y", "width"]
-                if all(col in df.columns for col in required_cols):
-                    logger.info("Using line-level dehyphenation (preserves line structure)")
-                    df = dehyphenate_lines(
-                        df,
-                        text_column=current_column,
-                        output_column=out_col,
-                        text_block_id_column="text_block_id",
-                        line_id_column="line_id",
-                        x_column="x",
-                        y_column="y",
-                        width_column="width",
-                    )
-                else:
-                    logger.info("Using simple dehyphenation (line structure not available)")
-                    df = dehyphenate(
-                        df,
-                        text_column=current_column,
-                        input_column=current_column,
-                        output_column=out_col,
-                    )
-            elif step == "lemmatize-spacy":
-                df = lemmatize_spacy(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "lemmatize":
-                df = lemmatize_germalemma(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "filter-length":
-                df = filter_by_total_character_length(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: filter-length doesn't change the column, so keep current_column
-                current_column = current_column
-            elif step == "filter-word-count":
-                df = filter_by_word_count(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: filter-word-count doesn't change the column, so keep current_column
-                current_column = current_column
-            elif step == "filter-repeating-chars":
-                df = filter_repeating_chars(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            elif step == "filter-number-only":
-                df = filter_number_only_lines(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: filter-number-only removes rows, doesn't change column
-                current_column = current_column
-            elif step == "filter-char-token-ratio":
-                df = filter_by_char_token_ratio(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: filter removes rows, doesn't change column
-                current_column = current_column
-            elif step == "filter-word-length":
-                df = filter_by_max_word_length(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: filter removes rows, doesn't change column
-                current_column = current_column
-            elif step == "calculate-quality":
-                df = calculate_quality_metrics(
-                    df, text_column=current_column, input_column=current_column
-                )
-                # Note: adds quality columns, doesn't change current column
-                current_column = current_column
-            elif step == "filter-by-quality":
-                df = filter_by_quality_score(df)
-                # Note: filters rows, doesn't change current column
-                current_column = current_column
-            elif step == "clean-ocr":
-                df = clean_ocr_artifacts(
-                    df,
-                    text_column=current_column,
-                    input_column=current_column,
-                    output_column=out_col,
-                )
-            else:
-                raise ValueError(f"Unknown preprocessing step: {step}")
-
-            current_column = out_col
-
+        # Clean up temporary columns
         temp_cols = [col for col in df.columns if col.startswith("_tmp_")]
         if temp_cols:
             df = df.drop(temp_cols)
 
-        logger.info("Preprocessing pipeline complete")
+        logger.info(f"Preprocessing pipeline completed: {len(df)} rows")
         return df
 
-    def load_previous_metadata(self, input_path: Union[Path, str]) -> Optional[Dict[str, Any]]:
+    def _apply_step(
+        self,
+        df: pl.DataFrame,
+        step: str,
+        current_column: str,
+        out_col: str,
+        batch_size: int,
+        num_beams: int,
+        num_gpus: int,
+        *,
+        use_cache: bool,
+    ) -> tuple[pl.DataFrame, str]:
+        """
+        Apply a single preprocessing step.
+
+        Returns:
+            Tuple of (processed DataFrame, new current column name)
+        """
+        if step not in STEP_CONFIG:
+            raise ValueError(f"Unknown preprocessing step: {step}")
+
+        config = STEP_CONFIG[step]
+
+        # Handle transnormer special case (needs extra GPU parameters)
+        if config.get("special") == "transnormer":
+            df = config["func"](
+                df,
+                input_column=current_column,
+                output_column=out_col,
+                batch_size=batch_size,
+                num_beams=num_beams,
+                num_gpus=num_gpus,
+                use_cache=use_cache,
+            )
+            return df, out_col
+
+        # Build kwargs for the function call
+        func = config["func"]
+        kwargs: dict[str, Any] = {"df": df}
+
+        # Add column arguments based on config
+        if not config.get("no_args"):
+            # Standard functions with input_column
+            kwargs["input_column"] = current_column
+
+            # Add output_column for non-filter steps
+            if not config.get("filter_only"):
+                kwargs["output_column"] = out_col
+
+        # Add any extra fixed arguments
+        if "extra_args" in config:
+            kwargs.update(config["extra_args"])
+
+        # Call the function
+        df = func(**kwargs)
+
+        # Filter-only steps don't change the current column
+        new_column = current_column if config.get("filter_only") else out_col
+        return df, new_column
+
+    def load_previous_metadata(self, input_path: Union[Path, str]) -> Optional[dict[str, Any]]:
         """
         Load preprocessing metadata from input file if it exists.
 
@@ -350,12 +292,6 @@ class TextPreprocessor:
         Returns:
             Dictionary with previous preprocessing info, or None if not found
         """
-        from newspaper_explorer.data.utils.metadata import (
-            PreprocessingMetadata,
-            find_metadata_for_parquet,
-            load_metadata,
-        )
-
         input_path = Path(input_path)
         metadata_path = find_metadata_for_parquet(input_path)
 
@@ -368,7 +304,7 @@ class TextPreprocessor:
                         f"({len(metadata.steps)} steps)"
                     )
                     return metadata.to_dict()
-            except Exception as e:
+            except (FileNotFoundError, ValueError, OSError) as e:
                 logger.debug(f"Could not load preprocessing metadata: {e}")
 
         return None
@@ -376,12 +312,12 @@ class TextPreprocessor:
     def create_metadata(
         self,
         source: str,
-        steps: List[str],
-        parameters: Dict[str, Any],
+        steps: list[str],
+        parameters: dict[str, Any],
         input_df: pl.DataFrame,
         output_df: pl.DataFrame,
         duration_seconds: float,
-        previous_preprocessing: Optional[Dict[str, Any]] = None,
+        previous_preprocessing: Optional[dict[str, Any]] = None,
     ) -> PreprocessingMetadata:
         """
         Create preprocessing metadata for saving alongside results.
@@ -398,18 +334,22 @@ class TextPreprocessor:
         Returns:
             PreprocessingMetadata object ready to save
         """
-        from newspaper_explorer.data.utils.metadata import (
-            PreprocessingMetadata,
-            extract_input_stats,
-            extract_output_stats,
-        )
+        # Calculate input/output statistics
+        input_data: dict[str, Union[int, list[str]]] = {
+            "row_count": len(input_df),
+            "columns": list(input_df.columns),
+        }
+        output_data: dict[str, Union[int, list[str]]] = {
+            "row_count": len(output_df),
+            "columns": list(output_df.columns),
+        }
 
-        metadata = PreprocessingMetadata(
+        return PreprocessingMetadata(
             source=source,
             steps=steps,
             parameters=parameters,
-            input_data=extract_input_stats(input_df),
-            output_data=extract_output_stats(output_df),
+            input_data=input_data,
+            output_data=output_data,
             duration_seconds=duration_seconds,
             previous_preprocessing=previous_preprocessing,
             status="completed",
@@ -417,69 +357,3 @@ class TextPreprocessor:
             preprocessing_id=None,  # Will be auto-generated
             error_message=None,  # Not needed for completed status
         )
-
-        return metadata
-
-
-def get_recommended_pipeline(name: str = "standard") -> List[str]:
-    """
-    Get a recommended preprocessing pipeline configuration.
-
-    Available pipelines:
-
-    General-purpose:
-    - minimal: Preserve original text, only fix critical OCR issues
-    - basic: Fast OCR cleanup (recommended start)
-    - standard: General text analysis (default choice)
-    - search: Optimized for search and matching
-    - analysis: Word frequency with filtering
-
-    Analysis-specific:
-    - entities: Named entity recognition (NER)
-    - topics: Topic modeling (BERTopic, etc.)
-    - emotions: Emotion classification, sentiment analysis
-    - keywords: Keyword extraction, TF-IDF
-    - embeddings: Text embeddings, semantic similarity
-    - concepts: Concept extraction, semantic networks
-
-    Args:
-        name: Pipeline name (default: "standard")
-
-    Returns:
-        List of preprocessing step names
-
-    Example:
-        >>> from newspaper_explorer.data.preprocessing.pipeline import (
-        ...     TextPreprocessor,
-        ...     get_recommended_pipeline
-        ... )
-        >>> preprocessor = TextPreprocessor(text_column="text")
-        >>> steps = get_recommended_pipeline("entities")
-        >>> df_processed = preprocessor.pipeline(df, steps=steps)
-
-    Note:
-        These pipelines do NOT include:
-        - normalize-transnormer: GPU-intensive neural normalization
-        - normalize-dtacab: API-based normalization (requires DTA-CAB service)
-        - lemmatize-spacy / lemmatize: Lemmatization (changes word forms)
-
-        If you need these features, add them manually or create a custom pipeline.
-    """
-    return get_preset(name)
-
-
-def list_pipelines() -> Dict[str, Dict[str, Union[str, List[str]]]]:
-    """
-    List all available recommended pipelines with their descriptions.
-
-    Returns:
-        Dictionary mapping pipeline names to their configuration
-
-    Example:
-        >>> from newspaper_explorer.data.preprocessing.pipeline import list_pipelines
-        >>> pipelines = list_pipelines()
-        >>> for name, config in pipelines.items():
-        ...     print(f"{name}: {config['description']}")
-    """
-    return list_presets()
-    return list_presets()

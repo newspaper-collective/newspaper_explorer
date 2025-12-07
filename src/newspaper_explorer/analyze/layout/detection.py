@@ -6,18 +6,14 @@ fine-tuned on the DocLayNet dataset.
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
-
-# Disable Ultralytics settings updates to avoid disk space issues
-os.environ["YOLO_CONFIG_DIR"] = str(Path(__file__).parent / ".ultralytics_cache")
-os.environ["ULTRALYTICS_AUTOINSTALL"] = "False"
-
 from ultralytics import settings
 from ultralytics.models import YOLO
+
+from newspaper_explorer.config import external_tools  # noqa: F401 (sets YOLO_CONFIG_DIR)
 
 # Update settings to avoid unnecessary downloads
 settings.update({"sync": False})

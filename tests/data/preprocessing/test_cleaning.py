@@ -8,7 +8,7 @@ Covers edge cases for:
 - remove_punctuation
 - remove_numbers
 - remove_stopwords
-- clean_ocr_artifacts
+- only_keep_allowed_chars
 
 Fixtures are defined in conftest.py for reuse across preprocessing tests.
 """
@@ -17,9 +17,9 @@ import polars as pl
 import pytest
 
 from newspaper_explorer.data.preprocessing.cleaning import (
-    clean_ocr_artifacts,
     lowercase,
     normalize_whitespace,
+    only_keep_allowed_chars,
     remove_diacritics,
     remove_numbers,
     remove_punctuation,
@@ -466,60 +466,60 @@ class TestRemoveStopwords:
 
 
 # =============================================================================
-# Tests for clean_ocr_artifacts
+# Tests for only_keep_allowed_chars
 # =============================================================================
 
 
-class TestCleanOcrArtifacts:
-    """Tests for the clean_ocr_artifacts function."""
+class TestOnlyKeepAllowedChars:
+    """Tests for the only_keep_allowed_chars function."""
 
     def test_normal_text_unchanged(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test that normal text passes through unchanged."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        assert result["text_clean"][0] == "Normal text here"
+        assert result["text_filtered"][0] == "Normal text here"
 
     def test_remove_special_symbols(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test removal of special symbols."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        clean_text = result["text_clean"][1]
+        clean_text = result["text_filtered"][1]
         assert "™" not in clean_text
         assert "©" not in clean_text
         assert "symbols" in clean_text
 
     def test_remove_control_characters(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test removal of control characters."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        clean_text = result["text_clean"][2]
+        clean_text = result["text_filtered"][2]
         assert "\x00" not in clean_text
         assert "\x01" not in clean_text
         assert "Control" in clean_text  # Content words preserved
 
     def test_remove_zero_width_characters(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test removal of zero-width Unicode characters."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        clean_text = result["text_clean"][3]
+        clean_text = result["text_filtered"][3]
         assert "\u200b" not in clean_text  # Zero-width space
         assert "\u200c" not in clean_text  # Zero-width non-joiner
         assert "\u200d" not in clean_text  # Zero-width joiner
 
     def test_german_umlauts_preserved(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test that German umlauts are preserved."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        clean_text = result["text_clean"][4]
+        clean_text = result["text_filtered"][4]
         assert "ä" in clean_text
         assert "ö" in clean_text
         assert "ü" in clean_text
 
     def test_currency_symbols_removed(self, ocr_artifacts_df: pl.DataFrame) -> None:
         """Test that currency symbols are removed by default."""
-        result = clean_ocr_artifacts(ocr_artifacts_df)
+        result = only_keep_allowed_chars(ocr_artifacts_df)
 
-        clean_text = result["text_clean"][4]
+        clean_text = result["text_filtered"][4]
         assert "§" not in clean_text
         assert "€" not in clean_text
         assert "£" not in clean_text
@@ -527,10 +527,10 @@ class TestCleanOcrArtifacts:
     def test_custom_allowed_chars(self) -> None:
         """Test with custom allowed characters pattern."""
         df = pl.DataFrame({"text": ["Test 123 äöü €100"]})
-        result = clean_ocr_artifacts(df, allowed_chars=r"[a-zA-Z0-9\s]")
+        result = only_keep_allowed_chars(df, allowed_chars=r"[a-zA-Z0-9\s]")
 
         # Only ASCII letters, numbers, spaces allowed
-        clean_text = result["text_clean"][0]
+        clean_text = result["text_filtered"][0]
         assert "ä" not in clean_text
         assert "€" not in clean_text
         assert "Test" in clean_text
@@ -539,10 +539,10 @@ class TestCleanOcrArtifacts:
     def test_replace_with_space(self) -> None:
         """Test replacing invalid characters with space instead of removing."""
         df = pl.DataFrame({"text": ["Hello™World"]})
-        result = clean_ocr_artifacts(df, replace_with=" ")
+        result = only_keep_allowed_chars(df, replace_with=" ")
 
         # Should have space instead of ™
-        clean_text = result["text_clean"][0]
+        clean_text = result["text_filtered"][0]
         assert "Hello" in clean_text
         assert "World" in clean_text
         assert "™" not in clean_text
@@ -550,28 +550,28 @@ class TestCleanOcrArtifacts:
     def test_whitespace_normalization(self) -> None:
         """Test that whitespace is normalized after cleanup."""
         df = pl.DataFrame({"text": ["Hello   ™™™   World"]})
-        result = clean_ocr_artifacts(df)
+        result = only_keep_allowed_chars(df)
 
         # Multiple spaces from removed chars should be collapsed
-        clean_text = result["text_clean"][0]
+        clean_text = result["text_filtered"][0]
         assert "  " not in clean_text
         assert clean_text == "Hello World"
 
     def test_leading_trailing_stripped(self) -> None:
         """Test that leading/trailing whitespace is stripped."""
         df = pl.DataFrame({"text": ["  ™Hello World™  "]})
-        result = clean_ocr_artifacts(df)
+        result = only_keep_allowed_chars(df)
 
-        clean_text = result["text_clean"][0]
+        clean_text = result["text_filtered"][0]
         assert not clean_text.startswith(" ")
         assert not clean_text.endswith(" ")
 
     def test_empty_string(self) -> None:
         """Test handling of empty strings."""
         df = pl.DataFrame({"text": ["", "   ", "™™™"]})
-        result = clean_ocr_artifacts(df)
+        result = only_keep_allowed_chars(df)
 
-        values = result["text_clean"].to_list()
+        values = result["text_filtered"].to_list()
         assert values[0] == ""
         assert values[1] == ""
         assert values[2] == ""
@@ -579,7 +579,7 @@ class TestCleanOcrArtifacts:
     def test_custom_columns(self) -> None:
         """Test with custom column names."""
         df = pl.DataFrame({"content": ["Hello™World"]})
-        result = clean_ocr_artifacts(df, input_column="content", output_column="cleaned")
+        result = only_keep_allowed_chars(df, input_column="content", output_column="cleaned")
 
         assert "cleaned" in result.columns
         assert "™" not in result["cleaned"][0]

@@ -221,6 +221,8 @@ disallow_untyped_defs = false
 module = [
     "pyphen",
     "germalemma",
+    "germalemma.germalemma",
+    "germalemma.GermanLemma",
     "cv2",
     "gliner",
     "gliner2",

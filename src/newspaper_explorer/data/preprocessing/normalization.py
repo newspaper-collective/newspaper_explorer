@@ -6,25 +6,14 @@ Provides comprehensive normalization for historical German newspaper texts:
 - Historical German character mapping (ſ→s, ß→ss)
 - Transnormer neural normalization (transformer-based)
 - DTA-CAB API normalization (web service)
-"""
+"""  # noqa: RUF002
 
-import hashlib
 import logging
-import os
-from pathlib import Path
 from typing import Optional, Union
 
 import ftfy
 import polars as pl
 from tqdm import tqdm
-
-# Import text chunking utility
-from newspaper_explorer.data.utils.text import chunk_text
-
-# Set Hugging Face cache directory to avoid filling up home directory
-# Use project's .cache directory for model downloads
-_project_root = Path(__file__).parent.parent.parent.parent
-os.environ["HF_HOME"] = str(_project_root / ".cache" / "huggingface")
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +123,7 @@ def normalize_unicode(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
+    *,
     aggressive: bool = False,
 ) -> pl.DataFrame:
     """
@@ -254,168 +244,183 @@ def normalize_unicode(
     return df
 
 
-def _process_chunks_on_gpu(
-    device: str,
-    chunks: list[str],
-    chunk_indices: list[int],
-    model_name: str,
-    batch_size: int,
-    num_beams: int,
-    max_new_tokens: int,
-    max_input_length: int,
-    result_queue=None,
-    barrier=None,
-    gpu_id: Optional[int] = None,
-):
+def normalize_whitespace(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    *,
+    keep_newlines: bool = False,
+) -> pl.DataFrame:
     """
-    Helper function to process text chunks on a specific device.
+    Normalize whitespace characters in text.
 
-    Can be used in two modes:
-    1. Direct call (single-GPU): result_queue=None, barrier=None - returns results
-    2. Spawned process (multi-GPU): result_queue and barrier provided - sends to queue
+    Two modes available:
+
+    **Default mode (keep_newlines=False):**
+    - Collapses ALL whitespace (spaces, tabs, newlines) to single space
+    - Good for: aggregated text blocks, NLP tasks, topic modeling
+    - Example: "Hello    world\\n\\tNext" → "Hello world Next"
+
+    **Newline-preserving mode (keep_newlines=True):**
+    - Collapses multiple spaces/tabs to single space
+    - KEEPS newlines intact, removes spaces around them
+    - Good for: line-by-line processing, preserving text structure
+    - Example: "Hello    world\\n\\tNext" → "Hello world\\nNext"
 
     Args:
-        device: Device string (e.g., "cuda:0", "cuda", "cpu")
-        chunks: List of text chunks to normalize
-        chunk_indices: Original indices of chunks for reassembly
-        model_name: HuggingFace model identifier
-        batch_size: Batch size for inference
-        num_beams: Number of beams for beam search
-        max_new_tokens: Maximum tokens to generate
-        max_input_length: Maximum input sequence length
-        result_queue: Optional multiprocessing queue for results (multi-GPU mode)
-        barrier: Optional multiprocessing barrier for synchronization (multi-GPU mode)
-        gpu_id: Optional GPU ID for progress bar labeling (multi-GPU mode)
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_whitespace)
+        keep_newlines: If True, preserves newlines (default: False)
 
     Returns:
-        List of (index, normalized_text) tuples if result_queue is None, else None
+        DataFrame with normalized whitespace
+
+    Example:
+        >>> # Default: collapse all whitespace
+        >>> df = normalize_whitespace(df)
+        >>> # "Hello    world\\n\\ttab  " → "Hello world tab"
+        >>>
+        >>> # Preserve newlines
+        >>> df = normalize_whitespace(df, keep_newlines=True)
+        >>> # "Hello    world\\n\\ttab  " → "Hello world\\ntab"
     """
-    import torch
-    from tqdm import tqdm
-    from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
-    from transformers.models.auto.tokenization_auto import AutoTokenizer
+    if output_column is None:
+        output_column = f"{input_column}_whitespace"
 
-    # Load model on this device
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model_obj = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+    mode = "preserve newlines" if keep_newlines else "collapse all"
+    logger.info(f"Normalizing whitespace ({mode}): {input_column} → {output_column}")
 
-    # Get generation config before compilation (torch.compile loses type info)
-    gen_config = model_obj.generation_config
+    if keep_newlines:
+        # Preserve newlines, collapse only spaces/tabs
+        def normalize_with_newlines(text: str) -> str:
+            if not text:
+                return text
+            # Normalize line breaks to \n
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+            # Collapse multiple spaces/tabs to single space
+            text = re.sub(r"[ \t]+", " ", text)
+            # Remove spaces/tabs around newlines
+            text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+            return text.strip()
 
-    # Try to use torch.compile for faster inference (PyTorch 2.0+)
-    if hasattr(torch, "compile"):
-        try:
-            logger.info(f"Compiling model on {device} with torch.compile() for faster inference...")
-            # Store original type before compilation for type checking
-            compiled_model = torch.compile(model_obj, mode="reduce-overhead")
-            # Keep reference to compiled model but preserve original type hint
-            model_obj = compiled_model  # type: ignore[assignment]
-            logger.info(f"Model compilation complete on {device}")
-        except Exception as e:
-            logger.warning(
-                f"Could not compile model on {device}: {e}. Continuing without compilation."
-            )
-    gen_config.num_beams = num_beams
-    gen_config.max_new_tokens = max_new_tokens
-
-    # Wait for all GPUs to finish loading (multi-GPU mode only)
-    if barrier is not None:
-        barrier.wait()
-
-    # Process chunks in batches
-    results = []
-
-    # Configure progress bar based on mode
-    if gpu_id is not None:
-        # Multi-GPU mode: labeled, positioned progress bar
-        pbar_desc = f"GPU {gpu_id}"
-        pbar_position = gpu_id
-        pbar_leave = False
+        df = df.with_columns(
+            [
+                pl.col(input_column)
+                .map_elements(normalize_with_newlines, return_dtype=pl.Utf8)
+                .alias(output_column)
+            ]
+        )
     else:
-        # Single-GPU mode: simple progress bar
-        pbar_desc = "Normalizing"
-        pbar_position = None
-        pbar_leave = True
+        # Default: collapse all whitespace to single space
+        df = df.with_columns(
+            [
+                pl.col(input_column)
+                .str.replace_all(r"\s+", " ")  # All whitespace → single space
+                .str.strip_chars()  # Remove leading/trailing
+                .alias(output_column)
+            ]
+        )
 
-    for i in tqdm(
-        range(0, len(chunks), batch_size),
-        desc=pbar_desc,
-        position=pbar_position,
-        leave=pbar_leave,
-    ):
-        batch_end = min(i + batch_size, len(chunks))
-        batch_texts = chunks[i:batch_end]
-        batch_indices = chunk_indices[i:batch_end]
-
-        # Tokenize batch
-        inputs = tokenizer(
-            batch_texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=max_input_length,
-        ).to(device)
-
-        # Generate
-        with torch.no_grad():
-            outputs = model_obj.generate(  # type: ignore[attr-defined]
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                generation_config=gen_config,
-            )
-
-        # Decode
-        batch_normalized = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-        # Store with original indices
-        for idx, normalized in zip(batch_indices, batch_normalized):
-            results.append((idx, normalized))
-
-    # Return results or send to queue
-    if result_queue is not None:
-        result_queue.put(results)
-    else:
-        return results
+    logger.info(f"Whitespace normalized for {len(df):,} rows")
+    return df
 
 
-def simple(
+def normalize_umlauts(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
 ) -> pl.DataFrame:
     """
-    Normalize historical German text characters.
+    Normalize German umlauts and ß to two-letter representations.
 
-    Replaces archaic German characters:
-    - ſ (long s) → s
-    - ẞ (capital sharp s) → SS
-    - ß (sharp s) → ss
+    Converts:
+    - ä → ae
+    - ö → oe
+    - ü → ue
+    - Ä → Ae
+    - Ö → Oe
+    - Ü → Ue
+    - ß → ss
 
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_simple)
+        output_column: Name for output column (default: {input_column}_umlaut_norm)
 
     Returns:
-        DataFrame with normalized text column
+        DataFrame with normalized umlauts
     """
     if output_column is None:
-        output_column = f"{input_column}_simple"
+        output_column = f"{input_column}_umlaut_norm"
 
-    logger.info(f"Normalizing historical characters: {input_column} → {output_column}")
+    logger.info(f"Normalizing umlauts: {input_column} → {output_column}")
 
     df = df.with_columns(
         [
             pl.col(input_column)
-            .str.replace_all("ẞ", "SS")
-            .str.replace_all("ß", "ss")
-            .str.replace_all("ſs", "ss")
-            .str.replace_all("ſ", "s")
+            .str.replace_all(r"ä", "ae")
+            .str.replace_all(r"ö", "oe")
+            .str.replace_all(r"ü", "ue")
+            .str.replace_all(r"Ä", "Ae")
+            .str.replace_all(r"Ö", "Oe")
+            .str.replace_all(r"Ü", "Ue")
+            .str.replace_all(r"ß", "ss")
             .alias(output_column)
         ]
     )
 
-    logger.info(f"Normalized {len(df):,} rows")
+    logger.info(f"Umlauts normalized for {len(df):,} rows")
+    return df
+
+
+def normalize_casing(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    *,
+    mode: str = "lower",
+) -> pl.DataFrame:
+    """
+    Normalize text casing.
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_casing)
+        mode: Casing mode - "lower", "upper", or "title" (default: "lower")
+
+    Returns:
+        DataFrame with normalized casing
+
+    Example:
+        >>> # Lowercase (default)
+        >>> df = normalize_casing(df)
+        >>> # "Hello World" → "hello world"
+        >>>
+        >>> # Uppercase
+        >>> df = normalize_casing(df, mode="upper")
+        >>> # "Hello World" → "HELLO WORLD"
+        >>>
+        >>> # Title case
+        >>> df = normalize_casing(df, mode="title")
+        >>> # "hello world" → "Hello World"
+    """
+    if output_column is None:
+        output_column = f"{input_column}_casing"
+
+    logger.info(f"Normalizing casing ({mode}): {input_column} → {output_column}")
+
+    if mode == "lower":
+        df = df.with_columns([pl.col(input_column).str.to_lowercase().alias(output_column)])
+    elif mode == "upper":
+        df = df.with_columns([pl.col(input_column).str.to_uppercase().alias(output_column)])
+    elif mode == "title":
+        df = df.with_columns([pl.col(input_column).str.to_titlecase().alias(output_column)])
+    else:
+        raise ValueError(f"Unknown mode: {mode}. Use 'lower', 'upper', or 'title'")
+
+    logger.info(f"Normalized casing for {len(df):,} rows")
     return df
 
 
@@ -551,561 +556,462 @@ def normalize_long_s(
         raise ValueError(f"Unknown mode: {mode}. Use 'simple', 'context-aware', or 'preserve'")
 
 
-def transnormer(
+def dehyphenate(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
-    model: str = "19c",
-    batch_size: int = 32,
-    num_beams: int = 4,
-    max_new_tokens: int = 512,
-    max_input_length: int = 512,
-    device: Optional[Union[str, int]] = None,
-    num_gpus: int = 1,
-    cache_dir: Optional[Union[str, Path]] = None,
-    use_cache: bool = True,
+    language: str = "de_DE",
+    validate: bool = True,
 ) -> pl.DataFrame:
     """
-    Normalize historical German text using Transnormer transformer model.
+    Remove line-break hyphens from newspaper OCR text.
 
-    Uses transformer-based neural normalization specifically trained for
-    historical German text (1600-1900). Much faster than DTA-CAB API
-    and higher quality than basic character replacement.
+    Newspapers split words across line breaks with hyphens. After line
+    aggregation, these appear as "word- word". This function joins them
+    back together based on whitespace patterns.
 
-    Advantages over other methods:
-    - Neural model trained on historical German corpus
-    - Handles complex spelling variations (not just character mapping)
-    - Local inference (no API calls)
-    - Batched processing for efficiency
-    - Better context awareness than rule-based methods
+    The key insight: Line-break hyphens are ALWAYS followed by whitespace,
+    while compound words (Nord-Süd) have no space after the hyphen.
 
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_transnormer)
-        model: Model to use. Options:
-               - "19c": For text from 1780-1899 (transnormer-19c-beta-v02)
-               - "18-19c": For text from 1700-1899 (transnormer-18-19c-beta-v01)
-               - Or provide full model name from Hugging Face Hub
-        batch_size: Batch size for inference (adjust based on GPU memory)
-        num_beams: Number of beams for beam search (default: 4, higher = better quality)
-        max_new_tokens: Maximum length of generated normalized text (default: 512)
-        max_input_length: Maximum input chunk length in characters (default: 512)
-                         Texts longer than this will be split into chunks
-        device: Device for inference ('cuda', 'cpu', or None for auto-detect)
-        num_gpus: Number of GPUs to use for parallel processing (default: 1)
-        cache_dir: Directory for caching normalized chunks (default: .cache/transnormer)
-                  Set to None to disable caching
-        use_cache: Whether to use caching (default: True)
-                  Caches individual text chunks by their hash for fast resume
+        output_column: Name for output column (default: {input_column}_dehyphen)
+        language: Language code for pyphen (default: de_DE)
+        validate: Use pyphen to validate syllable breaks (default: True).
+                 Checks if the rejoined word would be hyphenated at that position.
+                 If False, removes ALL hyphen+whitespace patterns (faster but less safe).
 
     Returns:
-        DataFrame with Transnormer normalized text column
+        DataFrame with dehyphenated text column
+
+    Raises:
+        ImportError: If pyphen is not installed
 
     Example:
-        >>> df = normalize_transnormer(
-        ...     df,
-        ...     model="19c",
-        ...     batch_size=64,  # Larger batches for GPU
-        ...     device='cuda',
-        ...     use_cache=True  # Enable resume capability
-        ... )
+        >>> # Line-break hyphen (HAS whitespace) → REMOVE
+        >>> # "Zeitungs- papier" → "Zeitungspapier"
+        >>>
+        >>> # Compound word (NO whitespace) → KEEP
+        >>> # "Nord-Süd-Konflikt" → "Nord-Süd-Konflikt"
 
     Note:
-        Caching is done at the chunk level (not row level), so if processing
-        is interrupted, already-normalized chunks will be read from cache
-        when you re-run, avoiding redundant GPU computation.
+        With validate=True, pyphen checks if the split is a valid syllable
+        boundary, reducing false positives from OCR errors. However, pyphen
+        validates syllable breaks, not semantic meaning - it will approve
+        joining "Nord- Süd" because that's a valid break point for "NordSüd".
+
+        This is okay because real compound words in newspapers never have
+        whitespace after hyphens - that pattern only appears from line breaks.
     """
-    if output_column is None:
-        output_column = f"{input_column}_transnormer"
-
-    logger.info(f"Normalizing with Transnormer: {input_column} → {output_column}")
-
     try:
-        import torch
-        from transformers.models.auto.modeling_auto import AutoModelForSeq2SeqLM
-        from transformers.models.auto.tokenization_auto import AutoTokenizer
+        import pyphen
     except ImportError:
-        raise ImportError(
-            "Transnormer normalization requires 'transformers' and 'torch'.\n"
-            "Install with: pip install transformers torch"
-        )
+        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
 
-    from tqdm import tqdm
+    if output_column is None:
+        output_column = f"{input_column}_dehyphen"
 
-    # Supported Transnormer models for historical German text normalization
-    TRANSNORMER_MODELS = {
-        "19c": "ybracke/transnormer-19c-beta-v02",  # 1780-1899
-        "18-19c": "ybracke/transnormer-18-19c-beta-v01",  # 1700-1899
-    }
+    logger.info(f"Dehyphenating text: {input_column} → {output_column}")
 
-    # Resolve model name
-    if model in TRANSNORMER_MODELS:
-        model_name = TRANSNORMER_MODELS[model]
-        logger.info(f"Using Transnormer model '{model}': {model_name}")
+    dic = pyphen.Pyphen(lang=language) if validate else None
+
+    if validate:
+        logger.info("Using pyphen dictionary validation")
     else:
-        model_name = model
-        logger.info(f"Using custom model: {model_name}")
+        logger.info("Using simple regex-based removal (no validation)")
 
-    # Setup cache directory
-    if cache_dir is None:
-        from newspaper_explorer.config.base import get_config
+    def dehyphenate_text(text: str) -> str:
+        """Remove line-break hyphens from text."""
+        if not text:
+            return text
 
-        config = get_config()
-        cache_dir = Path(config.data_dir) / ".cache" / "transnormer" / model.replace("/", "_")
-    else:
-        cache_dir = Path(cache_dir)
+        import re
 
-    if use_cache:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Using cache directory: {cache_dir}")
+        def check_and_replace(match):
+            """Check if hyphen is at a valid syllable break, if so remove it."""
+            before = match.group(1)  # Word part before hyphen
+            after = match.group(2)  # Word part after hyphen
 
-    def get_cache_key(text: str) -> str:
-        """Generate cache key from text."""
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+            # Heuristic: Both parts capitalized → likely proper noun compound
+            # Examples: "Nord- Süd", "Ost- West", "New- York"
+            # These should stay separated even with whitespace
+            if before and after and before[0].isupper() and after[0].isupper():
+                return match.group(0)  # Keep hyphen and space
 
-    def get_from_cache(text: str) -> Optional[str]:
-        """Try to get normalized text from cache."""
-        if not use_cache:
-            return None
+            if not validate or dic is None:
+                # Simple mode: always join
+                return before + after
 
-        cache_key = get_cache_key(text)
-        cache_file = cache_dir / f"{cache_key}.txt"
+            # Validation mode: check if it's a valid syllable break
+            full_word = before + after
+            positions = dic.positions(full_word)
 
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    return f.read()
-            except Exception as e:
-                logger.debug(f"Cache read error: {e}")
-                return None
-        return None
+            # If the hyphen position matches a valid syllable break, remove it
+            if len(before) in positions:
+                return full_word
+            else:
+                # Not a valid break point, keep hyphen and space
+                return match.group(0)
 
-    def save_to_cache(text: str, normalized: str) -> None:
-        """Save normalized text to cache."""
-        if not use_cache:
-            return
+        # Pattern: word-characters, hyphen, whitespace, word-characters
+        # Matches both newlines and multiple spaces
+        pattern = r"(\w+)-\s+(\w+)"
+        text = re.sub(pattern, check_and_replace, text)
 
-        cache_key = get_cache_key(text)
-        cache_file = cache_dir / f"{cache_key}.txt"
+        return text
 
-        try:
-            with open(cache_file, "w", encoding="utf-8") as f:
-                f.write(normalized)
-        except Exception as e:
-            logger.debug(f"Cache write error: {e}")
+    df = df.with_columns(
+        [
+            pl.col(input_column)
+            .map_elements(dehyphenate_text, return_dtype=pl.Utf8)
+            .alias(output_column)
+        ]
+    )
 
-    # Auto-detect device and GPU count if not specified
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Auto-detect available GPUs
-    if device == "cuda" and num_gpus > 1:
-        available_gpus = torch.cuda.device_count()
-        if available_gpus < num_gpus:
-            logger.warning(
-                f"Requested {num_gpus} GPUs but only {available_gpus} available. "
-                f"Using {available_gpus} GPUs."
-            )
-            num_gpus = available_gpus
-        logger.info(f"Using {num_gpus} GPUs for parallel processing")
-    else:
-        num_gpus = 1
-        logger.info(f"Using device: {device}")
-
-    # Get texts to normalize
-    texts = df[input_column].to_list()
-
-    logger.info(f"Chunking texts (max_input_length={max_input_length} chars)")
-
-    # Track which chunks belong to which original row
-    chunk_to_row_map = []
-    all_chunks = []
-    cached_results = {}  # chunk_idx -> normalized_text
-
-    for row_idx, text in tqdm(enumerate(texts), total=len(texts), desc="Chunking & checking cache"):
-        if not text or not text.strip():
-            # Empty text - keep as single chunk
-            all_chunks.append(" ")
-            chunk_to_row_map.append(row_idx)
-        else:
-            # Split long texts into chunks using utility function
-            chunks = chunk_text(text, max_length=max_input_length)
-            for chunk in chunks:
-                chunk_idx = len(all_chunks)
-
-                # Check cache for this chunk
-                cached = get_from_cache(chunk)
-                if cached is not None:
-                    cached_results[chunk_idx] = cached
-
-                all_chunks.append(chunk)
-                chunk_to_row_map.append(row_idx)
-
-    total_chunks = len(all_chunks)
-    cache_hits = len(cached_results)
-    chunks_to_process = total_chunks - cache_hits
-
-    logger.info(f"Split {len(texts):,} texts into {total_chunks:,} chunks")
-    if use_cache:
-        cache_rate = (cache_hits / total_chunks * 100) if total_chunks > 0 else 0
-        logger.info(f"Cache hits: {cache_hits:,} ({cache_rate:.1f}%)")
-        logger.info(f"Chunks to process: {chunks_to_process:,} ({100 - cache_rate:.1f}%)")
-    logger.info(f"Processing with batch_size={batch_size}, num_beams={num_beams}")
-
-    # Filter out chunks that are already cached
-    chunks_to_process_list = []
-    chunk_indices_to_process = []
-
-    for chunk_idx, chunk in enumerate(all_chunks):
-        if chunk_idx not in cached_results:
-            chunks_to_process_list.append(chunk)
-            chunk_indices_to_process.append(chunk_idx)
-
-    # Skip processing if all chunks are cached
-    if len(chunks_to_process_list) == 0:
-        logger.info("All chunks found in cache, skipping model inference")
-        normalized_chunks = [cached_results.get(i, "") for i in range(total_chunks)]
-
-    # Use multi-GPU processing if requested
-    elif num_gpus > 1:
-        logger.info(
-            f"Distributing {len(chunks_to_process_list)} uncached chunks across {num_gpus} GPUs"
-        )
-
-        import multiprocessing as mp
-
-        # CRITICAL: Set start method to 'spawn' for CUDA compatibility
-        # This must be done before creating any processes
-        try:
-            mp.set_start_method("spawn", force=True)
-        except RuntimeError:
-            # Already set, ignore
-            pass
-
-        from multiprocessing import Barrier, Process, Queue
-
-        # Create a barrier to synchronize GPU processes
-        # All GPUs will wait until all have loaded their models
-        barrier = Barrier(num_gpus)
-
-        # Split UNCACHED chunks across GPUs
-        num_uncached = len(chunks_to_process_list)
-        chunks_per_gpu = (num_uncached + num_gpus - 1) // num_gpus
-        processes = []
-        result_queue: Queue[list[tuple[int, str]]] = Queue()
-
-        for gpu_id in range(num_gpus):
-            start_idx = gpu_id * chunks_per_gpu
-            end_idx = min(start_idx + chunks_per_gpu, num_uncached)
-
-            if start_idx >= num_uncached:
-                break
-
-            gpu_chunks = chunks_to_process_list[start_idx:end_idx]
-            gpu_indices = chunk_indices_to_process[start_idx:end_idx]
-
-            logger.info(f"GPU {gpu_id}: will process {len(gpu_chunks)} chunks")
-
-            p = Process(
-                target=_process_chunks_on_gpu,
-                kwargs={
-                    "device": f"cuda:{gpu_id}",
-                    "chunks": gpu_chunks,
-                    "chunk_indices": gpu_indices,
-                    "model_name": model_name,
-                    "batch_size": batch_size,
-                    "num_beams": num_beams,
-                    "max_new_tokens": max_new_tokens,
-                    "max_input_length": max_input_length,
-                    "result_queue": result_queue,
-                    "barrier": barrier,
-                    "gpu_id": gpu_id,
-                },
-            )
-            p.start()
-            processes.append(p)
-
-        # Collect results from all GPUs
-        logger.info("All GPUs are loading models and will start processing together...")
-        logger.info("Waiting for GPU processes to complete...")
-        processing_results = []
-        for _ in range(len(processes)):
-            processing_results.extend(result_queue.get())
-
-        # Wait for all processes to finish
-        for p in processes:
-            p.join()
-
-        # Merge processing results with cached results
-        logger.info("Merging results with cache...")
-        for chunk_idx, normalized in processing_results:
-            cached_results[chunk_idx] = normalized
-            # Save new result to cache
-            save_to_cache(all_chunks[chunk_idx], normalized)
-
-        # Build final list in order
-        normalized_chunks = [cached_results.get(i, "") for i in range(total_chunks)]
-
-        logger.info(f"Multi-GPU processing complete")
-
-    else:
-        # Single GPU/CPU processing - use the same worker function
-        logger.info(f"Loading Transnormer model (this may take a while on first run)")
-        logger.info("Normalizing chunks in batches...")
-
-        # Convert device to string if it's an int (e.g., 0 -> "cuda:0")
-        device_str = f"cuda:{device}" if isinstance(device, int) else device
-
-        # Call worker function directly (no multiprocessing) - only for uncached chunks
-        processing_results = _process_chunks_on_gpu(
-            device=device_str,
-            chunks=chunks_to_process_list,
-            chunk_indices=chunk_indices_to_process,
-            model_name=model_name,
-            batch_size=batch_size,
-            num_beams=num_beams,
-            max_new_tokens=max_new_tokens,
-            max_input_length=max_input_length,
-            result_queue=None,  # Direct return mode
-            barrier=None,  # No synchronization needed
-            gpu_id=None,  # Single GPU mode
-        )
-
-        # Merge processing results with cached results
-        logger.info("Merging results with cache...")
-        if processing_results is None:
-            processing_results = []
-        for chunk_idx, normalized in processing_results:
-            cached_results[chunk_idx] = normalized
-            # Save new result to cache
-            save_to_cache(all_chunks[chunk_idx], normalized)
-
-        # Build final list in order
-        normalized_chunks = [cached_results.get(i, "") for i in range(total_chunks)]
-
-    # Reassemble chunks back into original rows
-    logger.info("Reassembling chunks...")
-    normalized_texts = [""] * len(texts)
-
-    for chunk_idx, row_idx in enumerate(chunk_to_row_map):
-        if normalized_texts[row_idx]:
-            # Join with space if there are multiple chunks for this row
-            normalized_texts[row_idx] += " " + normalized_chunks[chunk_idx]
-        else:
-            normalized_texts[row_idx] = normalized_chunks[chunk_idx]
-
-    # Add normalized column
-    df = df.with_columns([pl.Series(name=output_column, values=normalized_texts)])
-
-    logger.info(f"Transnormer normalized {len(df):,} rows from {total_chunks:,} chunks")
+    logger.info(f"Dehyphenated {len(df):,} rows")
     return df
 
 
-def dta_cab(
+def dehyphenate_auto(
     df: pl.DataFrame,
     input_column: str = "text",
     output_column: Optional[str] = None,
-    batch_size: int = 100,
-    timeout: int = 30,
-    format: str = "csv",
-    cache_dir: Optional[Union[str, Path]] = None,
-    use_cache: bool = True,
+    language: str = "de_DE",
+    validate: bool = True,
 ) -> pl.DataFrame:
     """
-    Normalize historical German text using DTA-CAB web service.
+    Auto-detect and apply the appropriate dehyphenation method.
 
-    Uses the Deutsches Textarchiv Cascaded Analysis Broker for
-    sophisticated normalization of historical German texts (16th-20th century).
-    Includes spelling normalization, tokenization, and more.
-
-    NOTE: This is MUCH slower than basic normalization due to API calls.
-    Recommended for smaller datasets or when high-quality normalization is critical.
-
-    Results are cached by default to avoid re-processing identical texts.
+    Chooses between line-level dehyphenation (dehyphenate_lines) and simple
+    dehyphenation (dehyphenate) based on whether the DataFrame has the required
+    columns for line-level processing.
 
     Args:
         df: Input DataFrame
         input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_dtacab)
-        batch_size: Number of texts to process in each batch
-        timeout: Request timeout in seconds
-        format: Output format ('csv', 'txt', or 'tcf')
-        cache_dir: Directory for cache files (default: data/.cache/dtacab)
-        use_cache: Whether to use caching (default: True)
+        output_column: Name for output column (default: {input_column}_dehyphen)
+        language: Language code for pyphen (default: "de_DE")
+        validate: Use pyphen to validate syllable breaks (default: True)
 
     Returns:
-        DataFrame with DTA-CAB normalized text column
+        DataFrame with dehyphenated text column
+
+    Note:
+        Uses dehyphenate_lines if columns text_block_id, line_id, x, y, width
+        are present; otherwise falls back to simple dehyphenate.
     """
-    if output_column is None:
-        output_column = f"{input_column}_dtacab"
+    required_cols = ["text_block_id", "line_id", "x", "y", "width"]
 
-    logger.info(f"Normalizing with DTA-CAB: {input_column} → {output_column}")
-    logger.warning("DTA-CAB normalization is SLOW - expect 1-10 seconds per text")
-
-    try:
-        import requests
-    except ImportError:
-        raise ImportError(
-            "DTA-CAB normalization requires 'requests' package.\nInstall with: pip install requests"
+    if all(col in df.columns for col in required_cols):
+        logger.info("Using line-level dehyphenation (preserves line structure)")
+        return dehyphenate_lines(
+            df,
+            input_column=input_column,
+            output_column=output_column,
+            language=language,
+            validate=validate,
+        )
+    else:
+        logger.info("Using simple dehyphenation (line structure not available)")
+        return dehyphenate(
+            df,
+            input_column=input_column,
+            output_column=output_column,
+            language=language,
+            validate=validate,
         )
 
-    import hashlib
-    import json
+
+def dehyphenate_lines(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    text_block_id_column: str = "text_block_id",
+    line_id_column: str = "line_id",
+    x_column: str = "x",
+    y_column: str = "y",
+    width_column: str = "width",
+    output_column: Optional[str] = None,
+    language: str = "de_DE",
+    validate: bool = True,
+    max_y_distance: int = 100,
+) -> pl.DataFrame:
+    """
+    Remove line-break hyphens while preserving line-level structure.
+
+    This function is designed for line-level OCR data where words are split
+    across consecutive lines with hyphens. Unlike dehyphenate() which works
+    on aggregated text, this function:
+    - Preserves the line-level DataFrame structure
+    - Uses spatial coordinates to verify consecutive lines
+    - Moves wrapped word parts to the correct line
+    - Updates both lines in place
+
+    Example:
+        Line 1: "Die Zeitungs-" (x=100, y=200)
+        Line 2: "papier wird knapp" (x=100, y=250)
+
+        After dehyphenation:
+        Line 1: "Die Zeitungspapier" (x=100, y=200)
+        Line 2: "wird knapp" (x=100, y=250)
+
+    Args:
+        df: Input DataFrame with line-level OCR data
+        input_column: Column containing text (default: "text")
+        text_block_id_column: Column with text block IDs (default: "text_block_id")
+        line_id_column: Column with line IDs (default: "line_id")
+        x_column: Column with x coordinate (default: "x")
+        y_column: Column with y coordinate (default: "y")
+        width_column: Column with width (default: "width")
+        output_column: Name for output column (default: {input_column}_dehyphen)
+        language: Language code for pyphen (default: "de_DE")
+        validate: Use pyphen to validate syllable breaks (default: True)
+        max_y_distance: Maximum vertical distance to consider lines consecutive (default: 100)
+
+    Returns:
+        DataFrame with dehyphenated text, preserving line structure
+
+    Note:
+        Requires columns: text, text_block_id, line_id, x, y, width
+        All other columns are preserved unchanged.
+    """
+    try:
+        import pyphen
+    except ImportError:
+        raise ImportError("pyphen is required for dehyphenation. Install with: pip install pyphen")
+
+    if output_column is None:
+        output_column = f"{input_column}_dehyphen"
+
+    logger.info(f"Dehyphenating lines: {input_column} → {output_column}")
+
+    # Validate required columns
+    required_cols = [
+        input_column,
+        text_block_id_column,
+        line_id_column,
+        x_column,
+        y_column,
+        width_column,
+    ]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    dic = pyphen.Pyphen(lang=language) if validate else None
+
+    if validate:
+        logger.info("Using pyphen dictionary validation")
+    else:
+        logger.info("Using simple pattern matching (no validation)")
+
+    # Sort by text_block, then y coordinate (top to bottom)
+    df = df.sort([text_block_id_column, y_column])
+
+    # Create output column as copy of input
+    df = df.with_columns([pl.col(text_column).alias(output_column)])
+
+    # OPTIMIZATION: Pre-filter lines ending with hyphen to reduce search space
+    # This dramatically reduces the number of iterations from 61M to ~100k-500k
+    logger.info("Finding lines ending with hyphens...")
+    hyphen_mask = df.select(
+        pl.col(output_column).str.strip_chars_end().str.ends_with("-")
+    ).to_series()
+
+    hyphen_indices = [i for i, has_hyphen in enumerate(hyphen_mask) if has_hyphen]
+    logger.info(
+        f"Found {len(hyphen_indices):,} lines ending with hyphens (out of {len(df):,} total)"
+    )
+
+    if not hyphen_indices:
+        logger.info("No line-break hyphens found")
+        return df
+
+    # OPTIMIZATION: Extract columns as numpy arrays for fast random access
+    texts = df[output_column].to_list()
+    blocks = df[text_block_id_column].to_list()
+    y_coords = df[y_column].to_list()
+    x_coords = df[x_column].to_list()
+    widths = df[width_column].to_list()
+
+    # Process only hyphenated lines
+    modifications = []
+    merge_examples = []  # Collect examples for review
 
     from tqdm import tqdm
 
-    # DTA-CAB API endpoint
-    API_URL = "http://www.deutschestextarchiv.de/demo/cab/query"
+    for i in tqdm(hyphen_indices, desc="Processing hyphenated lines", unit="line"):
+        # Bounds check
+        if i >= len(df) - 1:
+            continue
 
-    # Setup cache directory
-    if cache_dir is None:
-        cache_dir = Path("data") / ".cache" / "dtacab"
-    else:
-        cache_dir = Path(cache_dir)
+        # Fast array access instead of df[i]
+        current_block = blocks[i]
+        next_block = blocks[i + 1]
+        same_block = current_block == next_block
 
-    if use_cache:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Using cache directory: {cache_dir}")
-
-    def get_cache_key(text: str) -> str:
-        """Generate cache key from text."""
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-    def get_from_cache(text: str) -> Optional[str]:
-        """Try to get normalized text from cache."""
-        if not use_cache:
-            return None
-
-        cache_key = get_cache_key(text)
-        cache_file = cache_dir / f"{cache_key}.json"
-
-        if cache_file.exists():
-            try:
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    normalized = data.get("normalized")
-                    return normalized if isinstance(normalized, str) else None
-            except Exception as e:
-                logger.debug(f"Cache read error: {e}")
-                return None
-        return None
-
-    def save_to_cache(text: str, normalized: str) -> None:
-        """Save normalized text to cache."""
-        if not use_cache:
-            return
-
-        cache_key = get_cache_key(text)
-        cache_file = cache_dir / f"{cache_key}.json"
-
-        try:
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "original": text,
-                        "normalized": normalized,
-                        "format": format,
-                    },
-                    f,
-                    ensure_ascii=False,
-                )
-        except Exception as e:
-            logger.debug(f"Cache write error: {e}")
-
-    def normalize_text(text: str) -> str:
-        """Normalize a single text via DTA-CAB API (with caching)."""
-        if not text or not text.strip():
-            return text
-
-        # Try cache first
-        cached = get_from_cache(text)
-        if cached is not None:
-            return cached
-
-        try:
-            # Prepare request
-            params = {
-                "fmt": format,
-                "clean": "1",  # Clean output
-                "q": text,
-            }
-
-            # Make request
-            response = requests.get(
-                API_URL,
-                params=params,
-                timeout=timeout,
+        # If not same block, check if we're at the last line of current block
+        if not same_block:
+            # Quick check: is there any line after i+1 with same block?
+            has_more_in_block = any(
+                blocks[j] == current_block for j in range(i + 2, min(i + 10, len(blocks)))
             )
-            response.raise_for_status()
+            if has_more_in_block:
+                continue
 
-            # Parse response based on format
-            if format == "csv":
-                # CSV format: token\tnorm\tlemma\tpos
-                # We want the normalized forms (second column)
-                lines = response.text.strip().split("\n")
-                normalized_tokens = []
+        # Check if lines are vertically close (consecutive)
+        current_y = y_coords[i]
+        next_y = y_coords[i + 1]
+        y_distance = abs(next_y - current_y)
+        if y_distance > max_y_distance:
+            continue
 
-                for line in lines:
-                    if not line or line.startswith("#"):
-                        continue
-                    parts = line.split("\t")
-                    if len(parts) >= 2:
-                        normalized_tokens.append(parts[1])
+        # ADDITIONAL CHECK: Verify next line is actually BELOW current line
+        # (not above or at same level - this catches ordering issues)
+        if next_y <= current_y:
+            continue
 
-                result = " ".join(normalized_tokens)
+        # ADDITIONAL CHECK: Verify horizontal alignment
+        # Lines should start at similar x positions (within reason)
+        current_x = x_coords[i]
+        next_x = x_coords[i + 1]
+        x_distance = abs(next_x - current_x)
 
-            elif format == "txt":
-                # Plain text format - already normalized
-                result = response.text.strip()
+        # Allow some horizontal variation but not too much
+        # (columns, indentation, etc. should be roughly aligned)
+        max_x_distance = 200  # pixels - adjust based on typical column width
+        if x_distance > max_x_distance:
+            continue
 
-            else:
-                logger.warning(f"Unsupported format '{format}', returning original text")
-                result = text
+        # ADDITIONAL CHECK: Check if next line starts far to the right
+        # (might be a different column or continuation mark)
+        current_width = widths[i]
+        # If next line starts after current line ends, it's likely a new section
+        current_end_x = current_x + current_width
+        if next_x > current_end_x + 50:  # 50px grace period
+            continue
 
-            # Save to cache
-            save_to_cache(text, result)
-            return result
+        # Get text (already verified to end with hyphen by pre-filter)
+        current_text = texts[i]
+        if not current_text:
+            continue
 
-        except requests.exceptions.Timeout:
-            logger.warning(f"DTA-CAB request timeout for text: {text[:50]}...")
-            return text
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"DTA-CAB request failed: {e}")
-            return text
-        except Exception as e:
-            logger.warning(f"DTA-CAB processing error: {e}")
-            return text
+        next_text = texts[i + 1]
+        if not next_text or not next_text.strip():
+            continue
 
-    # Process texts in batches with progress bar
-    texts = df[input_column].to_list()
-    normalized_texts = []
+        # Extract the word parts
+        current_words = current_text.rstrip().split()
+        if not current_words:
+            continue
 
-    cache_hits = 0
-    api_calls = 0
+        last_word = current_words[-1]
+        if not last_word.endswith("-"):
+            continue
 
-    logger.info(f"Processing {len(texts):,} texts in batches of {batch_size}")
+        # Get first word from next line
+        next_words = next_text.strip().split()
+        if not next_words:
+            continue
 
-    for i in tqdm(range(0, len(texts), batch_size), desc="DTA-CAB batches"):
-        batch = texts[i : i + batch_size]
+        first_word = next_words[0]
 
-        for text in batch:
-            # Check if we got from cache
-            if use_cache and get_from_cache(text) is not None:
-                cache_hits += 1
-            else:
-                api_calls += 1
+        # Remove hyphen and join
+        word_part1 = last_word[:-1]  # Remove trailing hyphen
+        joined_word = word_part1 + first_word
 
-            normalized_texts.append(normalize_text(text))
+        # VALIDATION CHECKS to prevent bad merges:
 
-    # Add normalized column
-    df = df.with_columns([pl.Series(name=output_column, values=normalized_texts)])
+        # 1. Skip if first word is all caps (likely a heading/title)
+        if first_word.isupper() and len(first_word) > 2:
+            continue
 
-    # Show cache statistics
-    if use_cache:
-        cache_rate = (cache_hits / len(texts) * 100) if len(texts) > 0 else 0
-        logger.info(f"Cache hits: {cache_hits:,} ({cache_rate:.1f}%)")
-        logger.info(f"API calls: {api_calls:,} ({100 - cache_rate:.1f}%)")
+        # 2. Skip if word parts are identical (repetition, not continuation)
+        if word_part1.lower() == first_word.lower().rstrip(",-.:;!?"):
+            continue
 
-    logger.info(f"DTA-CAB normalized {len(df):,} rows")
+        # 3. Skip if capitalization suggests separate words
+        # (lowercase + Capitalized = probably two words)
+        if word_part1 and word_part1[-1].islower() and first_word and first_word[0].isupper():
+            # Exception: if word_part1 is very short (1-2 chars), might be valid
+            if len(word_part1) > 2:
+                continue
+
+        # Validate with pyphen if requested
+        if validate and dic:
+            # Check if this would be a valid hyphenation point
+            hyphenated = dic.inserted(joined_word)
+            # pyphen inserts "-" at valid break points
+            # Check if our split point (word_part1) matches a valid break
+            # Example: "Zeitungs" should appear before a "-" in "Zei-tungs-pa-pier"
+            parts = hyphenated.split("-")
+            # Build cumulative parts to find if word_part1 matches
+            cumulative = ""
+            valid_break = False
+            for part in parts[:-1]:  # Don't check last part
+                cumulative += part
+                if cumulative == word_part1:
+                    valid_break = True
+                    break
+
+            if not valid_break:
+                # Not a valid syllable break, skip
+                continue
+
+        # Valid dehyphenation - prepare modifications
+        # Modify current line: replace last word with joined word
+        current_words[-1] = joined_word
+        new_current_text = " ".join(current_words)
+
+        # Modify next line: remove first word
+        new_next_text = " ".join(next_words[1:]) if len(next_words) > 1 else ""
+
+        modifications.append({"index": i, "text": new_current_text})
+        modifications.append({"index": i + 1, "text": new_next_text})
+
+        # Save example for review (first 100)
+        if len(merge_examples) < 100:
+            merge_examples.append(
+                {
+                    "line_index": i,
+                    "word_part1": word_part1,
+                    "word_part2": first_word,
+                    "joined_word": joined_word,
+                    "line1_before": current_text.strip(),
+                    "line2_before": next_text.strip(),
+                    "line1_after": new_current_text.strip(),
+                    "line2_after": new_next_text.strip(),
+                }
+            )
+
+    # Apply modifications
+    if modifications:
+        logger.info(f"Found {len(modifications) // 2:,} line-break hyphens to join")
+
+        # Create a mapping of index to new text
+        mod_map = {mod["index"]: mod["text"] for mod in modifications}
+
+        # Apply modifications to the text list
+        for idx, new_text in mod_map.items():
+            texts[idx] = new_text
+
+        # Update dataframe with modified texts
+        df = df.with_columns([pl.Series(output_column, texts)])
+
+        # Log sample merges for review
+        if merge_examples:
+            logger.info(f"\nSample merges (showing first {len(merge_examples)}):")
+            for i, ex in enumerate(merge_examples[:10], 1):  # Show first 10 in log
+                logger.info(f"\n  {i}. Line {ex['line_index']}:")
+                logger.info(
+                    f"     Merged: '{ex['word_part1']}-' + '{ex['word_part2']}' → '{ex['joined_word']}'"
+                )
+                logger.info(f"     Before: '{ex['line1_before']}'")
+                logger.info(f"             '{ex['line2_before']}'")
+                logger.info(f"     After:  '{ex['line1_after']}'")
+                logger.info(f"             '{ex['line2_after']}'")
+    else:
+        logger.info("No line-break hyphens found to join")
+
+    logger.info(f"Dehyphenated {len(df):,} lines")
     return df

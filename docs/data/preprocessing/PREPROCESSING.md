@@ -464,20 +464,20 @@ df = filter_by_total_character_length(
 - Removes too short or too long texts
 - Useful for removing headers, footers, OCR artifacts
 
-#### 4.4 OCR Artifact Cleaning
+#### 4.4 Character Allowlist Filtering
 ```python
-from newspaper_explorer.data.preprocessing.cleaning import clean_ocr_artifacts
+from newspaper_explorer.data.preprocessing.cleaning import only_keep_allowed_chars
 
-df = clean_ocr_artifacts(
+df = only_keep_allowed_chars(
     df,
     input_column="text",
-    output_column="text_clean",
+    output_column="text_filtered",
     allowed_chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0-9äöüßÄÖÜ .,!?-",
     replace_with=""
 )
 ```
-- Removes invalid characters
-- Filters out OCR garbage
+- Keeps only characters in the allowed set
+- Removes all other characters
 
 #### 4.6 Word Count Filtering
 ```python

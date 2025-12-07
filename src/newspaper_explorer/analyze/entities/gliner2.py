@@ -14,25 +14,21 @@ GLiNER2 provides:
 import json
 import logging
 import os
-import time
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional, Union
 
-import polars as pl
 from gliner2 import GLiNER2
+import polars as pl
 from tqdm import tqdm
 
-from newspaper_explorer.config.base import get_config, get_project_root
+from newspaper_explorer.analyze.query.engine import create_result_metadata
+from newspaper_explorer.config import external_tools  # noqa: F401 (sets HF_HOME)
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
 from newspaper_explorer.data.utils.text import chunk_text
-from newspaper_explorer.analyze.query.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
-
-# Set cache directory for Hugging Face models
-_project_root = get_project_root()
-os.environ["HF_HOME"] = str(_project_root / ".cache" / "huggingface")
-os.environ["TRANSFORMERS_CACHE"] = str(_project_root / ".cache" / "huggingface" / "transformers")
 
 
 class GLiNER2EntityExtractor:

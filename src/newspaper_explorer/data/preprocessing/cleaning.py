@@ -7,7 +7,7 @@ Provides text transformation methods that modify content while keeping all rows:
 - Punctuation removal
 - Number removal
 - Stopword removal
-- OCR artifact cleanup
+- Character allowlist filtering
 """
 
 import logging
@@ -65,119 +65,9 @@ def remove_diacritics(
     return df
 
 
-def normalize_whitespace(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-    *,
-    keep_newlines: bool = False,
-) -> pl.DataFrame:
-    """
-    Normalize whitespace characters in text.
-
-    Two modes available:
-
-    **Default mode (keep_newlines=False):**
-    - Collapses ALL whitespace (spaces, tabs, newlines) to single space
-    - Good for: aggregated text blocks, NLP tasks, topic modeling
-    - Example: "Hello    world\\n\\tNext" → "Hello world Next"
-
-    **Newline-preserving mode (keep_newlines=True):**
-    - Collapses multiple spaces/tabs to single space
-    - KEEPS newlines intact, removes spaces around them
-    - Good for: line-by-line processing, preserving text structure
-    - Example: "Hello    world\\n\\tNext" → "Hello world\\nNext"
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_whitespace)
-        keep_newlines: If True, preserves newlines (default: False)
-
-    Returns:
-        DataFrame with normalized whitespace
-
-    Example:
-        >>> # Default: collapse all whitespace
-        >>> df = normalize_whitespace(df)
-        >>> # "Hello    world\\n\\ttab  " → "Hello world tab"
-        >>>
-        >>> # Preserve newlines
-        >>> df = normalize_whitespace(df, keep_newlines=True)
-        >>> # "Hello    world\\n\\ttab  " → "Hello world\\ntab"
-    """
-    if output_column is None:
-        output_column = f"{input_column}_whitespace"
-
-    mode = "preserve newlines" if keep_newlines else "collapse all"
-    logger.info(f"Normalizing whitespace ({mode}): {input_column} → {output_column}")
-
-    if keep_newlines:
-        # Preserve newlines, collapse only spaces/tabs
-        def normalize_with_newlines(text: str) -> str:
-            if not text:
-                return text
-            # Normalize line breaks to \n
-            text = text.replace("\r\n", "\n").replace("\r", "\n")
-            # Collapse multiple spaces/tabs to single space
-            text = re.sub(r"[ \t]+", " ", text)
-            # Remove spaces/tabs around newlines
-            text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
-            return text.strip()
-
-        df = df.with_columns(
-            [
-                pl.col(input_column)
-                .map_elements(normalize_with_newlines, return_dtype=pl.Utf8)
-                .alias(output_column)
-            ]
-        )
-    else:
-        # Default: collapse all whitespace to single space
-        df = df.with_columns(
-            [
-                pl.col(input_column)
-                .str.replace_all(r"\s+", " ")  # All whitespace → single space
-                .str.strip_chars()  # Remove leading/trailing
-                .alias(output_column)
-            ]
-        )
-
-    logger.info(f"Whitespace normalized for {len(df):,} rows")
-    return df
-
-
-def lowercase(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-) -> pl.DataFrame:
-    """
-    Convert text to lowercase.
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_lower)
-
-    Returns:
-        DataFrame with lowercased text column
-    """
-    if output_column is None:
-        output_column = f"{input_column}_lower"
-
-    logger.info(f"Converting to lowercase: {input_column} → {output_column}")
-
-    df = df.with_columns([pl.col(input_column).str.to_lowercase().alias(output_column)])
-
-    logger.info(f"Lowercased {len(df):,} rows")
-    return df
-
-
 def remove_punctuation(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     keep_chars: str = "",
 ) -> pl.DataFrame:
@@ -189,8 +79,7 @@ def remove_punctuation(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_nopunct)
         keep_chars: Punctuation characters to preserve (e.g., "-'" to keep hyphens and apostrophes)
 
@@ -203,8 +92,6 @@ def remove_punctuation(
         >>> # Keep hyphens and apostrophes
         >>> df = remove_punctuation(df, keep_chars="-'")
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_nopunct"
 
@@ -228,8 +115,7 @@ def remove_punctuation(
 
 def remove_numbers(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
 ) -> pl.DataFrame:
     """
@@ -237,15 +123,12 @@ def remove_numbers(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_nonum)
 
     Returns:
         DataFrame with numbers removed
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_nonum"
 
@@ -261,8 +144,7 @@ def remove_numbers(
 
 def remove_stopwords(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     language: str = "de",
 ) -> pl.DataFrame:
@@ -271,16 +153,13 @@ def remove_stopwords(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_nostop)
         language: Language code (default: "de" for German)
 
     Returns:
         DataFrame with stopwords removed
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_nostop"
 
@@ -310,45 +189,42 @@ def remove_stopwords(
     return df
 
 
-def clean_ocr_artifacts(
+def only_keep_allowed_chars(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     allowed_chars: Optional[str] = None,
     replace_with: str = "",
 ) -> pl.DataFrame:
     """
-    Remove OCR artifacts and invalid characters from text.
+    Keep only characters matching an allowlist pattern, removing all others.
 
-    Removes characters that are likely OCR errors or encoding issues.
-    By default, keeps only common German text characters, spaces, and basic punctuation.
+    This is a whitelist-based character filter. Characters not in the allowed
+    set are removed (or replaced with a specified string).
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
-        output_column: Name for output column (default: {input_column}_clean)
-        allowed_chars: Regex pattern of allowed characters (default: German letters, digits, common punctuation)
-        replace_with: What to replace invalid characters with (default: empty string)
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_filtered)
+        allowed_chars: Regex character class of allowed characters
+                      (default: German letters, digits, common punctuation, whitespace)
+        replace_with: What to replace disallowed characters with (default: empty string)
 
     Returns:
-        DataFrame with cleaned text
+        DataFrame with filtered text
 
     Example:
-        >>> # Use default pattern (keeps German text + common punctuation)
-        >>> df = clean_ocr_artifacts(df)
+        >>> # Use default allowlist (German text + common punctuation)
+        >>> df = only_keep_allowed_chars(df)
         >>> # Custom pattern to be more restrictive
-        >>> df = clean_ocr_artifacts(df, allowed_chars=r"[a-zA-ZäöüÄÖÜß0-9\\s.,!?-]")
-        >>> # Replace invalid chars with space instead of removing
-        >>> df = clean_ocr_artifacts(df, replace_with=" ")
+        >>> df = only_keep_allowed_chars(df, allowed_chars=r"[a-zA-ZäöüÄÖÜß0-9\\s.,!?-]")
+        >>> # Replace disallowed chars with space instead of removing
+        >>> df = only_keep_allowed_chars(df, replace_with=" ")
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
-        output_column = f"{input_column}_clean"
+        output_column = f"{input_column}_filtered"
 
-    logger.info(f"Cleaning OCR artifacts: {input_column} → {output_column}")
+    logger.info(f"Filtering to allowed chars: {input_column} → {output_column}")
 
     # Default pattern: German letters, digits, common punctuation, whitespace
     # This handles most legitimate text while removing OCR garbage
@@ -374,5 +250,5 @@ def clean_ocr_artifacts(
         ]
     )
 
-    logger.info(f"Cleaned OCR artifacts from {len(df):,} rows")
+    logger.info(f"Filtered to allowed chars for {len(df):,} rows")
     return df

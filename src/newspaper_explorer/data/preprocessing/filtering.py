@@ -24,8 +24,7 @@ MIN_WORD_LENGTH_FOR_GARBAGE_CHECK = 2
 
 def filter_by_total_character_length(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     min_length: int = 10,
     max_length: Optional[int] = None,
 ) -> pl.DataFrame:
@@ -37,8 +36,7 @@ def filter_by_total_character_length(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to check length (default: text_column)
+        input_column: Column to check length (default: "text")
         min_length: Minimum text length in characters (default: 10)
         max_length: Maximum text length in characters (default: None = no limit)
 
@@ -51,9 +49,6 @@ def filter_by_total_character_length(
         >>> # Remove both short and very long texts
         >>> df = filter_by_total_character_length(df, min_length=10, max_length=10000)
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Filtering by length: {input_column} (min={min_length}, max={max_length})")
 
     original_count = len(df)
@@ -79,8 +74,7 @@ def filter_by_total_character_length(
 
 def filter_by_word_count(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     min_words: int = 2,
     max_words: Optional[int] = None,
 ) -> pl.DataFrame:
@@ -93,8 +87,7 @@ def filter_by_word_count(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to check word count (default: text_column)
+        input_column: Column to check word count (default: "text")
         min_words: Minimum number of words (default: 2)
         max_words: Maximum number of words (default: None = no limit)
 
@@ -109,9 +102,6 @@ def filter_by_word_count(
         >>> # Remove very long lines (possible OCR errors)
         >>> df = filter_by_word_count(df, max_words=100)
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Filtering by word count: {input_column} (min={min_words}, max={max_words})")
 
     original_count = len(df)
@@ -137,8 +127,7 @@ def filter_by_word_count(
 
 def filter_repeating_chars(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     output_column: Optional[str] = None,
     min_unique_chars: int = 3,
     max_repetition_ratio: float = 0.3,
@@ -164,8 +153,7 @@ def filter_repeating_chars(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to process (default: text_column)
+        input_column: Column to process (default: "text")
         output_column: Name for output column (default: {input_column}_filtered)
         min_unique_chars: Minimum unique characters per word (default: 3)
         max_repetition_ratio: Maximum ratio of unique to total chars (default: 0.3)
@@ -188,8 +176,6 @@ def filter_repeating_chars(
         Preserves valid German compounds like "Schifffahrt" (contains fff)
         which have legitimate character repetition in context.
     """
-    if input_column is None:
-        input_column = text_column
     if output_column is None:
         output_column = f"{input_column}_filtered"
 
@@ -250,8 +236,7 @@ def filter_repeating_chars(
 
 def filter_number_only_lines(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     *,
     allow_separators: bool = True,
 ) -> pl.DataFrame:
@@ -266,8 +251,7 @@ def filter_number_only_lines(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to check (default: text_column)
+        input_column: Column to check (default: "text")
         allow_separators: If True, allows common separators (., -, /, :, ,) with numbers
                          If False, only pure digit strings are filtered
 
@@ -289,9 +273,6 @@ def filter_number_only_lines(
         Recommended for line-level OCR cleanup.
         Removes page numbers and date artifacts before text analysis.
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Filtering number-only lines: {input_column}")
 
     original_count = len(df)
@@ -326,8 +307,7 @@ def filter_number_only_lines(
 
 def filter_by_char_token_ratio(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     max_ratio: float = 8.0,
     min_tokens: int = 2,
 ) -> pl.DataFrame:
@@ -339,8 +319,7 @@ def filter_by_char_token_ratio(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to check (default: text_column)
+        input_column: Column to check (default: "text")
         max_ratio: Maximum allowed char/token ratio (default: 8.0)
         min_tokens: Minimum tokens required to check ratio (default: 2)
 
@@ -362,9 +341,6 @@ def filter_by_char_token_ratio(
         Based on normalize.md validation recommendations.
         Token-to-character ratio is a quality indicator for OCR text.
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Filtering by char/token ratio (max={max_ratio}): {input_column}")
 
     original_count = len(df)
@@ -397,8 +373,7 @@ def filter_by_char_token_ratio(
 
 def filter_by_max_word_length(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     max_word_length: int = 45,
 ) -> pl.DataFrame:
     """
@@ -410,8 +385,7 @@ def filter_by_max_word_length(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to check (default: text_column)
+        input_column: Column to check (default: "text")
         max_word_length: Maximum allowed word length (default: 45)
 
     Returns:
@@ -430,9 +404,6 @@ def filter_by_max_word_length(
         Based on normalize.md: "Words >45 characters likely artifacts
         (German compounds rarely exceed this)"
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Filtering lines with words >{max_word_length} chars: {input_column}")
 
     original_count = len(df)

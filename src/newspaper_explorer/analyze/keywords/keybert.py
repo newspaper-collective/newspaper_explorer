@@ -20,24 +20,18 @@ Example:
 
 from datetime import datetime
 import logging
-import os
 from pathlib import Path
 import time
 from typing import Dict, List, Optional, Tuple
 
-import polars as pl
-import torch
-
-# Configure sentence-transformers cache directory to use project models directory
-# This keeps model downloads organized and prevents cluttering user home directory
-_MODELS_DIR = Path(__file__).parent.parent.parent.parent.parent / "models" / "sentence_transformers"
-_MODELS_DIR.mkdir(parents=True, exist_ok=True)
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = str(_MODELS_DIR)
 from keybert import KeyBERT
+import polars as pl
 from sentence_transformers import SentenceTransformer
 from spacy.lang.de.stop_words import STOP_WORDS as DE_STOP_WORDS
+import torch
 from tqdm import tqdm
 
+from newspaper_explorer.config import external_tools  # noqa: F401 (sets SENTENCE_TRANSFORMERS_HOME)
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata

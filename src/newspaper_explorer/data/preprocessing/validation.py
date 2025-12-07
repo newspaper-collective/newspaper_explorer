@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 def calculate_quality_metrics(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     german_wordlist_path: Optional[str] = None,
     output_column_prefix: str = "quality_",
 ) -> pl.DataFrame:
@@ -41,8 +40,7 @@ def calculate_quality_metrics(
 
     Args:
         df: Input DataFrame
-        text_column: Default column containing text (for backward compatibility)
-        input_column: Column to analyze (default: text_column)
+        input_column: Column to analyze (default: "text")
         german_wordlist_path: Path to German word list file (optional)
         output_column_prefix: Prefix for output metric columns (default: "quality_")
 
@@ -55,7 +53,7 @@ def calculate_quality_metrics(
 
     Example:
         >>> # Calculate quality metrics
-        >>> df = calculate_quality_metrics(df, text_column="text")
+        >>> df = calculate_quality_metrics(df)
         >>> # Access metrics
         >>> df.select(["text", "quality_char_token_ratio", "quality_score"])
 
@@ -65,9 +63,6 @@ def calculate_quality_metrics(
         - Review needed: 7-8 chars/token, 5-15% OOV
         - Poor quality: >8 chars/token, >15% OOV
     """
-    if input_column is None:
-        input_column = text_column
-
     logger.info(f"Calculating quality metrics: {input_column}")
 
     # Load German wordlist if provided

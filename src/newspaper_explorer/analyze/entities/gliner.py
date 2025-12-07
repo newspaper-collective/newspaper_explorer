@@ -19,7 +19,8 @@ import polars as pl
 import torch
 from tqdm import tqdm
 
-from newspaper_explorer.config.base import get_config, get_project_root
+from newspaper_explorer.config import external_tools  # noqa: F401 (sets HF_HOME)
+from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
@@ -29,10 +30,6 @@ from newspaper_explorer.data.utils.text import chunk_text
 from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
-
-# Set cache directory for Hugging Face models (GLiNER uses HF)
-_project_root = get_project_root()
-os.environ["HF_HOME"] = str(_project_root / ".cache" / "huggingface")
 
 # Suppress SentencePiece tokenizer conversion warning
 # The fast tokenizer works fine for our use case and is much faster
