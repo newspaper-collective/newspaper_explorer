@@ -238,5 +238,8 @@ data/raw/
 !data/processed/.gitkeep
 !data/raw/.gitkeep
 
+# Large mallet model files
+results/*/topics/models/
+
 
 __scrap/
