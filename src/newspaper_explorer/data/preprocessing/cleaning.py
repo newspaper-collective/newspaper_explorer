@@ -46,8 +46,6 @@ def remove_diacritics(
         >>> df = remove_diacritics(df)
         >>> # "Münchner Straße" → "Munchner Strasse"
 
-    Note:
-        Requires unidecode package: pip install unidecode
     """
 
     if output_column is None:
@@ -55,11 +53,12 @@ def remove_diacritics(
 
     logger.info(f"Removing diacritics: {input_column} → {output_column}")
 
-    # Apply unidecode to each text
-    texts = df[input_column].to_list()
-    processed = [unidecode(str(text)) if text else "" for text in texts]
-
-    df = df.with_columns([pl.Series(output_column, processed)])
+    # Apply unidecode via map_elements (no native Polars equivalent exists)
+    df = df.with_columns(
+        pl.col(input_column)
+        .map_elements(lambda x: unidecode(str(x)) if x else "", return_dtype=pl.Utf8)
+        .alias(output_column)
+    )
 
     logger.info(f"Removed diacritics from {len(df):,} rows")
     return df
