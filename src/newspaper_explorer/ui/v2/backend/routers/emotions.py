@@ -2,12 +2,13 @@
 Emotion classification endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Dict, Any, Optional
 from datetime import date
-import polars as pl
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
 import numpy as np
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.analysis.emotions import EmotionRecord

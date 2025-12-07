@@ -6,8 +6,8 @@ from datetime import date
 from pathlib import Path
 from typing import List, Optional
 
-import polars as pl
 from fastapi import APIRouter, HTTPException, Query
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.indexing.image_index import ImageIndexer

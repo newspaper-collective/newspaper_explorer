@@ -2,8 +2,9 @@
 Text search endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Body
 from typing import List
+
+from fastapi import APIRouter, Body, HTTPException
 
 from newspaper_explorer.analyze.query.engine import QueryEngine
 from newspaper_explorer.models.api.search import SearchQuery, SearchResponse, SearchResult
@@ -33,8 +34,9 @@ async def search_text(
                 parquet_path = query.run_id
             else:
                 # Assume it's in the text directory
-                from newspaper_explorer.config.base import get_config
                 from pathlib import Path
+
+                from newspaper_explorer.config.base import get_config
 
                 config = get_config()
                 parquet_path = str(

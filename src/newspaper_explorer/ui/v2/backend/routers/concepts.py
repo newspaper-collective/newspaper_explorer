@@ -2,11 +2,12 @@
 Concept extraction and knowledge graph endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional
 from datetime import date
-import polars as pl
 from pathlib import Path
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Query
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.api.concepts import Concept, ConceptRelation

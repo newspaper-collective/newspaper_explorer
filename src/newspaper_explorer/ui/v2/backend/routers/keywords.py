@@ -2,11 +2,12 @@
 Keyword extraction endpoints
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional, Dict, Union
 from datetime import date
-import polars as pl
 from pathlib import Path
+from typing import Dict, List, Optional, Union
+
+from fastapi import APIRouter, HTTPException, Query
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.api.keywords import (
@@ -136,7 +137,7 @@ async def get_keyword_stats(
             .collect()
         )
 
-        score_distribution = {"bins": [f"{(i/20):.2f}" for i in range(20)], "counts": [0] * 20}
+        score_distribution = {"bins": [f"{(i / 20):.2f}" for i in range(20)], "counts": [0] * 20}
         for row in score_dist_df.iter_rows(named=True):
             idx = row["bin_idx"]
             if 0 <= idx < 20:
