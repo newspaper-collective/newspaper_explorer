@@ -75,7 +75,7 @@ function close() {
 function goToPage(occurrence: EntityOccurrence) {
   // Extract page number from page_id (last part)
   const pageNumber = parseInt(extractPageNumber(occurrence.page_id), 10)
-  
+
   // Navigate to the issue viewer with the page number
   router.push({
     name: 'issue',
@@ -214,8 +214,8 @@ watch(() => props.open, (isOpen) => {
           class="flex items-center justify-between p-4 border-t"
         >
           <p class="text-sm text-muted-foreground">
-            Showing {{ (currentPage - 1) * pageSize + 1 }} - 
-            {{ Math.min(currentPage * pageSize, occurrences.length) }} of 
+            Showing {{ (currentPage - 1) * pageSize + 1 }} -
+            {{ Math.min(currentPage * pageSize, occurrences.length) }} of
             {{ occurrences.length }}
           </p>
           <div class="flex gap-2">

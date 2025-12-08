@@ -43,13 +43,13 @@
               <div v-else class="w-full h-full flex items-center justify-center bg-muted">
                 <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
               </div>
-              
+
               <!-- Hover Overlay -->
               <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <span class="text-white text-sm font-medium">View Details</span>
               </div>
             </div>
-            
+
             <!-- Info -->
             <div class="p-2 border-t">
               <p class="text-xs text-muted-foreground truncate" :title="picture.date || 'Unknown date'">
@@ -154,7 +154,7 @@ onUpdated(() => {
 
 function setupIntersectionObserver() {
   if (!gridRef.value) return
-  
+
   const observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
@@ -170,7 +170,7 @@ function setupIntersectionObserver() {
     },
     { root: gridRef.value, rootMargin: '100px' }
   )
-  
+
   const cards = gridRef.value.querySelectorAll('[data-detection-id]')
   cards.forEach(card => observer.observe(card))
 }

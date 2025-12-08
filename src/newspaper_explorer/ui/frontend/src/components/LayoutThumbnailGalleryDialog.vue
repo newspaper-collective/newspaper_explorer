@@ -37,13 +37,13 @@
                 :id="`canvas-${page.page_id}`"
                 class="w-full h-full"
               />
-              
+
               <!-- Hover Overlay -->
               <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <span class="text-white text-sm font-medium">View Details</span>
               </div>
             </div>
-            
+
             <!-- Info -->
             <div class="p-2 border-t">
               <p class="text-xs text-muted-foreground truncate" :title="page.metadata.date || 'Unknown date'">
