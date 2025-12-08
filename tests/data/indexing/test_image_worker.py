@@ -49,7 +49,7 @@ class TestExtractImageMetadataWorker:
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that basic metadata is extracted from the path structure."""
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -71,7 +71,7 @@ class TestExtractImageMetadataWorker:
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that page number is extracted from 'max_N.jpg' filename pattern."""
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -99,7 +99,7 @@ class TestExtractImageMetadataWorker:
             }
         }
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -129,7 +129,7 @@ class TestExtractImageMetadataWorker:
             }
         }
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -149,7 +149,7 @@ class TestExtractImageMetadataWorker:
             "1920/01/15/01/007": (2000, 3000),  # 3-digit padding
         }
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -171,7 +171,7 @@ class TestExtractImageMetadataWorker:
             "1920/01/15/01/0007": (1500, 2500),  # 4-digit padding
         }
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -207,7 +207,7 @@ class TestExtractImageMetadataWorker:
         img_path.parent.mkdir(parents=True)
         img_path.write_bytes(b"fake image")
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=img_path,
                 images_dir=images_dir,
@@ -224,7 +224,7 @@ class TestExtractImageMetadataWorker:
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that path_key is used as issue_id when not in METS cache."""
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -240,7 +240,7 @@ class TestExtractImageMetadataWorker:
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that file size is included in the result."""
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_pil_image):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -259,7 +259,7 @@ class TestExtractImageMetadataWorker:
         mock_image_module.open.side_effect = OSError("Cannot read image")
         mock_image_module.DecompressionBombError = Exception
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_image_module):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -278,7 +278,7 @@ class TestExtractImageMetadataWorker:
         mock_image_module.open.return_value = create_image_mock(800, 1200)
         mock_image_module.DecompressionBombError = Exception
 
-        with patch("newspaper_explorer.data.indexing.image_worker.Image", mock_image_module):
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,

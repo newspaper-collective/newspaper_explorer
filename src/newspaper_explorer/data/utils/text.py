@@ -434,7 +434,7 @@ def analyze_token_lengths(
     # Tokenize and get lengths
     logger.info("Tokenizing texts (this may take a minute)...")
     lengths = [
-        len(tokenizer.encode(text, truncation=True, max_length=max_length)) for text in texts
+        len(tokenizer.encode(text, truncation=True, max_length=max_length)) for text in texts # type: ignore
     ]
 
     # Compute statistics
@@ -536,7 +536,7 @@ def get_longest_lines_by_tokens(
         raise ValueError(f"Column '{text_column}' not found in DataFrame")
 
     logger.info(f"Loading tokenizer: {tokenizer_name}")
-    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name) # type: ignore[call-arg]
 
     # Get top 100 longest by character count first (optimization)
     longest_by_chars = get_longest_lines(df, text_column=text_column, top_n=100)

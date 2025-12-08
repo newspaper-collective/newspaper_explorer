@@ -12,6 +12,9 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# Constants for ID generation
+_MAX_STEPS_IN_ID = 3  # Maximum number of steps to include in preprocessing ID
+
 
 class AnalysisMetadata(BaseModel):
     """
@@ -227,9 +230,10 @@ class PreprocessingMetadata(BaseModel):
         """Generate preprocessing_id if not provided."""
         if self.preprocessing_id is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            steps_str = "_".join(self.steps[:3])  # First 3 steps for ID
-            if len(self.steps) > 3:
-                steps_str += f"_plus{len(self.steps) - 3}"
+            steps_str = "_".join(self.steps[:_MAX_STEPS_IN_ID])
+            remaining = len(self.steps) - _MAX_STEPS_IN_ID
+            if remaining > 0:
+                steps_str = f"{steps_str}_plus{remaining}"
             self.preprocessing_id = f"{steps_str}_{timestamp}".replace("-", "_")
 
     @field_validator("status")

@@ -219,12 +219,12 @@ class ImageIndexer:
 
                 # Generate proper issue_id using the standard format
                 if metadata and metadata.date and metadata.issue_number is not None:
-                    # Extract edition using central utility (authoritative: filename, fallback: path)
+                    # Use edition from METS parser (extracted from filename)
+                    # Fallback to path extraction if filename parsing failed
                     rel_path = mets_path.relative_to(self.xml_dir)
-                    edition = extract_edition(
-                        filename=mets_path.name,
-                        folder_path=str(rel_path),
-                    )
+                    edition = metadata.edition
+                    if edition is None:
+                        edition = extract_edition(folder_path=str(rel_path))
 
                     if edition is not None:
                         # Generate proper issue_id: {source}_{YYYY-MM-DD}_{issue:03d}_{edition}
@@ -256,9 +256,8 @@ class ImageIndexer:
                             "edition": edition,
                         }
 
-                        # Store with both keys for compatibility
+                        # Store with path-based key (used by image_metadata_worker for lookup)
                         mets_cache[path_key] = cache_entry
-                        mets_cache[issue_id] = cache_entry
 
             except (etree.XMLSyntaxError, OSError, ValueError, IndexError) as e:
                 logger.warning(f"Failed to parse METS file {mets_path}: {e}")

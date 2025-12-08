@@ -135,7 +135,9 @@ class SourceLinesSchema(BaseModel):
 
     # Metadata from filename (optional but typically present)
     issue_number: Optional[int] = Field(None, description="Issue number")
-    edition: Optional[int] = Field(None, description="Daily issue count (1, 2, ...)")
+    edition: Optional[int] = Field(
+        None, description="Edition of the day (1=morning, 2=midday, 3=evening)"
+    )
     page_number: Optional[int] = Field(None, description="Page number")
 
     # Metadata from METS (optional)
@@ -178,7 +180,9 @@ class TextBlocksSchema(BaseModel):
     height: int = Field(..., description="Total height")
 
     issue_number: Optional[int] = Field(None, description="Issue number")
-    edition: Optional[int] = Field(None, description="Daily issue count")
+    edition: Optional[int] = Field(
+        None, description="Edition of the day (1=morning, 2=midday, 3=evening)"
+    )
     page_number: Optional[int] = Field(None, description="Page number")
     newspaper_title: Optional[str] = Field(None, description="Newspaper title")
     year_volume: Optional[str] = Field(None, description="Year/volume")
@@ -230,7 +234,9 @@ class ImageIndexSchema(BaseModel):
     year_volume: Optional[str] = Field(None, description="Year/volume")
     page_count: Optional[int] = Field(None, description="Total pages in issue")
     issue_number: Optional[int] = Field(None, description="Issue number")
-    edition: Optional[int] = Field(None, description="Daily issue count")
+    edition: Optional[int] = Field(
+        None, description="Edition of the day (1=morning, 2=midday, 3=evening)"
+    )
 
 
 class PreprocessedSchema(BaseModel):
@@ -284,11 +290,11 @@ def get_required_columns(schema_class: type[BaseModel]) -> set[str]:
     Returns:
         Set of required column names
     """
-    required = set()
-    for field_name, field_info in schema_class.model_fields.items():
-        if field_info.is_required():
-            required.add(field_name)
-    return required
+    return {
+        field_name
+        for field_name, field_info in schema_class.model_fields.items()
+        if field_info.is_required()
+    }
 
 
 def get_optional_columns(schema_class: type[BaseModel]) -> set[str]:
@@ -301,11 +307,11 @@ def get_optional_columns(schema_class: type[BaseModel]) -> set[str]:
     Returns:
         Set of optional column names
     """
-    optional = set()
-    for field_name, field_info in schema_class.model_fields.items():
-        if not field_info.is_required():
-            optional.add(field_name)
-    return optional
+    return {
+        field_name
+        for field_name, field_info in schema_class.model_fields.items()
+        if not field_info.is_required()
+    }
 
 
 def get_all_columns(schema_class: type[BaseModel]) -> set[str]:
@@ -353,7 +359,7 @@ def validate_schema(
         ...     for w in warnings:
         ...         logger.warning(w)
     """
-    warnings = []
+    warnings: list[str] = []
     df_columns = set(df.columns)
 
     required = get_required_columns(schema_class)
@@ -393,7 +399,7 @@ def validate_foreign_keys(df: "pl.DataFrame") -> list[str]:
     Returns:
         List of warning messages
     """
-    warnings = []
+    warnings: list[str] = []
     df_columns = set(df.columns)
 
     # Check FK columns exist

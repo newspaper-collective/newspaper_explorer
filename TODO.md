@@ -1,7 +1,5 @@
 ## Current Priorities
 - update requirements.txt and requirements-dev.txt
-- unify ids, generation and usage, more linability
-- remove emojis from cli
 - unifiy output styling
 - textblock coords?
 
@@ -12,18 +10,7 @@
 
 - donut or yolo page classification to detect add pages and classifieds
 
-
-
-
 unify datamodel for results or analysis types -> entityresults, topicresults, emotionsresults, etc.
-
-usage of source id, filename prefix, source name
-
-separate metadata and ids? what gets saved where? where is redundancy neeeded? image index?
-
-### ID System Optimization
-- issue id must be different from issue number (display) -> globally unique
-- global ids for: textline, textblock, page, issue (daily count),
 
 
 
@@ -81,8 +68,6 @@ separate metadata and ids? what gets saved where? where is redundancy neeeded? i
 
 ### Features
 - CLI option to cleanup downloads
-- Page Classification using DONUT -> Detect Ads?
-- Update EntityExtractor to use preprocessed data (remove inline normalization)
 
 
 
@@ -105,7 +90,6 @@ Transkribus OCR -> Problem with alto-export
 
 - jsonrepair libary for llm client
 
--  "- und" nicht dehyphen
 
 - null values in image_index.parquet
 
@@ -129,9 +113,6 @@ thumbnail gallery lazy loading broken
 
 page reader -> click line scroll text
 
-
-filter textlines that contain only one or two repeating characters
-filter textlines that contain only numbers
 
 sorting broken in search -> 1910 Daten problem?
 
