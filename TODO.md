@@ -10,7 +10,6 @@
 
 
 
-- Remove Emojis from source, documentation, output etc. -> improve copilot instructions to avoid them
 
 
 - add source_name to aggregated blocks
