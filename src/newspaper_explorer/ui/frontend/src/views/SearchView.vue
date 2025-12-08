@@ -287,6 +287,9 @@ function onMetadataLoaded() {
         <!-- Search Box -->
         <div class="rounded-lg border bg-card p-3 flex-1 min-w-[300px] self-stretch">
           <div class="flex flex-col gap-1.5 h-full">
+            <!-- Header -->
+            <div class="text-sm font-medium text-muted-foreground mb-1">Search Input</div>
+            
             <!-- Search Input and Button -->
             <div class="flex">
               <input
