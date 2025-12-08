@@ -63,7 +63,7 @@ class PreTokenizedDataset(Dataset):
     Stores variable-length token ID lists that get padded in collate_fn.
     """
 
-    def __init__(self, input_ids_list, attention_mask_list):
+    def __init__(self, input_ids_list, attention_mask_list) -> None:
         """
         Args:
             input_ids_list: List of 1D tensors (variable length)
@@ -82,7 +82,7 @@ class PreTokenizedDataset(Dataset):
         }
 
 
-def collate_pretokenized(batch, pad_token_id: int = 0):
+def collate_pretokenized(batch, pad_token_id: int = 0) -> dict[str, torch.Tensor]:
     """
     Collate function for pre-tokenized sequences with per-batch padding.
 

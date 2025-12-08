@@ -5,11 +5,12 @@ Provides generic endpoints for loading, listing, and querying analysis results
 with metadata. Can be used by all analysis modules (entities, emotions, topics, etc.).
 """
 
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException, Query
-from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
-from newspaper_explorer.ui.v2.backend.utils.results import ResultsLoader
+from newspaper_explorer.ui.backend.utils.results import ResultsLoader
 
 
 # Response models

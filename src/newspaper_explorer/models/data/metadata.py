@@ -256,7 +256,7 @@ class PreprocessingMetadata(BaseModel):
         if self.previous_preprocessing:
             prev_steps = self.previous_preprocessing.get("steps", [])
             if isinstance(prev_steps, list):
-                all_steps.extend(prev_steps)
+                all_steps.extend(prev_steps) # type: ignore
         all_steps.extend(self.steps)
         return all_steps
 

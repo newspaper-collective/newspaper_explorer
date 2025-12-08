@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 # Character translation map for Unicode normalization
 # Handles OCR errors, confusables, spaces, and artifacts
 # NOTE: Hyphen/dash normalization is handled separately by normalize_hyphens()
-
 UNICODE_TRANSLATION: dict[int, Optional[Union[str, int]]] = {
     # Normalize various space types to regular space (OCR-specific, not encoding)
     0x00A0: 32,  # non-breaking space
@@ -106,130 +105,9 @@ UNICODE_TRANSLATION: dict[int, Optional[Union[str, int]]] = {
     0x012E: "I",  # Į → I (uppercase ogonek)
 }
 
-
-# =============================================================================
-# HYPHEN/DASH NORMALIZATION
-# =============================================================================
-
-
-def normalize_hyphens(
-    df: pl.DataFrame,
-    input_column: str = "text",
-    output_column: Optional[str] = None,
-    *,
-    mode: str = "unify",
-) -> pl.DataFrame:
-    """
-    Normalize various hyphen and dash characters.
-
-    Historical German newspapers (especially Fraktur OCR) use various hyphen-like
-    characters that should be normalized for consistent processing.
-
-    **Three modes available:**
-
-    **1. "unify" (default, recommended for NLP):**
-    - Converts ALL hyphen/dash variants to regular hyphen (-)
-    - Good for: topic modeling, embeddings, search, dehyphenation
-    - Example: "1914–1918" → "1914-1918", "Nachrichten⸗Teil" → "Nachrichten-Teil"
-
-    **2. "conservative":**
-    - Only normalizes OCR artifacts (double hyphen ⸗, non-breaking hyphen)
-    - Preserves semantic dashes (en dash for ranges, em dash for emphasis)
-    - Good for: historical analysis, quotations, scholarly editions
-    - Example: "1914–1918" stays, "Nachrichten⸗Teil" → "Nachrichten-Teil"
-
-    **3. "soft_only":**
-    - Only removes soft hyphens (invisible line-break hints)
-    - Minimal intervention, preserves all visible characters
-    - Good for: when you want to preserve original typography
-
-    **Characters handled:**
-
-    | Character | Unicode | Name | unify | conservative | soft_only |
-    |-----------|---------|------|-------|--------------|----------|
-    | ⸗ | U+2E17 | Double hyphen | → - | → - | kept |
-    | ‐ | U+2010 | Hyphen | → - | → - | kept |
-    | ‑ | U+2011 | Non-breaking hyphen | → - | → - | kept |
-    | – | U+2013 | En dash | → - | kept | kept |
-    | — | U+2014 | Em dash | → - | kept | kept |
-    | − | U+2212 | Minus sign | → - | kept | kept |
-    | ­ | U+00AD | Soft hyphen | removed | removed | removed |
-
-    Args:
-        df: Input DataFrame
-        input_column: Column to process (default: "text")
-        output_column: Name for output column (default: {input_column}_hyphens)
-        mode: Normalization mode - "unify", "conservative", or "soft_only"
-
-    Returns:
-        DataFrame with normalized hyphens
-
-    Example:
-        >>> # For NLP/dehyphenation (recommended)
-        >>> df = normalize_hyphens(df, mode="unify")
-        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
-        >>> # "1914–1918" → "1914-1918"
-        >>>
-        >>> # For historical preservation
-        >>> df = normalize_hyphens(df, mode="conservative")
-        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
-        >>> # "1914–1918" → "1914–1918" (en dash preserved)
-
-    Note:
-        Run this BEFORE dehyphenation so that all hyphen variants are
-        recognized by the dehyphenation regex patterns.
-    """  # noqa: RUF002
-    if output_column is None:
-        output_column = f"{input_column}_hyphens"
-
-    logger.info(f"Normalizing hyphens ({mode}): {input_column} → {output_column}")
-
-    # Build translation map based on mode
-    if mode == "unify":
-        # All hyphens/dashes → regular hyphen
-        translation_map: dict[int, Optional[str]] = {
-            0x00AD: None,  # soft hyphen → removed
-            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR)
-            0x2010: "-",  # U+2010 hyphen → hyphen
-            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
-            0x2013: "-",  # U+2013 en dash → hyphen
-            0x2014: "-",  # U+2014 em dash → hyphen
-            0x2212: "-",  # U+2212 minus sign → hyphen
-        }
-    elif mode == "conservative":
-        # Only OCR artifacts, preserve semantic dashes
-        translation_map = {
-            0x00AD: None,  # soft hyphen → removed
-            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR artifact)
-            0x2010: "-",  # U+2010 hyphen → hyphen
-            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
-            # Keep: en dash (U+2013), em dash (U+2014), minus (U+2212)
-        }
-    elif mode == "soft_only":
-        # Minimal: only remove soft hyphens
-        translation_map = {
-            0x00AD: None,  # soft hyphen → removed
-        }
-    else:
-        raise ValueError(f"Unknown mode: {mode}. Use 'unify', 'conservative', or 'soft_only'")
-
-    # Apply translation using Polars (fast, vectorized)
-    # We need to use map_elements for the translation
-    def translate_hyphens(text: str) -> str:
-        if not text:
-            return text
-        return text.translate(translation_map)
-
-    df = df.with_columns(
-        [
-            pl.col(input_column)
-            .map_elements(translate_hyphens, return_dtype=pl.Utf8)
-            .alias(output_column)
-        ]
-    )
-
-    logger.info(f"Hyphen normalization ({mode}) applied to {len(df):,} rows")
-    return df
+# Default German conjunctions to skip during dehyphenation
+# These often appear after hyphens in contexts like "Ost- und West-"
+DEFAULT_CONJUNCTIONS: set[str] = {"und", "oder", "bzw", "sowie", "als", "wie"}
 
 
 # =============================================================================
@@ -732,13 +610,173 @@ def normalize_long_s(
     raise ValueError(f"Unknown mode: {mode}. Use 'simple' or 'context-aware'")
 
 
+def replace_long_s_with_f(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+) -> pl.DataFrame:
+    """
+    Replace historical German long s (ſ) with letter 'f'.
+
+    This function addresses a common OCR error where the long s (ſ)
+    is misrecognized as the letter 'f'. It replaces all occurrences
+    of ſ with f.
+
+    Run after normalize_long_s() with mode="context-aware" to catch remaining
+    long s characters that may have been misread as f.
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_long_s_to_f)
+
+    Returns:
+        DataFrame with long s replaced by f
+
+    Example:
+        >>> df = replace_long_s_with_f(df)
+    """  # noqa: RUF002
+    if output_column is None:
+        output_column = f"{input_column}_long_s_to_f"
+
+    logger.info(f"Replacing long s with f: {input_column} → {output_column}")
+
+    df = df.with_columns(
+        pl.col(input_column).str.replace_all("ſ", "f").alias(output_column)  # noqa: RUF001
+    )
+
+    logger.info(f"Replaced long s with f for {len(df):,} rows")
+    return df
+
+
+# =============================================================================
+# HYPHEN/DASH NORMALIZATION
+# =============================================================================
+
+
+def normalize_hyphens(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    *,
+    mode: str = "unify",
+) -> pl.DataFrame:
+    """
+    Normalize various hyphen and dash characters.
+
+    Historical German newspapers (especially Fraktur OCR) use various hyphen-like
+    characters that should be normalized for consistent processing.
+
+    **Three modes available:**
+
+    **1. "unify" (default, recommended for NLP):**
+    - Converts ALL hyphen/dash variants to regular hyphen (-)
+    - Good for: topic modeling, embeddings, search, dehyphenation
+    - Example: "1914–1918" → "1914-1918", "Nachrichten⸗Teil" → "Nachrichten-Teil"
+
+    **2. "conservative":**
+    - Only normalizes OCR artifacts (double hyphen ⸗, non-breaking hyphen)
+    - Preserves semantic dashes (en dash for ranges, em dash for emphasis)
+    - Good for: historical analysis, quotations, scholarly editions
+    - Example: "1914–1918" stays, "Nachrichten⸗Teil" → "Nachrichten-Teil"
+
+    **3. "soft_only":**
+    - Only removes soft hyphens (invisible line-break hints)
+    - Minimal intervention, preserves all visible characters
+    - Good for: when you want to preserve original typography
+
+    **Characters handled:**
+
+    | Character | Unicode | Name | unify | conservative | soft_only |
+    |-----------|---------|------|-------|--------------|----------|
+    | ⸗ | U+2E17 | Double hyphen | → - | → - | kept |
+    | ‐ | U+2010 | Hyphen | → - | → - | kept |
+    | ‑ | U+2011 | Non-breaking hyphen | → - | → - | kept |
+    | – | U+2013 | En dash | → - | kept | kept |
+    | — | U+2014 | Em dash | → - | kept | kept |
+    | − | U+2212 | Minus sign | → - | kept | kept |
+    | ­ | U+00AD | Soft hyphen | removed | removed | removed |
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: {input_column}_hyphens)
+        mode: Normalization mode - "unify", "conservative", or "soft_only"
+
+    Returns:
+        DataFrame with normalized hyphens
+
+    Example:
+        >>> # For NLP/dehyphenation (recommended)
+        >>> df = normalize_hyphens(df, mode="unify")
+        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
+        >>> # "1914–1918" → "1914-1918"
+        >>>
+        >>> # For historical preservation
+        >>> df = normalize_hyphens(df, mode="conservative")
+        >>> # "Nachrichten⸗Teil" → "Nachrichten-Teil"
+        >>> # "1914–1918" → "1914–1918" (en dash preserved)
+
+    Note:
+        Run this BEFORE dehyphenation so that all hyphen variants are
+        recognized by the dehyphenation regex patterns.
+    """  # noqa: RUF002
+    if output_column is None:
+        output_column = f"{input_column}_hyphens"
+
+    logger.info(f"Normalizing hyphens ({mode}): {input_column} → {output_column}")
+
+    # Build translation map based on mode
+    if mode == "unify":
+        # All hyphens/dashes → regular hyphen
+        translation_map: dict[int, Optional[str]] = {
+            0x00AD: None,  # soft hyphen → removed
+            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR)
+            0x2010: "-",  # U+2010 hyphen → hyphen
+            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
+            0x2013: "-",  # U+2013 en dash → hyphen
+            0x2014: "-",  # U+2014 em dash → hyphen
+            0x2212: "-",  # U+2212 minus sign → hyphen
+        }
+    elif mode == "conservative":
+        # Only OCR artifacts, preserve semantic dashes
+        translation_map = {
+            0x00AD: None,  # soft hyphen → removed
+            0x2E17: "-",  # U+2E17 double hyphen → hyphen (Fraktur OCR artifact)
+            0x2010: "-",  # U+2010 hyphen → hyphen
+            0x2011: "-",  # U+2011 non-breaking hyphen → hyphen
+            # Keep: en dash (U+2013), em dash (U+2014), minus (U+2212)
+        }
+    elif mode == "soft_only":
+        # Minimal: only remove soft hyphens
+        translation_map = {
+            0x00AD: None,  # soft hyphen → removed
+        }
+    else:
+        raise ValueError(f"Unknown mode: {mode}. Use 'unify', 'conservative', or 'soft_only'")
+
+    # Apply translation using Polars (fast, vectorized)
+    # We need to use map_elements for the translation
+    def translate_hyphens(text: str) -> str:
+        if not text:
+            return text
+        return text.translate(translation_map)
+
+    df = df.with_columns(
+        [
+            pl.col(input_column)
+            .map_elements(translate_hyphens, return_dtype=pl.Utf8)
+            .alias(output_column)
+        ]
+    )
+
+    logger.info(f"Hyphen normalization ({mode}) applied to {len(df):,} rows")
+    return df
+
+
 # =============================================================================
 # DEHYPHENATION
 # =============================================================================
-
-# Default German conjunctions to skip during dehyphenation
-# These often appear after hyphens in contexts like "Ost- und West-"
-DEFAULT_CONJUNCTIONS: set[str] = {"und", "oder", "bzw", "sowie", "als", "wie"}
 
 
 def _dehyphenate_text(

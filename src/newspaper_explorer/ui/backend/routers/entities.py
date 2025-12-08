@@ -11,7 +11,7 @@ import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.analysis.entities import AggregatedEntityRecord, EntityRecord
-from newspaper_explorer.ui.v2.backend.utils.results import ResultsLoader
+from newspaper_explorer.ui.backend.utils.results import ResultsLoader
 
 router = APIRouter()
 

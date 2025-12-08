@@ -1,13 +1,17 @@
 """
 CLI commands for running the UI
+
+Thin wrapper around ui.utils.commands for process management.
 """
 
 import click
 from click import echo
 
+from newspaper_explorer.ui.utils.commands import get_ui_info, start_ui
+
 
 @click.group(name="ui")
-def ui_commands():
+def ui_commands() -> None:
     """Web interface commands"""
     pass
 
@@ -15,15 +19,22 @@ def ui_commands():
 @ui_commands.command()
 @click.option(
     "--host",
-    default="0.0.0.0",
+    default="0.0.0.0",  # noqa: S104
     help="Host to bind to (default: 0.0.0.0)",
     show_default=True,
 )
 @click.option(
-    "--port",
+    "--backend-port",
+    default=8005,
+    type=int,
+    help="Port for FastAPI backend (default: 8005)",
+    show_default=True,
+)
+@click.option(
+    "--frontend-port",
     default=7860,
     type=int,
-    help="Port to run on (default: 7860)",
+    help="Port for Vue frontend (default: 7860)",
     show_default=True,
 )
 @click.option(
@@ -32,98 +43,101 @@ def ui_commands():
     help="Enable auto-reload on code changes",
     show_default=True,
 )
-def start(host: str, port: int, reload: bool):
+@click.option(
+    "--backend-only",
+    is_flag=True,
+    default=False,
+    help="Only start the backend (useful if running frontend separately)",
+)
+def start(
+    host: str,
+    backend_port: int,
+    frontend_port: int,
+    *,
+    reload: bool,
+    backend_only: bool,
+) -> None:
     """
-    Start the NiceGUI web interface
+    Start the Historical Newspaper Explorer UI
+
+    This command starts both the FastAPI backend and Vue frontend servers
+    using a process supervisor. Use --backend-only if you're running the
+    frontend development server separately (e.g., via npm run dev).
 
     Examples:
-        # Start with defaults (http://localhost:7860)
+        # Start with defaults (backend: 8005, frontend: 7860)
         newspaper-explorer ui start
 
-        # Custom port
-        newspaper-explorer ui start --port 3000
+        # Custom ports
+        newspaper-explorer ui start --backend-port 8000 --frontend-port 3000
+
+        # Backend only (for separate frontend development)
+        newspaper-explorer ui start --backend-only
 
         # Disable auto-reload (for production)
         newspaper-explorer ui start --no-reload
     """
-    echo(f"🚀 Starting Historical Newspaper Explorer UI...")
+
+    echo("🚀 Starting Historical Newspaper Explorer UI...")
     echo(f"   Host: {host}")
-    echo(f"   Port: {port}")
+    echo(f"   Backend port: {backend_port}")
+    if not backend_only:
+        echo(f"   Frontend port: {frontend_port}")
     echo(f"   Auto-reload: {'enabled' if reload else 'disabled'}")
     echo()
-    echo(f"   Open: http://localhost:{port}")
+    echo(f"   API docs: http://localhost:{backend_port}/docs")
+    if not backend_only:
+        echo(f"   Frontend: http://localhost:{frontend_port}")
     echo()
 
     try:
-        import subprocess
-        import sys
-        import os
-        from pathlib import Path
-
-        # Get the path to the app.py file
-        ui_module_path = Path(__file__).parent.parent.parent / "ui" / "nicegui" / "app.py"
-
-        if not ui_module_path.exists():
-            echo(f"❌ Error: UI module not found at {ui_module_path}", err=True)
-            raise click.Abort()
-
-        echo("📦 Starting NiceGUI app...")
-
-        # Run the app.py directly as a subprocess to avoid import issues
-        env = {
-            "NICEGUI_HOST": host,
-            "NICEGUI_PORT": str(port),
-            "NICEGUI_RELOAD": "1" if reload else "0",
-        }
-
-        # Run with current Python
-        result = subprocess.run(
-            [sys.executable, str(ui_module_path)], env={**os.environ, **env}, cwd=Path.cwd()
+        start_ui(
+            host=host,
+            backend_port=backend_port,
+            frontend_port=frontend_port,
+            reload=reload,
+            backend_only=backend_only,
         )
-
-        if result.returncode != 0:
-            echo(f"❌ App exited with code {result.returncode}", err=True)
-            raise click.Abort()
-
-    except ImportError as e:
-        echo("❌ Error: NiceGUI not installed", err=True)
-        echo("", err=True)
-        echo(f"Import error: {e}", err=True)
-        echo("Install with: pip install nicegui", err=True)
-        raise click.Abort()
     except KeyboardInterrupt:
         echo("\n👋 Shutting down UI...")
     except Exception as e:
         echo(f"❌ Error starting UI: {e}", err=True)
-        import traceback
-
-        traceback.print_exc()
-        raise
+        raise click.Abort() from e
 
 
 @ui_commands.command()
-def info():
+def info() -> None:
     """
     Show UI information and status
     """
-    from newspaper_explorer.config.base import get_config
 
-    config = get_config()
+    info_data = get_ui_info()
 
     echo("📰 Historical Newspaper Explorer UI")
     echo()
-    echo("Framework: NiceGUI (Vue.js + Quasar)")
+    echo("Framework:")
+    echo(f"  Backend:  {info_data['framework']['backend']}")
+    echo(f"  Frontend: {info_data['framework']['frontend']}")
+    echo()
+    echo("Paths:")
+    echo(f"  UI root:  {info_data['paths']['ui_root']}")
+    echo(f"  Backend:  {info_data['paths']['backend']}")
+    echo(f"  Frontend: {info_data['paths']['frontend']}")
     echo()
     echo("Configuration:")
-    echo(f"  Data directory: {config.data_dir}")
-    echo(f"  Results directory: {config.results_dir}")
+    echo(f"  Data directory:    {info_data['config']['data_dir']}")
+    echo(f"  Results directory: {info_data['config']['results_dir']}")
     echo()
-    echo("Available tabs:")
-    echo("  • Entities - Entity timeline and distribution analysis")
-    echo("  • Knowledge Graph - Interactive entity relationship network")
-    echo("  • Images - Image gallery with caption matching")
-    echo("  • Search - Full-text archive search")
-    echo("  • Topics - Topic modeling and discovery")
-    echo("  • Emotions - Emotion analysis over time")
+    echo("Status:")
+    echo(f"  Backend ready:  {'✅' if info_data['status']['backend_ready'] else '❌'}")
+    echo(f"  Frontend ready: {'✅' if info_data['status']['frontend_ready'] else '❌'}")
+    echo()
+    echo("API Endpoints:")
+    echo(f"  Documentation: {info_data['endpoints']['api_docs']}")
+    echo(f"  Health check:  {info_data['endpoints']['api_health']}")
+    echo()
+    echo("Available features:")
+    for feature in info_data["features"]:
+        echo(f"  • {feature}")
     echo()
     echo("Start the UI with: newspaper-explorer ui start")
