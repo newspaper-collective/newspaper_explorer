@@ -1,7 +1,7 @@
 # German Wordlists for OCR Quality Validation
 
 **Location:** `data/wordlist_de.txt` and `data/wordlists/`
-**Status:** ✅ Ready
+**Status:** Ready
 **Purpose:** Provide vocabulary for out-of-vocabulary (OOV) rate calculation
 
 > **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
@@ -21,7 +21,7 @@ You now have **three German wordlists** for OCR quality validation:
 
 ## Available Wordlists
 
-### 1. spaCy (✅ Ready)
+### 1. spaCy (Ready)
 - **Location**: `data/wordlist_de.txt`
 - **Words**: 244,057
 - **Source**: spaCy de_core_news_sm model vocabulary
@@ -29,7 +29,7 @@ You now have **three German wordlists** for OCR quality validation:
 
 **Use for**: General German text, modern vocabulary
 
-### 2. Leipzig Corpora (✅ Ready)
+### 2. Leipzig Corpora (Ready)
 - **Location**: `data/wordlists/wordlist_leipzig.txt`
 - **Words**: 155,006
 - **Source**: German news corpus 2021 (100k sentences)
@@ -37,7 +37,7 @@ You now have **three German wordlists** for OCR quality validation:
 
 **Use for**: Most common modern German words, frequency-based
 
-### 3. DTA - Deutsches Textarchiv (⚠️ Manual Download)
+### 3. DTA - Deutsches Textarchiv ([WARNING] Manual Download)
 - **Location**: TBD (after download)
 - **Words**: Est. 200k-300k historical words
 - **Source**: Historical German texts (1500-1900+)
@@ -49,7 +49,7 @@ You now have **three German wordlists** for OCR quality validation:
 
 **Use for**: Historical German from 1910-1920 newspaper period
 
-### 4. Hunspell (❌ Download Failed)
+### 4. Hunspell ([ERROR] Download Failed)
 - **Alternative**: System package installation
 - **Install**: `sudo apt-get install hunspell-de-de`
 - **Location**: `/usr/share/hunspell/de_DE.dic`
@@ -187,11 +187,11 @@ df = preprocessor.pipeline(
 
 ```
 data/
-├── wordlist_de.txt                           # spaCy (244k words) ✅
+├── wordlist_de.txt                           # spaCy (244k words) [OK]
 └── wordlists/
-    ├── wordlist_leipzig.txt                  # Leipzig (155k words) ✅
-    ├── wordlist_hunspell.txt                 # Hunspell (pending) ❌
-    └── wordlist_dta.txt                      # DTA (after manual download) ⚠️
+    ├── wordlist_leipzig.txt                  # Leipzig (155k words) [OK]
+    ├── wordlist_hunspell.txt                 # Hunspell (pending) [ERROR]
+    └── wordlist_dta.txt                      # DTA (after manual download) [WARNING]
 ```
 
 ## See Also

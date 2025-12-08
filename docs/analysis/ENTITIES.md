@@ -24,7 +24,7 @@ The entity extraction module provides three methods for extracting named entitie
 
 **Methods**:
 1. **GLiNER** - Fast local model with multi-GPU support (250MB-1.2GB)
-2. **GLiNER2** - Optimized CPU inference with label descriptions (205M params) ⚠️ *Not publicly available yet*
+2. **GLiNER2** - Optimized CPU inference with label descriptions (205M params) [WARNING] *Not publicly available yet*
 3. **LLM** - High-quality extraction with structured validation (requires API)
 
 **Supported Entity Types**:
@@ -34,12 +34,12 @@ The entity extraction module provides three methods for extracting named entitie
 - **Ereignis** - Events, occurrences (Ereignisse, Vorfälle)
 
 **Key Features**:
-- ✅ **Three extraction methods**: GLiNER (fast GPU), GLiNER2 (optimized CPU), LLM (highest quality)
-- ✅ **Multi-GPU parallelism**: GLiNER supports parallel processing across GPUs
-- ✅ **Label descriptions**: GLiNER2 uses descriptions for better accuracy
-- ✅ **Method comparison**: Compare results from different extraction methods
-- ✅ **Resume functionality**: Skip already-processed texts
-- ✅ **Confidence scores**: GLiNER/GLiNER2 provide confidence values, LLM provides structured validation
+- **Three extraction methods**: GLiNER (fast GPU), GLiNER2 (optimized CPU), LLM (highest quality)
+- **Multi-GPU parallelism**: GLiNER supports parallel processing across GPUs
+- **Label descriptions**: GLiNER2 uses descriptions for better accuracy
+- **Method comparison**: Compare results from different extraction methods
+- **Resume functionality**: Skip already-processed texts
+- **Confidence scores**: GLiNER/GLiNER2 provide confidence values, LLM provides structured validation
 
 ---
 
@@ -166,7 +166,7 @@ results = extractor.extract_and_save(num_gpus=4)
 
 **Purpose**: Optimized CPU-based entity extraction with label descriptions for improved accuracy.
 
-**Model Availability**: ⚠️ **Note**: GLiNER2 models are currently not publicly available. This implementation is ready but requires access to the model weights.
+**Model Availability**: [WARNING] **Note**: GLiNER2 models are currently not publicly available. This implementation is ready but requires access to the model weights.
 
 **Features**:
 - Fast CPU inference (no GPU required)

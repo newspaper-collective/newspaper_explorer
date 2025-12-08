@@ -1,7 +1,7 @@
 # Text Normalization
 
 **Module:** `newspaper_explorer.data.preprocessing.normalization` and `newspaper_explorer.data.preprocessing.modernization`
-**Status:** ✅ Complete
+**Status:** Complete
 **Purpose:** Convert historical German text to modern orthography
 
 > **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
@@ -29,15 +29,15 @@ src/newspaper_explorer/data/preprocessing/
 
 | Function | Module | Speed | Use Case |
 |----------|--------|-------|----------|
-| `normalize_unicode()` | normalization | ⚡⚡⚡⚡⚡ | NFKC, quotes, spaces, control chars |
-| `normalize_hyphens()` | normalization | ⚡⚡⚡⚡⚡ | Hyphen/dash unification |
-| `normalize_whitespace()` | normalization | ⚡⚡⚡⚡⚡ | Whitespace collapse |
-| `normalize_long_s()` | normalization | ⚡⚡⚡⚡⚡ | ſ → s conversion |
-| `normalize_umlauts()` | normalization | ⚡⚡⚡⚡⚡ | Historical umlaut forms |
-| `normalize_casing()` | normalization | ⚡⚡⚡⚡⚡ | Case normalization |
-| `dehyphenate()` | normalization | ⚡⚡⚡ | Line-break hyphen removal |
-| `transnormer()` | modernization | ⚡⚡⚡ | Neural spelling modernization |
-| `dta_cab()` | modernization | ⚡ | API spelling modernization |
+| `normalize_unicode()` | normalization | 5/5 | NFKC, quotes, spaces, control chars |
+| `normalize_hyphens()` | normalization | 5/5 | Hyphen/dash unification |
+| `normalize_whitespace()` | normalization | 5/5 | Whitespace collapse |
+| `normalize_long_s()` | normalization | 5/5 | ſ → s conversion |
+| `normalize_umlauts()` | normalization | 5/5 | Historical umlaut forms |
+| `normalize_casing()` | normalization | 5/5 | Case normalization |
+| `dehyphenate()` | normalization | 3/5 | Line-break hyphen removal |
+| `transnormer()` | modernization | 3/5 | Neural spelling modernization |
+| `dta_cab()` | modernization | 1/5 | API spelling modernization |
 
 ## Historical Long S (ſ) Normalization
 

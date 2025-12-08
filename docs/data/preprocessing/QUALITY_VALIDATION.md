@@ -1,7 +1,7 @@
 # OCR Quality Validation
 
 **Module:** `newspaper_explorer.data.preprocessing.validation`
-**Status:** ✅ Complete
+**Status:** Complete
 **Purpose:** Assess OCR text quality and filter low-quality content
 
 > **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
@@ -24,9 +24,9 @@ src/newspaper_explorer/data/preprocessing/
 
 | Function | Purpose | Speed |
 |----------|---------|-------|
-| `calculate_quality_metrics()` | Calculate char/token ratio, OOV rate, proper noun density | ⚡⚡⚡⚡ Fast |
-| `filter_by_quality_score()` | Filter DataFrame by quality score threshold | ⚡⚡⚡⚡⚡ Instant |
-| `summarize_quality()` | Generate summary statistics for quality metrics | ⚡⚡⚡⚡⚡ Instant |
+| `calculate_quality_metrics()` | Calculate char/token ratio, OOV rate, proper noun density | (4/5) Fast |
+| `filter_by_quality_score()` | Filter DataFrame by quality score threshold | (5/5) Instant |
+| `summarize_quality()` | Generate summary statistics for quality metrics | (5/5) Instant |
 
 ## Quality Metrics
 

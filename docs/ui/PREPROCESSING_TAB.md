@@ -440,9 +440,9 @@ export const STEP_REGISTRY: Record<string, StepUIConfig> = {
 
 ### Step Complexity Indicator
 Some steps are fast (normalize_unicode), others are slow (transnormer). Show visual indicator:
-- ⚡ Fast (< 1ms per line)
-- 🔄 Medium (1-10ms per line)
-- ⏳ Slow (GPU/API required)
+- Fast (< 1ms per line)
+- Medium (1-10ms per line)
+- Slow (GPU/API required)
 
 ### Error Handling
 - Invalid step order (e.g., filter after filter removes all data)

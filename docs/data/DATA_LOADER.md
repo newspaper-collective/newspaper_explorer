@@ -1,18 +1,18 @@
-# 📊 Data Loader Implementation Summary
+# Data Loader Implementation Summary
 
-## ✅ What We Built
+## What We Built
 
 A high-performance ALTO XML parser for newspaper data with:
 
 ### Core Features
 
-- ✅ **Line-level granularity** - Maximum flexibility for analysis
-- ✅ **Parallel processing** - Uses all CPU cores (multiprocessing)
-- ✅ **Polars DataFrames** - 2-5x faster than Pandas
-- ✅ **Parquet format** - Compressed, columnar storage
-- ✅ **Automatic namespace detection** - Handles different ALTO versions
-- ✅ **Progress tracking** - Real-time tqdm progress bars
-- ✅ **Comprehensive metadata** - Dates, coordinates, IDs
+- **Line-level granularity** - Maximum flexibility for analysis
+- **Parallel processing** - Uses all CPU cores (multiprocessing)
+- **Polars DataFrames** - 2-5x faster than Pandas
+- **Parquet format** - Compressed, columnar storage
+- **Automatic namespace detection** - Handles different ALTO versions
+- **Progress tracking** - Real-time tqdm progress bars
+- **Comprehensive metadata** - Dates, coordinates, IDs
 
 ### Components Created
 
@@ -40,7 +40,7 @@ A high-performance ALTO XML parser for newspaper data with:
 5. **Tests**
    - `tests/data/test_loading.py` - Unit tests
 
-## 📋 DataFrame Schema
+## DataFrame Schema
 
 Each row = one text line from ALTO XML:
 
@@ -62,7 +62,7 @@ Each row = one text line from ALTO XML:
 }
 ```
 
-## 🚀 Usage
+## Usage
 
 ### CLI
 
@@ -98,17 +98,17 @@ blocks = df.group_by(["filename", "text_block_id"]).agg([
 ])
 ```
 
-## 🎯 Why Line-Level?
+## Why Line-Level?
 
 **Flexibility is key!**
 
-1. ✅ Can **aggregate UP** → lines → blocks → pages → issues
-2. ❌ Cannot **disaggregate DOWN** if stored as blocks
-3. ✅ Enables **layout analysis** (columns, spacing, positioning)
-4. ✅ Preserves **spatial structure** from ALTO
-5. ✅ Allows **OCR quality analysis** per line
+1. Can **aggregate UP** → lines → blocks → pages → issues
+2. Cannot **disaggregate DOWN** if stored as blocks
+3. Enables **layout analysis** (columns, spacing, positioning)
+4. Preserves **spatial structure** from ALTO
+5. Allows **OCR quality analysis** per line
 
-## ⚡ Performance Optimizations
+## Performance Optimizations
 
 ### 1. Parallel XML Parsing
 
@@ -138,7 +138,7 @@ blocks = df.group_by(["filename", "text_block_id"]).agg([
 - Saves incrementally to Parquet
 - Lower memory footprint
 
-## 📦 Dependencies Added
+## Dependencies Added
 
 ```toml
 dependencies = [
@@ -148,7 +148,7 @@ dependencies = [
 ]
 ```
 
-## 🔄 Typical Workflow
+## Typical Workflow
 
 ```
 1. Download & extract data
@@ -162,7 +162,7 @@ dependencies = [
    └─→ Filter, aggregate, analyze...
 ```
 
-## 📈 Next Steps
+## Next Steps
 
 With data loaded, you can now:
 
@@ -191,7 +191,7 @@ With data loaded, you can now:
    - Missing dates/issues
    - Data completeness
 
-## 💡 Tips
+## Tips
 
 ### Fast Filtering
 
@@ -222,7 +222,7 @@ remaining_files = [f for f in all_files if f.name not in processed_files]
 loader.load_files(remaining_files, output_parquet="more_lines.parquet")
 ```
 
-## 🔍 File Structure
+## File Structure
 
 ```
 src/newspaper_explorer/data/
@@ -244,7 +244,7 @@ tests/data/
 └── test_download.py
 ```
 
-## ✨ Key Design Decisions
+## Key Design Decisions
 
 1. **Line-level over block-level**
 
@@ -265,7 +265,7 @@ tests/data/
    - Pro: True parallelism for CPU-bound XML parsing
    - Con: More overhead (acceptable for large files)
 
-## 🎉 Ready to Use!
+## Ready to Use!
 
 The data loader is now fully functional and optimized for large-scale newspaper processing. Install dependencies and start loading:
 

@@ -489,7 +489,7 @@ if "page_id" not in entities_df.columns:
 Analysis results should preserve or extract foreign keys for traceability:
 
 ```python
-# ✅ GOOD: Preserve foreign keys from input
+# GOOD: Preserve foreign keys from input
 results_df = input_df.select([
     "line_id",         # Primary/foreign key
     "source_id",       # Foreign key
@@ -500,7 +500,7 @@ results_df = input_df.select([
     # ... analysis results ...
 ])
 
-# ❌ BAD: Drop all ID columns
+# BAD: Drop all ID columns
 results_df = pl.DataFrame({
     "entity_text": [...],
     "entity_type": [...],
@@ -537,7 +537,7 @@ Examples:
 Include **all** parameters used in the analysis:
 
 ```python
-# ✅ GOOD: Complete parameters
+# GOOD: Complete parameters
 parameters = {
     "threshold": 0.2,
     "batch_size": 16,
@@ -548,7 +548,7 @@ parameters = {
     "device": "cuda:0",
 }
 
-# ❌ BAD: Incomplete parameters
+# BAD: Incomplete parameters
 parameters = {
     "threshold": 0.2,
 }

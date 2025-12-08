@@ -466,11 +466,11 @@ client = LLMClient(
 ### 1. Always Use Context Managers
 
 ```python
-# ✅ Good - automatic cleanup
+# Good - automatic cleanup
 with LLMClient() as client:
     response = client.complete(...)
 
-# ❌ Avoid - manual cleanup
+# Avoid - manual cleanup
 client = LLMClient()
 response = client.complete(...)
 client.close()
@@ -479,7 +479,7 @@ client.close()
 ### 2. Always Use Schema Validation
 
 ```python
-# ✅ Good - type-safe with IDE support
+# Good - type-safe with IDE support
 from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
 
 response = client.complete(
@@ -488,7 +488,7 @@ response = client.complete(
 )
 print(response.persons)  # IDE autocomplete
 
-# ❌ Avoid - manual parsing
+# Avoid - manual parsing
 response = client.complete(prompt="...")
 data = json.loads(response)
 ```
@@ -496,7 +496,7 @@ data = json.loads(response)
 ### 3. Always Pass Metadata
 
 ```python
-# ✅ Good - provides context
+# Good - provides context
 metadata = {
     "source": row.get("source"),
     "newspaper_title": row.get("newspaper_title"),
@@ -504,7 +504,7 @@ metadata = {
 }
 formatted = prompt.format(text=text, metadata=metadata)
 
-# ❌ Less ideal - missing context
+# Less ideal - missing context
 formatted = prompt.format(text=text)
 ```
 
@@ -600,11 +600,11 @@ client = LLMClient(timeout=120.0)
 **Solution**: Use direct imports:
 
 ```python
-# ✅ Correct
+# Correct
 from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
 from newspaper_explorer.llm.schemas.entity_extraction import EntityResponse
 
-# ❌ Old pattern (removed)
+# Old pattern (removed)
 from newspaper_explorer.llm.prompts import get_prompt
 from newspaper_explorer.llm.schemas import EntityResponse
 ```

@@ -4,12 +4,12 @@
 
 A **DuckDB-based query engine** in `analysis/query/` that solves data access challenges:
 
-✅ **Query multi-GB Parquet files** without loading into memory  
-✅ **Maintain source attribution** via `line_id` foreign keys  
-✅ **Track method/model provenance** in directory structure + metadata  
-✅ **Enable efficient UI queries** for web interfaces  
-✅ **Compare methods** (LLM vs traditional, different models)  
-✅ **SQL interface** for complex analytics
+**Query multi-GB Parquet files** without loading into memory  
+**Maintain source attribution** via `line_id` foreign keys  
+**Track method/model provenance** in directory structure + metadata  
+**Enable efficient UI queries** for web interfaces  
+**Compare methods** (LLM vs traditional, different models)  
+**SQL interface** for complex analytics
 
 ## Architecture Overview
 
@@ -312,11 +312,11 @@ A: `qe.get_line(line_id)` fetches on demand from Parquet.
 
 You now have a **scalable, efficient data architecture** that:
 
-- ✅ Stores source and results as Parquet (efficient)
-- ✅ Queries via DuckDB (fast, SQL interface)
-- ✅ Tracks method/model provenance (reproducible)
-- ✅ Maintains source attribution (queryable)
-- ✅ Enables UI without memory issues (streaming)
-- ✅ Supports method comparison (joins across files)
+- Stores source and results as Parquet (efficient)
+- Queries via DuckDB (fast, SQL interface)
+- Tracks method/model provenance (reproducible)
+- Maintains source attribution (queryable)
+- Enables UI without memory issues (streaming)
+- Supports method comparison (joins across files)
 
-Perfect for your multi-GB newspaper data! 🎉
+Perfect for your multi-GB newspaper data!

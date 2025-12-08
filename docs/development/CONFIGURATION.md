@@ -8,7 +8,7 @@ This project follows a clear separation between **environment configuration** an
 
 **Purpose**: Configure WHERE and WHAT across different environments (dev/staging/prod)
 
-✅ **Use for:**
+**Use for:**
 
 - Directory paths (`DATA_DIR`, `DOWNLOAD_DIR`, `EXTRACTED_DIR`)
 - Source locations (`SOURCES_DIR`)
@@ -17,7 +17,7 @@ This project follows a clear separation between **environment configuration** an
 - Database connections (if needed in future)
 - API endpoints (if needed in future)
 
-❌ **Don't use for:**
+**Don't use for:**
 
 - Runtime behaviors that change per-command
 - User preferences that should be explicit
@@ -27,14 +27,14 @@ This project follows a clear separation between **environment configuration** an
 
 **Purpose**: Control HOW operations are performed at runtime
 
-✅ **Use for:**
+**Use for:**
 
 - Optional features (`--no-extract`, `--no-fix`)
 - Operation modes (`--force`, `--verbose`)
 - Output formats (if added in future)
 - Behavior toggles that users choose per-command
 
-❌ **Don't use for:**
+**Don't use for:**
 
 - Configuration that rarely changes
 - System-level settings
@@ -78,7 +78,7 @@ LOG_LEVEL=INFO
 
 ## Examples
 
-### ✅ Good: Environment for paths
+### Good: Environment for paths
 
 ```bash
 # .env
@@ -88,7 +88,7 @@ DATA_DIR=/mnt/large-storage/newspapers
 newspaper-explorer data download --part dertag_1900-1902
 ```
 
-### ✅ Good: Flags for behavior
+### Good: Flags for behavior
 
 ```bash
 # Different behaviors for different needs
@@ -96,7 +96,7 @@ newspaper-explorer data download --part dertag_1900-1902 --no-extract
 newspaper-explorer data download --part dertag_1903-1905  # with extraction
 ```
 
-### ❌ Bad: Environment for behavior
+### Bad: Environment for behavior
 
 ```bash
 # .env
