@@ -263,6 +263,7 @@ Known data issues are automatically corrected during extraction:
 - **Type hints**: Optional but preferred (mypy with `disallow_untyped_defs = false`)
 - **Docstrings**: Required for public APIs
 - **CLI**: Rich examples in docstrings
+- **Emojis**: Do not use emojis in any generated code, comments, docstrings, log messages, CLI output, documentation, or commit messages.
 
 ### Data Validation with Pydantic
 
