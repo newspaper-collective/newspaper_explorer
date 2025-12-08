@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useSourceStore } from '@/stores/source'
 import { usePreprocessingStore } from '@/stores/preprocessing'
 import { useDebounceFn } from '@vueuse/core'
+import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import {
   Type,
   Sparkles,
@@ -347,17 +348,19 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
 </script>
 
 <template>
-  <div class="space-y-6 px-4 pb-8">
+  <div class="h-full flex flex-col overflow-auto">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold">Preprocessing Pipeline</h1>
-        <p class="text-muted-foreground">
-          Build and preview text preprocessing pipelines
-        </p>
-      </div>
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          <AnalysisHeader
+            title="Preprocessing"
+            description="Build and preview text preprocessing pipelines"
+            icon="preprocessing"
+          />
+        </div>
 
-      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3">
         <!-- Input Selector Button -->
         <button
           @click="showInputSelector = true"
@@ -394,9 +397,12 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         >
           Clear
         </button>
+        </div>
       </div>
     </div>
 
+    <!-- Content area -->
+    <div class="px-4 pb-6 space-y-6">
     <!-- Available Steps Palette (collapsible) -->
     <div class="rounded-lg border bg-card">
       <button
@@ -510,7 +516,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             @dragstart="onPipelineDragStart($event, index)"
             @dragover="onDragOver($event, index)"
             @dragleave="onDragLeave"
-            @drop="onPipelineDrop($event, index)"
+            @drop="draggedStepName ? onDrop($event, index) : onPipelineDrop($event, index)"
             class="flex items-center gap-1 px-3 py-2 rounded-md border bg-background group"
             :style="{ borderColor: CATEGORY_INFO[getStepInfo(step.name)?.category ?? 'other']?.color }"
           >
@@ -810,17 +816,19 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         <div v-if="preprocessingStore.runningJob.output_path" class="mt-2 text-xs text-muted-foreground">
           Output: {{ preprocessingStore.runningJob.output_path }}
         </div>
+        </div>
       </div>
-      </div>
+    </div>
     </div>
 
     <!-- Step Configuration Modal -->
-    <div
-      v-if="showStepConfig && configStep"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      @click.self="closeStepConfig"
-    >
-      <div class="bg-card rounded-lg border shadow-lg w-full max-w-md p-6">
+    <Teleport to="body">
+      <div
+        v-if="showStepConfig && configStep"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+        @click.self="closeStepConfig"
+      >
+        <div class="bg-card rounded-lg border shadow-lg w-full max-w-md p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold">
             Configure: {{ getStepInfo(configStep.name)?.display_name }}
@@ -889,16 +897,18 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             Done
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Input Selector Dialog -->
-    <div
-      v-if="showInputSelector"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      @click.self="showInputSelector = false"
-    >
-      <div class="bg-card rounded-lg border shadow-lg w-full max-w-lg p-6">
+    <Teleport to="body">
+      <div
+        v-if="showInputSelector"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+        @click.self="showInputSelector = false"
+      >
+        <div class="bg-card rounded-lg border shadow-lg w-full max-w-lg p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold">Select Input</h3>
           <button @click="showInputSelector = false" class="p-1 hover:bg-accent rounded">
@@ -962,7 +972,8 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             Cancel
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>

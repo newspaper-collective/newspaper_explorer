@@ -3,7 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useSourceStore } from '@/stores/source'
 import { useRouter } from 'vue-router'
 import api from '@/lib/api'
-import { ImageOff, Home } from 'lucide-vue-next'
+import OpenSeadragonViewer from '@/components/OpenSeadragonViewer.vue'
+import { ImageOff, Home, Eye, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
 interface Props {
   issueId: string
@@ -27,6 +28,48 @@ const loading = ref(false)
 const metadata = ref<any>(null)
 const pages = ref<any[]>([])
 
+// Preview dialog state
+const previewOpen = ref(false)
+const previewPageIndex = ref(0)
+
+const previewPage = computed(() => {
+  if (previewPageIndex.value >= 0 && previewPageIndex.value < pages.value.length) {
+    return pages.value[previewPageIndex.value]
+  }
+  return null
+})
+
+const previewImageUrl = computed(() => {
+  if (!previewPage.value || !sourceStore.currentSource) return ''
+  // Use the image_url directly from the page data (already contains full path)
+  if (previewPage.value.image_url) {
+    return previewPage.value.image_url
+  }
+  return ''
+})
+
+function openPreview(index: number, event: Event) {
+  event.stopPropagation()
+  previewPageIndex.value = index
+  previewOpen.value = true
+}
+
+function closePreview() {
+  previewOpen.value = false
+}
+
+function previousPreviewPage() {
+  if (previewPageIndex.value > 0) {
+    previewPageIndex.value--
+  }
+}
+
+function nextPreviewPage() {
+  if (previewPageIndex.value < pages.value.length - 1) {
+    previewPageIndex.value++
+  }
+}
+
 const monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -45,7 +88,7 @@ const monthName = computed(() => {
 
 async function loadIssue() {
   if (!sourceStore.currentSource) return
-  
+
   loading.value = true
   try {
     // Get all pages for this issue
@@ -59,18 +102,18 @@ async function loadIssue() {
     if (pages.value.length > 0) {
       const firstPage = pages.value[0]
       const issueId = firstPage.issue_id || props.issueId
-      
+
       // Extract issue_number and daily_count from issue_id
       // Format: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
       const issueParts = issueId.split('_')
       const issueNumber = issueParts.length >= 3 ? issueParts[issueParts.length - 2] : null
       const dailyCount = issueParts.length >= 4 ? issueParts[issueParts.length - 1] : null
-      
+
       // Extract year and month from date
       const date = new Date(firstPage.date)
       const year = date.getFullYear()
       const month = date.getMonth() + 1
-      
+
       metadata.value = {
         title: firstPage.newspaper_title,
         date: firstPage.date,
@@ -190,7 +233,7 @@ onMounted(() => {
     <div v-else-if="pages.length > 0">
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         <button
-          v-for="page in pages"
+          v-for="(page, index) in pages"
           :key="page.page_id"
           @click="openPage(page.page_number)"
           class="group relative rounded-lg border bg-card overflow-hidden hover:border-primary transition-all hover:shadow-lg"
@@ -210,13 +253,21 @@ onMounted(() => {
             >
               <ImageOff class="h-12 w-12" />
             </div>
-            
+
             <!-- Overlay on hover -->
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
           </div>
-          
-          <!-- Page Number Label -->
-          <div class="p-3 text-center">
+
+          <!-- Page Number Label with Preview Icon -->
+          <div class="p-3 flex items-center justify-center gap-2">
+            <button
+              v-if="page.has_image"
+              @click="openPreview(index, $event)"
+              class="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+              title="Preview page"
+            >
+              <Eye class="h-4 w-4" />
+            </button>
             <p class="text-sm font-medium">Page {{ page.page_number }}</p>
           </div>
         </button>
@@ -226,6 +277,71 @@ onMounted(() => {
     <!-- No Data -->
     <div v-else class="rounded-lg border bg-card p-8 text-center">
       <p class="text-muted-foreground">No pages found</p>
+    </div>
+
+    <!-- Preview Dialog -->
+    <div
+      v-if="previewOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+      @click="closePreview"
+    >
+      <div
+        class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
+        @click.stop
+      >
+        <!-- Dialog Header -->
+        <div class="flex items-center justify-between p-4 border-b bg-muted/50">
+          <div v-if="previewPage" class="space-y-1">
+            <p class="font-semibold text-base">
+              Page {{ previewPage.page_number }} of {{ pages.length }}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ metadata?.date ? formatDate(metadata.date) : '' }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <!-- Navigation Controls -->
+            <button
+              @click="previousPreviewPage"
+              :disabled="previewPageIndex === 0"
+              class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Previous page"
+            >
+              <ChevronLeft class="w-5 h-5" />
+            </button>
+            <span class="text-sm text-muted-foreground min-w-[60px] text-center">
+              {{ previewPageIndex + 1 }} / {{ pages.length }}
+            </span>
+            <button
+              @click="nextPreviewPage"
+              :disabled="previewPageIndex === pages.length - 1"
+              class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Next page"
+            >
+              <ChevronRight class="w-5 h-5" />
+            </button>
+            <div class="w-px h-6 bg-border mx-2" />
+            <button
+              @click="closePreview"
+              class="p-2 hover:bg-accent rounded-md transition-colors"
+              title="Close preview"
+            >
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        <!-- OpenSeadragon Viewer -->
+        <div class="flex-1 relative">
+          <OpenSeadragonViewer
+            v-if="previewImageUrl"
+            :key="previewPageIndex"
+            :image-url="previewImageUrl"
+            :current-page="previewPageIndex + 1"
+            :total-pages="pages.length"
+            @change-page="(delta) => { if (delta < 0) previousPreviewPage(); else nextPreviewPage(); }"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>

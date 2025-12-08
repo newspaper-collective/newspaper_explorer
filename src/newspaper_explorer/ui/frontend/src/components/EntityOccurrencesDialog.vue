@@ -124,7 +124,7 @@ watch(() => props.open, (isOpen) => {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
       @click.self="close"
     >
       <div class="relative w-full max-w-4xl max-h-[90vh] bg-background rounded-lg shadow-lg flex flex-col">

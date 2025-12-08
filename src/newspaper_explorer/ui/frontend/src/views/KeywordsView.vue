@@ -319,12 +319,12 @@ function openDocumentInPageViewer(doc: KeywordDocument) {
   // Example: 3074409-X_1902-04-15_174_3_005
   const pageId = doc.page_id || doc.doc_id
   const parts = pageId.split('_')
-  
+
   if (parts.length >= 5) {
     // Issue ID is first 4 parts (without page number)
     const issueId = parts.slice(0, 4).join('_')
     const pageNumber = parseInt(parts[4])
-    
+
     // Open the issue view with the specific page number as query param
     const url = `/issue/${issueId}?page=${pageNumber}`
     window.open(url, '_blank')
@@ -346,10 +346,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Sticky header - compact single row -->
-    <div class="sticky top-0 z-10 bg-background py-3 px-6">
-      <div class="flex flex-wrap items-start gap-4 mt-2 mb-1">
+  <div class="h-full flex flex-col overflow-auto">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex flex-wrap items-start gap-4">
         <!-- Title -->
         <div class="flex items-center gap-2 min-w-0">
           <AnalysisHeader
@@ -381,7 +381,7 @@ onMounted(() => {
               placeholder="Search keywords..."
               class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
             />
-            
+
             <!-- Score and Count Row -->
             <div class="flex items-center justify-between gap-3">
               <!-- Score Filter -->
@@ -398,7 +398,7 @@ onMounted(() => {
                   class="flex-1"
                 />
               </div>
-              
+
               <!-- Results count -->
               <span class="text-xs text-muted-foreground whitespace-nowrap">
                 {{ totalItems.toLocaleString() }}/{{ (backendStats?.total || 0).toLocaleString() }}
@@ -410,7 +410,7 @@ onMounted(() => {
     </div>
 
     <!-- Content area -->
-    <div class="space-y-6 px-6">
+    <div class="px-4 pb-6 space-y-6">
       <!-- Statistics Cards -->
       <StatisticsCards v-if="statistics" :stats="statsCards" :columns="5" />
 
@@ -425,7 +425,7 @@ onMounted(() => {
         <div class="rounded-lg border bg-card p-4">
           <VChart :option="scoreDistributionChart" class="h-[300px]" autoresize />
         </div>
-        
+
         <!-- Keywords per Document Distribution -->
         <div class="rounded-lg border bg-card p-4">
           <VChart :option="keywordsPerDocChart" class="h-[300px]" autoresize />
@@ -449,7 +449,7 @@ onMounted(() => {
         </div>
         <VChart :option="topKeywordsChart" class="h-[400px]" autoresize />
       </div>
-      
+
       <!-- Wordcloud -->
       <div v-if="keywords.length > 0" class="rounded-lg border bg-card p-4">
         <div class="flex items-center justify-between mb-4">
@@ -474,7 +474,7 @@ onMounted(() => {
         <p class="text-sm text-muted-foreground mb-4">
           Explore documents and relationships for specific keywords
         </p>
-        
+
         <!-- Search Input -->
         <div class="flex gap-3 mb-4">
           <select
@@ -623,7 +623,7 @@ onMounted(() => {
             </tbody>
           </table>
         </div>
-        
+
         <!-- Pagination -->
         <PaginationControls
           :current-page="currentPage"

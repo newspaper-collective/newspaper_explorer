@@ -93,7 +93,7 @@ async function loadData() {
 
 async function loadPeaks() {
   if (!sourceStore.currentSource) return
-  
+
   try {
     const res = await api.get(`/emotions/${sourceStore.currentSource}/peaks`, {
       params: { emotion: selectedPeakEmotion.value, limit: 20 }
@@ -111,13 +111,13 @@ function updateCharts() {
   // 1. Overall Distribution
   const means = statistics.value.overall_means
   const total = Object.values(means).reduce((a: any, b: any) => a + b, 0) as number
-  
+
   distributionChart.value = {
     title: { text: 'Overall Emotion Distribution', left: 'center' },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: '{b}: {c}%' },
     grid: { bottom: 30 },
-    xAxis: { 
-      type: 'category', 
+    xAxis: {
+      type: 'category',
       data: Object.keys(means).map(k => k.charAt(0).toUpperCase() + k.slice(1))
     },
     yAxis: { type: 'value', axisLabel: { formatter: '{value}%' } },
@@ -153,16 +153,16 @@ function updateCharts() {
   if (timelineMonth.value.length > 0) {
     // Sort order: negative to positive
     const plotOrder = ['agitation', 'anger', 'fear', 'sadness', 'love', 'joy']
-    
+
     streamChart.value = {
       title: { text: 'Relative Emotion Shares (Monthly)', left: 'center' },
       tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } } },
       legend: { bottom: 0 },
       grid: { bottom: 80, left: '3%', right: '4%', containLabel: true },
-      xAxis: { 
-        type: 'category', 
-        boundaryGap: false, 
-        data: timelineMonth.value.map(d => d.time_key) 
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: timelineMonth.value.map(d => d.time_key)
       },
       yAxis: { type: 'value', max: 100 },
       series: plotOrder.map(emo => ({
@@ -187,11 +187,11 @@ function updateCharts() {
   if (eraStats) {
     const eras = ['pre_war', 'war', 'post_war']
     const datasetSource: any[] = []
-    
+
     // Prepare data for boxplot
     // We need to construct series for each emotion
     const series: any[] = []
-    
+
     EMOTIONS.forEach(emo => {
       const data = eras.map(era => {
         const s = eraStats[era]?.[emo]
@@ -199,7 +199,7 @@ function updateCharts() {
         // ECharts boxplot expects [min, Q1, median, Q3, max]
         return [s.min, s.q1, s.median, s.q3, s.max]
       })
-      
+
       series.push({
         name: emo.charAt(0).toUpperCase() + emo.slice(1),
         type: 'boxplot',
@@ -213,9 +213,9 @@ function updateCharts() {
       legend: { bottom: 0 },
       tooltip: { trigger: 'item', axisPointer: { type: 'shadow' } },
       grid: { bottom: 80 },
-      xAxis: { 
-        type: 'category', 
-        data: eras.map(e => e.replace('_', ' ').toUpperCase()) 
+      xAxis: {
+        type: 'category',
+        data: eras.map(e => e.replace('_', ' ').toUpperCase())
       },
       yAxis: { type: 'value' },
       series: series
@@ -227,9 +227,9 @@ function updatePeaksChart() {
   if (peaks.value.length === 0) return
 
   peaksChart.value = {
-    title: { 
-      text: `Top ${selectedPeakEmotion.value} Peaks`, 
-      left: 'center' 
+    title: {
+      text: `Top ${selectedPeakEmotion.value} Peaks`,
+      left: 'center'
     },
     tooltip: {
       formatter: (params: any) => {
@@ -264,10 +264,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Sticky header -->
-    <div class="sticky top-0 z-10 bg-background py-3 px-6">
-      <div class="flex flex-wrap items-start gap-4 mt-2 mb-1">
+  <div class="h-full flex flex-col overflow-auto">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex flex-wrap items-start gap-4">
         <div class="flex items-center gap-2 min-w-0">
           <AnalysisHeader
             title="Emotions"
@@ -275,7 +275,7 @@ onMounted(() => {
             icon="emotions"
           />
         </div>
-        
+
         <div class="flex-1 min-w-[200px] self-stretch">
           <ResultsViewer
             v-if="sourceStore.currentSource"
@@ -289,7 +289,7 @@ onMounted(() => {
     </div>
 
     <!-- Content -->
-    <div class="px-6 space-y-6 pb-12">
+    <div class="px-4 pb-6 space-y-6">
       <div v-if="loading" class="text-center py-12">
         <p class="text-muted-foreground">Loading emotion analysis...</p>
       </div>
@@ -321,7 +321,7 @@ onMounted(() => {
             <h3 class="text-lg font-semibold">Notable Emotion Peaks</h3>
             <div class="flex items-center gap-2">
               <span class="text-sm text-muted-foreground">Select Emotion:</span>
-              <select 
+              <select
                 v-model="selectedPeakEmotion"
                 class="rounded-md border border-input bg-background px-3 py-1 text-sm"
               >
@@ -371,8 +371,8 @@ onMounted(() => {
                 {{ era.replace('_', ' ') }}
               </h4>
               <div class="rounded-md border divide-y">
-                <div 
-                  v-for="emo in EMOTIONS" 
+                <div
+                  v-for="emo in EMOTIONS"
                   :key="emo"
                   class="flex items-center justify-between p-2 text-sm"
                 >

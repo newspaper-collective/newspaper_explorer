@@ -82,12 +82,12 @@ const filteredEntities = computed(() => {
   return entities.value.filter(e => {
     // Filter by confidence
     if (e.avg_confidence < minConfidence.value / 100) return false
-    
+
     // Filter by search query
     if (searchQuery.value && !e.entity_text.toLowerCase().includes(searchQuery.value.toLowerCase())) {
       return false
     }
-    
+
     return true
   })
 })
@@ -191,7 +191,7 @@ function updateCharts() {
       },
     }
   )
-  
+
   // Add color-coding to series data
   if (baseChart.series && Array.isArray(baseChart.series) && baseChart.series[0]) {
     const series = baseChart.series[0] as any
@@ -201,7 +201,7 @@ function updateCharts() {
       itemStyle: { color: getEntityTypeColor(e.entity_type) }
     }))
   }
-  
+
   topEntitiesChart.value = baseChart
 
   // Type distribution pie chart with consistent colors
@@ -307,10 +307,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <!-- Sticky header - compact single row -->
-    <div class="sticky top-0 z-10 bg-background py-3 px-6">
-      <div class="flex flex-wrap items-start gap-4 mt-2 mb-1">
+  <div class="h-full flex flex-col overflow-auto">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex flex-wrap items-start gap-4">
         <!-- Title -->
         <div class="flex items-center gap-2 min-w-0">
           <AnalysisHeader
@@ -342,7 +342,7 @@ onMounted(() => {
               placeholder="Search..."
               class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
             />
-            
+
             <!-- Type Filter -->
             <select
               v-model="selectedType"
@@ -353,7 +353,7 @@ onMounted(() => {
                 {{ capitalizeEntityType(type) }}
               </option>
             </select>
-            
+
             <!-- Confidence and Count Row -->
             <div class="flex items-center justify-between gap-3">
               <!-- Confidence Filter -->
@@ -370,7 +370,7 @@ onMounted(() => {
                   class="flex-1"
                 />
               </div>
-              
+
               <!-- Results count -->
               <span class="text-xs text-muted-foreground whitespace-nowrap">
                 {{ filteredEntities.length }}/{{ entities.length }}
@@ -382,7 +382,7 @@ onMounted(() => {
     </div>
 
     <!-- Content area -->
-    <div class="space-y-6 px-6">
+    <div class="px-4 pb-6 space-y-6">
       <!-- Timeline Chart -->
       <div v-if="entities.length > 0 && timelineChart.series" class="rounded-lg border bg-card p-4">
         <VChart :option="timelineChart" class="h-[400px]" autoresize />
@@ -400,7 +400,7 @@ onMounted(() => {
           <VChart :option="typeDistributionChart" class="h-[400px]" autoresize />
         </div>
       </div>
-      
+
       <!-- Wordcloud -->
       <div v-if="entities.length > 0" class="rounded-lg border bg-card p-4">
         <div class="flex items-center justify-between mb-4">

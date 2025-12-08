@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useSourceStore } from '@/stores/source'
 import { useRouter, useRoute } from 'vue-router'
-import api from '@/lib/api'
+import api from '@/lib/api.ts'
 import { Home } from 'lucide-vue-next'
 import PaginationControls from '@/components/PaginationControls.vue'
 
@@ -50,18 +50,18 @@ const sourceTitle = computed(() => {
 
 const breadcrumbs = computed(() => {
   const crumbs = [{ label: sourceTitle.value, mode: 'year' as ViewMode }]
-  
+
   if (selectedYear.value !== null) {
     crumbs.push({ label: `${selectedYear.value}`, mode: 'month' as ViewMode })
   }
-  
+
   if (selectedMonth.value !== null) {
-    crumbs.push({ 
-      label: monthNames[selectedMonth.value - 1], 
-      mode: 'issue' as ViewMode 
+    crumbs.push({
+      label: monthNames[selectedMonth.value - 1],
+      mode: 'issue' as ViewMode
     })
   }
-  
+
   return crumbs
 })
 
@@ -88,7 +88,7 @@ const statsText = computed(() => {
 // Navigation functions
 function updateUrl() {
   const query: any = {}
-  
+
   if (selectedYear.value !== null) {
     query.year = selectedYear.value.toString()
   }
@@ -107,7 +107,7 @@ function updateUrl() {
   if (sortOrder.value !== 'asc') {
     query.sort = sortOrder.value
   }
-  
+
   router.replace({ query })
 }
 
@@ -115,7 +115,7 @@ function navigateToYear(year: number | null) {
   selectedYear.value = year
   selectedMonth.value = null
   currentPage.value = 1
-  
+
   if (year === null) {
     viewMode.value = 'year'
     loadYears()
@@ -130,7 +130,7 @@ function navigateToMonth(year: number, month: number | null) {
   selectedYear.value = year
   selectedMonth.value = month
   currentPage.value = 1
-  
+
   if (month === null) {
     viewMode.value = 'month'
     loadMonths()
@@ -149,7 +149,7 @@ function resetFilters() {
   yearFrom.value = null
   yearTo.value = null
   sortOrder.value = 'asc'
-  
+
   if (selectedYear.value !== null) {
     navigateToYear(null)
   } else {
@@ -160,13 +160,13 @@ function resetFilters() {
 // Data loading functions
 async function loadYears() {
   if (!sourceStore.currentSource) return
-  
+
   loading.value = true
   try {
     const params: any = { sort_order: sortOrder.value }
     if (yearFrom.value) params.year_from = yearFrom.value
     if (yearTo.value) params.year_to = yearTo.value
-    
+
     const response = await api.get(
       `/data/${sourceStore.currentSource}/browse/years`,
       { params }
@@ -181,7 +181,7 @@ async function loadYears() {
 
 async function loadMonths() {
   if (!sourceStore.currentSource) return
-  
+
   loading.value = true
   try {
     const params: any = {
@@ -189,19 +189,19 @@ async function loadMonths() {
       page: currentPage.value,
       page_size: pageSize.value
     }
-    
+
     if (selectedYear.value !== null) {
       params.year = selectedYear.value
     } else {
       if (yearFrom.value) params.year_from = yearFrom.value
       if (yearTo.value) params.year_to = yearTo.value
     }
-    
+
     const response = await api.get(
       `/data/${sourceStore.currentSource}/browse/months`,
       { params }
     )
-    
+
     months.value = response.data.results
     totalPages.value = response.data.total_pages
     totalCount.value = response.data.total
@@ -214,7 +214,7 @@ async function loadMonths() {
 
 async function loadIssues() {
   if (!sourceStore.currentSource) return
-  
+
   loading.value = true
   try {
     const params: any = {
@@ -222,19 +222,19 @@ async function loadIssues() {
       page: currentPage.value,
       page_size: pageSize.value
     }
-    
+
     if (selectedYear.value !== null) {
       params.year = selectedYear.value
     }
     if (selectedMonth.value !== null) {
       params.month = selectedMonth.value
     }
-    
+
     const response = await api.get(
       `/data/${sourceStore.currentSource}/browse/issues`,
       { params }
     )
-    
+
     issues.value = response.data.results
     totalPages.value = response.data.total_pages
     totalCount.value = response.data.total
@@ -309,13 +309,13 @@ onMounted(() => {
     const yFrom = route.query.yearFrom ? parseInt(route.query.yearFrom as string, 10) : null
     const yTo = route.query.yearTo ? parseInt(route.query.yearTo as string, 10) : null
     const sort = route.query.sort as 'asc' | 'desc' || 'asc'
-    
+
     // Set state from URL
     yearFrom.value = yFrom
     yearTo.value = yTo
     sortOrder.value = sort
     currentPage.value = page
-    
+
     if (year !== null) {
       selectedYear.value = year
       if (month !== null) {
@@ -336,25 +336,34 @@ onMounted(() => {
 <template>
   <div class="space-y-6 px-4 pb-4">
     <!-- Breadcrumb Navigation -->
-    <div class="flex items-center gap-2 flex-wrap mt-4">
-      <button
-        v-for="(crumb, index) in breadcrumbs"
-        :key="index"
-        @click="() => {
-          if (index === 0) navigateToYear(null)
-          else if (index === 1 && selectedYear !== null) navigateToMonth(selectedYear, null)
-        }"
-        :class="[
-          'flex items-center gap-2 text-lg font-medium transition-colors',
-          index === breadcrumbs.length - 1
-            ? 'text-foreground cursor-default'
-            : 'text-muted-foreground hover:text-foreground cursor-pointer'
-        ]"
-      >
-        <Home v-if="index === 0" class="h-5 w-5" />
-        {{ crumb.label }}
-        <span v-if="index < breadcrumbs.length - 1" class="text-muted-foreground">›</span>
-      </button>
+    <div class="mt-4">
+      <div class="flex items-start gap-2">
+        <Home class="h-5 w-5 mt-1 flex-shrink-0" />
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              v-for="(crumb, index) in breadcrumbs"
+              :key="index"
+              @click="() => {
+                if (index === 0) navigateToYear(null)
+                else if (index === 1 && selectedYear !== null) navigateToMonth(selectedYear, null)
+              }"
+              :class="[
+                'flex items-center gap-2 text-lg font-medium transition-colors',
+                index === breadcrumbs.length - 1
+                  ? 'text-foreground cursor-default'
+                  : 'text-muted-foreground hover:text-foreground cursor-pointer'
+              ]"
+            >
+              {{ crumb.label }}
+              <span v-if="index < breadcrumbs.length - 1" class="text-muted-foreground">›</span>
+            </button>
+          </div>
+          <p class="text-sm text-muted-foreground mt-1">
+            Navigate through years, months, and individual newspaper issues
+          </p>
+        </div>
+      </div>
     </div>
 
     <!-- No source selected -->
@@ -374,7 +383,7 @@ onMounted(() => {
           <!-- Year Filter -->
           <div class="space-y-2">
             <label class="text-sm font-medium">Time Period</label>
-            
+
             <!-- Year range (when at year level) -->
             <div v-if="selectedYear === null" class="grid grid-cols-2 gap-2">
               <div>
@@ -598,4 +607,3 @@ onMounted(() => {
     </div>
   </div>
 </template>
-

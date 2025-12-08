@@ -1,5 +1,6 @@
 <template>
-  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80" @click="$emit('close')">
+  <Teleport to="body">
+    <div v-if="open" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80" @click="$emit('close')">
     <div class="relative w-[90vw] h-[90vh] bg-card rounded-lg shadow-xl flex flex-col" @click.stop>
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b">
@@ -89,6 +90,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

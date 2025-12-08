@@ -45,6 +45,7 @@ const navigation: NavigationItem[] = [
   { name: 'Browse', to: '/browse', icon: Calendar },
   { name: 'Search', to: '/search', icon: Search },
   { name: 'Preprocessing', to: '/preprocessing', icon: Wand2 },
+  { name: 'Data', to: '/data', icon: Database },
   { name: 'separator-2', separator: true },
   { name: 'Layout', to: '/layout', icon: LayoutDashboard },
   { name: 'Pictures', to: '/pictures', icon: Image },

@@ -4,7 +4,7 @@ Source management endpoints
 
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -97,9 +97,43 @@ async def get_source_info(source_name: str):
         has_emotions = "emotions" in analysis_results
         has_concepts = "concepts" in analysis_results
 
+        # Calculate XML file stats
+        xml_file_count = None
+        xml_total_size = None
+        if has_text:
+            try:
+                text_path = raw_path / "text"
+                xml_files = list(text_path.rglob("*.xml"))
+                xml_file_count = len(xml_files)
+                if xml_file_count > 0:
+                    total_bytes = sum(f.stat().st_size for f in xml_files)
+                    total_gb = total_bytes / (1024**3)
+                    if total_gb >= 1.0:
+                        xml_total_size = f"{total_gb:.1f} GB"
+                    else:
+                        total_mb = total_bytes / (1024**2)
+                        xml_total_size = f"{total_mb:.0f} MB"
+            except Exception:
+                pass
+
+        # Calculate parquet size
+        parquet_size = None
+        parquet_path = raw_path / "text" / f"{source_name}_lines.parquet"
+        if parquet_path.exists():
+            try:
+                size_bytes = parquet_path.stat().st_size
+                size_gb = size_bytes / (1024**3)
+                if size_gb >= 1.0:
+                    parquet_size = f"{size_gb:.1f} GB"
+                else:
+                    size_mb = size_bytes / (1024**2)
+                    parquet_size = f"{size_mb:.0f} MB"
+            except Exception:
+                pass
+
         # Get image statistics if images exist
-        image_size = None
-        image_count = None
+        image_size: Optional[str] = None
+        image_count: Optional[int] = None
         if has_images:
             try:
                 from newspaper_explorer.data.indexing.image_index import ImageIndexer
@@ -109,7 +143,9 @@ async def get_source_info(source_name: str):
                 if index is not None and len(index) > 0:
                     stats = indexer.get_stats()
                     image_size = f"{stats['total_size_gb']:.1f} GB"
-                    image_count = stats["total_images"]
+                    total_images = stats.get("total_images")
+                    if total_images is not None:
+                        image_count = int(total_images)
             except Exception:
                 # If image indexer fails, ignore
                 pass
@@ -136,6 +172,9 @@ async def get_source_info(source_name: str):
             has_concepts=has_concepts,
             has_images=has_images,
             total_archive_size=total_archive_size,
+            xml_file_count=xml_file_count,
+            xml_total_size=xml_total_size,
+            parquet_size=parquet_size,
             image_size=image_size,
             image_count=image_count,
             analysis_results=analysis_results,

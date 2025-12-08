@@ -117,12 +117,12 @@ const statsCards = computed(() => {
 })
 
 // Composables
-const { 
-  currentPage, 
-  totalItems, 
+const {
+  currentPage,
+  totalItems,
   totalPages,
   pageSize,
-  goToPage 
+  goToPage
 } = usePagination({ itemsPerPage: 4 })
 
 const {
@@ -276,27 +276,27 @@ async function loadPictures() {
       min_confidence: 0, // No filter - show all pictures
     }
     if (selectedRunId.value) unfilteredStatsParams.run_id = selectedRunId.value
-    
+
     const unfilteredStatsResponse = await api.get(
       `/layout/${sourceStore.currentSource}/stats`,
       { params: unfilteredStatsParams }
     )
-    
+
     // Store unfiltered stats for statistics cards (total dataset)
     backendStats.value = unfilteredStatsResponse.data
-    
+
     // 1b. Load FILTERED statistics for charts (respects current filters)
     const statsParams: any = {
       label: 'Picture',
       min_confidence: minConfidence.value / 100,
     }
     if (selectedRunId.value) statsParams.run_id = selectedRunId.value
-    
+
     const statsResponse = await api.get(
       `/layout/${sourceStore.currentSource}/stats`,
       { params: statsParams }
     )
-    
+
     updateChartsFromStats(statsResponse.data)
 
     // 2. Load paginated pictures with all filters
@@ -318,7 +318,7 @@ async function loadPictures() {
       `/layout/${sourceStore.currentSource}/detections`,
       { params }
     )
-    
+
     // Transform detections into Picture objects
     const allPictures: Picture[] = response.data.items.map((detection: any) => {
       // Extract date from page_id format: {source}_{YYYY-MM-DD}_{issue}_{daily}_{page}
@@ -347,16 +347,16 @@ async function loadPictures() {
         caption_bbox: detection.caption_bbox,
       }
     })
-    
+
     pictures.value = allPictures
     // Update total pages based on backend response
     // We need to store total count somewhere to calculate total pages
     // Let's add a ref for totalItems
     totalItems.value = response.data.total
-    
+
   } catch (error: any) {
     console.error('Failed to load pictures:', error)
-    
+
     // Check if this is a caption enrichment error
     if (error.response?.status === 400 && error.response?.data?.detail?.includes('Caption data not available')) {
       errorMessage.value = error.response.data.detail
@@ -365,7 +365,7 @@ async function loadPictures() {
     } else {
       errorMessage.value = 'Failed to load pictures. Please try again.'
     }
-    
+
     pictures.value = []
     totalItems.value = 0
   } finally {
@@ -378,7 +378,7 @@ function updateChartsFromStats(stats: any) {
   if (stats.timeline) {
     timelineChart.value = createTimelineChart(stats.timeline)
   }
-  
+
   if (stats.confidence_distribution) {
     confidenceDistributionChart.value = createConfidenceChart(stats.confidence_distribution)
   }
@@ -404,24 +404,24 @@ async function loadPictureCrop(picture: Picture) {
   const cacheKey = picture.detection_id
   const imageUrl = getImageUrl(picture)
   if (!imageUrl) return
-  
+
   const bbox = {
     x1: picture.bbox_x1,
     y1: picture.bbox_y1,
     x2: picture.bbox_x2,
     y2: picture.bbox_y2,
   }
-  
+
   await cropImage(imageUrl, bbox, cacheKey)
 }
 
 async function loadCaptionCrop(picture: Picture) {
   if (!picture.caption_bbox) return
-  
+
   const cacheKey = `caption_${picture.detection_id}`
   const imageUrl = getImageUrl(picture)
   if (!imageUrl) return
-  
+
   await cropCaption(imageUrl, picture.caption_bbox, cacheKey)
 }
 
@@ -441,10 +441,10 @@ const pageThumbnailLoading = ref(false)
 
 async function loadPageThumbnailWithOverlay(picture: Picture) {
   if (pageThumbnailLoading.value) return
-  
+
   pageThumbnailLoading.value = true
   pageThumbnail.value = ''
-  
+
   const imageUrl = getImageUrl(picture)
   if (!imageUrl) {
     pageThumbnailLoading.value = false
@@ -455,7 +455,7 @@ async function loadPageThumbnailWithOverlay(picture: Picture) {
     // Load the full image
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    
+
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
       img.onerror = () => reject(new Error('Failed to load image'))
@@ -503,7 +503,7 @@ async function loadPageThumbnailWithOverlay(picture: Picture) {
 
     // Convert to data URL
     pageThumbnail.value = canvas.toDataURL('image/jpeg', 0.85)
-    
+
   } catch (error) {
     console.error('Failed to create page thumbnail:', error)
   } finally {
@@ -513,15 +513,15 @@ async function loadPageThumbnailWithOverlay(picture: Picture) {
 
 async function viewImage(picture: Picture) {
   if (!picture.image_path) return
-  
+
   // Extract relative path
   let relativePath = picture.image_path
   if (relativePath.includes('/images/')) {
     relativePath = relativePath.split('/images/')[1]
   }
-  
+
   selectedImagePath.value = relativePath
-  
+
   // Extract page metadata from page_id
   const pageMetadata = parsePageMetadata(picture.page_id)
   selectedPageMetadata.value = {
@@ -530,19 +530,19 @@ async function viewImage(picture: Picture) {
     daily_count: pageMetadata?.daily,
     page_number: pageMetadata?.page,
   }
-  
+
   // Store the picture for the dialog
   selectedPictureForDialog.value = picture
-  
+
   // Fetch all detections for this page to show context (headlines, etc.)
   try {
     const response = await api.get(
       `/layout/${sourceStore.currentSource}/detections`,
-      { 
-        params: { 
+      {
+        params: {
           page_id: picture.page_id,
-          run_id: selectedRunId.value 
-        } 
+          run_id: selectedRunId.value
+        }
       }
     )
     allPageDetections.value = response.data.items
@@ -550,10 +550,10 @@ async function viewImage(picture: Picture) {
     console.error('Failed to load page detections:', error)
     allPageDetections.value = []
   }
-  
+
   // Load page thumbnail with detection overlay
   loadPageThumbnailWithOverlay(picture)
-  
+
   // Create detection object for OpenSeadragonViewer
   selectedImageDetections.value = [{
     detection_id: picture.detection_id,
@@ -566,7 +566,7 @@ async function viewImage(picture: Picture) {
       y2: picture.bbox_y2,
     },
   }]
-  
+
   imageViewerDialog.value = true
 }
 
@@ -595,7 +595,7 @@ function previousPicture() {
   } else if (currentPage.value > 1) {
     // Cross-page case: previous picture is on previous page
     currentPage.value--
-    
+
     // Wait for pictures to update
     const unwatch = watch(pictures, (newPictures) => {
       if (newPictures.length > 0) {
@@ -609,7 +609,7 @@ function previousPicture() {
 
 function nextPicture() {
   const isLastOnPage = currentPictureIndex.value === pictures.value.length - 1
-  
+
   if (!isLastOnPage && currentPictureIndex.value !== -1) {
     // Normal case: next picture is on current page
     const next = pictures.value[currentPictureIndex.value + 1]
@@ -617,7 +617,7 @@ function nextPicture() {
   } else if (currentPage.value < totalPages.value) {
     // Cross-page case: next picture is on next page
     currentPage.value++
-    
+
     // Wait for pictures to update
     const unwatch = watch(pictures, (newPictures) => {
       if (newPictures.length > 0) {
@@ -632,7 +632,7 @@ function nextPicture() {
 // Keyboard navigation
 function handleKeydown(e: KeyboardEvent) {
   if (!imageViewerDialog.value) return
-  
+
   if (e.key === 'ArrowLeft') {
     previousPicture()
   } else if (e.key === 'ArrowRight') {
@@ -675,10 +675,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-4 pb-6">
-    <!-- Sticky header - compact single row -->
-    <div class="sticky top-0 z-10 bg-background py-3 px-6">
-      <div class="flex flex-wrap items-start gap-4 mt-2 mb-1">
+  <div class="h-full flex flex-col overflow-auto">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex flex-wrap items-start gap-4">
         <!-- Title -->
         <div class="flex items-center gap-2 min-w-0">
           <AnalysisHeader
@@ -711,7 +711,7 @@ onMounted(() => {
     </div>
 
     <!-- Content area -->
-    <div class="space-y-6 px-6">
+    <div class="px-4 pb-6 space-y-6">
       <!-- Statistics and Charts Section (Collapsible) -->
       <details v-if="pictures.length > 0" class="rounded-lg border bg-card" open>
         <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none">
@@ -727,7 +727,7 @@ onMounted(() => {
             <div v-if="timelineChart.series" class="rounded-lg border bg-card p-4">
               <VChart :option="timelineChart" class="h-[300px]" autoresize />
             </div>
-            
+
             <!-- Size Distribution Chart -->
             <div class="rounded-lg border bg-card p-4">
               <VChart :option="sizeDistributionChart" class="h-[300px]" autoresize />
@@ -740,7 +740,7 @@ onMounted(() => {
             <div class="rounded-lg border bg-card p-4">
               <VChart :option="confidenceDistributionChart" class="h-[300px]" autoresize />
             </div>
-            
+
             <!-- Position Distribution -->
             <div class="rounded-lg border bg-card p-4">
               <VChart :option="positionDistributionChart" class="h-[300px]" autoresize />

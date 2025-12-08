@@ -32,12 +32,12 @@ const filterOptions = ref<SearchFilterOptions>({
 const sortOrder = ref<'asc' | 'desc'>('desc') // Default to newest first
 
 // Pagination
-const { 
-  currentPage, 
-  totalItems, 
+const {
+  currentPage,
+  totalItems,
   totalPages,
   pageSize,
-  goToPage 
+  goToPage
 } = usePagination({ itemsPerPage: 50 })
 
 // Watch for page changes
@@ -71,16 +71,16 @@ watch(() => sourceStore.sourceStats, (stats) => {
 
 async function search() {
   if (!sourceStore.currentSource || !filterOptions.value.query.trim()) return
-  
+
   loading.value = true
   try {
     const params: any = {
       query: filterOptions.value.query,
       run_id: selectedRunId.value,
       sort_order: sortOrder.value,
-      pagination: { 
-        page: currentPage.value, 
-        page_size: pageSize.value 
+      pagination: {
+        page: currentPage.value,
+        page_size: pageSize.value
       },
     }
 
@@ -106,9 +106,9 @@ async function search() {
 // Group results by page
 const groupedResults = computed(() => {
   if (!results.value?.results) return []
-  
+
   const groups = new Map<string, { page_id: string; date: string; results: SearchResult[]; metadata: any }>()
-  
+
   results.value.results.forEach((result: SearchResult) => {
     if (!groups.has(result.page_id)) {
       const metadata = parsePageMetadata(result.page_id)
@@ -121,7 +121,7 @@ const groupedResults = computed(() => {
     }
     groups.get(result.page_id)!.results.push(result)
   })
-  
+
   return Array.from(groups.values())
 })
 
@@ -147,9 +147,9 @@ const currentPageNumber = computed(() => {
 
 function viewPage(result: SearchResult) {
   if (!sourceStore.currentSource) return
-  
+
   selectedResult.value = result
-  
+
   if (result.image_path) {
     const url = getFullImageUrl(result.image_path, sourceStore.currentSource)
     if (url) {
@@ -168,7 +168,7 @@ function viewPage(result: SearchResult) {
 
 async function fetchPageDetailsForViewer(pageId: string, result: SearchResult) {
   if (!sourceStore.currentSource) return
-  
+
   try {
     // Get page info including ALTO and image dimensions
     const response = await api.get(`/data/${sourceStore.currentSource}/pages`, {
@@ -177,19 +177,19 @@ async function fetchPageDetailsForViewer(pageId: string, result: SearchResult) {
         page_size: 1
       }
     })
-    
+
     if (response.data && response.data.length > 0) {
       const page = response.data[0]
-      
+
       // Scale coordinates from ALTO space to image space (like IssueReader)
       const altoWidth = page.alto_width
       const altoHeight = page.alto_height
       const imageWidth = page.image_width
       const imageHeight = page.image_height
-      
+
       const scaleX = (altoWidth && imageWidth) ? imageWidth / altoWidth : 1
       const scaleY = (altoHeight && imageHeight) ? imageHeight / altoHeight : 1
-      
+
       // Apply scaling to the text line coordinates
       if (result.x !== undefined && result.y !== undefined) {
         scaledTextLines.value = [{
@@ -211,7 +211,7 @@ async function fetchPageDetailsForViewer(pageId: string, result: SearchResult) {
 
 async function fetchPageDetails(pageId: string) {
   if (!sourceStore.currentSource) return
-  
+
   try {
     const response = await api.get(`/layout/${sourceStore.currentSource}/detections`, {
       params: {
@@ -219,7 +219,7 @@ async function fetchPageDetails(pageId: string) {
         page_size: 1
       }
     })
-    
+
     if (response.data.items && response.data.items.length > 0) {
       const imagePath = response.data.items[0].image_path
       const url = getFullImageUrl(imagePath, sourceStore.currentSource)
@@ -242,7 +242,7 @@ function closeViewer() {
 
 function openInIssueReader() {
   if (!currentIssueId.value) return
-  
+
   router.push({
     name: 'issue',
     params: { issueId: currentIssueId.value },
@@ -261,7 +261,7 @@ function onMetadataLoaded() {
 <template>
   <div class="space-y-6 pb-6 h-full flex flex-col">
     <!-- Header -->
-    <div class="px-6 pt-6">
+    <div class="px-4 pt-4">
       <div class="flex flex-wrap items-start gap-4 mb-6">
         <!-- Title -->
         <div class="flex items-center gap-2 min-w-0">
@@ -271,7 +271,7 @@ function onMetadataLoaded() {
             icon="search"
           />
         </div>
-        
+
         <!-- Results Selector -->
         <div class="flex-1 min-w-[200px] self-stretch">
           <ResultsViewer
@@ -304,7 +304,7 @@ function onMetadataLoaded() {
                 Search
               </button>
             </div>
-            
+
             <!-- Results Count and Sort Options -->
             <div class="flex items-center justify-between text-sm text-muted-foreground">
               <span v-if="totalItems > 0">
@@ -312,7 +312,7 @@ function onMetadataLoaded() {
               </span>
               <span v-else-if="!loading && results">No results</span>
               <span v-else>&nbsp;</span>
-              
+
               <div class="flex items-center gap-4">
                 <!-- Sort Selector -->
                 <div class="flex items-center gap-2">
@@ -325,7 +325,7 @@ function onMetadataLoaded() {
                     <option value="asc">Oldest First</option>
                   </select>
                 </div>
-                
+
                 <!-- View Mode Toggle -->
                 <div class="flex items-center gap-0.5 border rounded-md p-0.5">
                   <button
@@ -357,7 +357,7 @@ function onMetadataLoaded() {
     </div>
 
     <!-- Content area -->
-    <div class="px-6 flex-1 overflow-auto">
+    <div class="px-4 flex-1 overflow-auto">
       <div v-if="loading && !results" class="text-center py-12">
         <p class="text-muted-foreground">Searching...</p>
       </div>
@@ -372,7 +372,7 @@ function onMetadataLoaded() {
             :class="{ 'compact-group': group.results.length <= 2 }"
           >
             <!-- Page Header (compact for small groups) -->
-            <div 
+            <div
               class="bg-muted/30 border-b"
               :class="group.results.length <= 2 ? 'px-3 py-2' : 'px-4 py-3'"
             >
@@ -388,10 +388,10 @@ function onMetadataLoaded() {
                 </div>
               </div>
             </div>
-            
+
             <!-- Results for this page (adaptive columns based on count) -->
             <div :class="group.results.length <= 2 ? 'p-3' : 'p-4'">
-              <div 
+              <div
                 class="grid gap-3"
                 :class="{
                   'grid-cols-1': group.results.length <= 2,
@@ -413,8 +413,8 @@ function onMetadataLoaded() {
                       View Page
                     </button>
                   </div>
-                  
-                  <div 
+
+                  <div
                     class="text-sm leading-relaxed font-serif bg-muted/30 rounded border border-border/50"
                     :class="group.results.length <= 2 ? 'p-2.5' : 'p-3'"
                   >
@@ -433,7 +433,7 @@ function onMetadataLoaded() {
             </div>
           </div>
         </div>
-        
+
         <!-- Grid View -->
         <div v-else class="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div
@@ -453,7 +453,7 @@ function onMetadataLoaded() {
                 {{ group.metadata ? `Iss. ${group.metadata.issue} • D. ${group.metadata.daily} • P. ${group.metadata.page}` : group.page_id }}
               </div>
             </div>
-            
+
             <!-- Results (single column in grid view) -->
             <div class="p-3 space-y-2 flex-1 overflow-auto">
               <div
@@ -470,7 +470,7 @@ function onMetadataLoaded() {
                     View
                   </button>
                 </div>
-                
+
                 <div class="text-xs leading-relaxed font-serif bg-muted/30 p-2 rounded border border-border/50 line-clamp-4">
                   <div v-if="result.highlights && result.highlights.length > 0">
                     <span v-for="(highlight, idx) in result.highlights" :key="idx">
@@ -499,18 +499,19 @@ function onMetadataLoaded() {
       <div v-else-if="results" class="text-center py-12">
         <p class="text-muted-foreground">No results found.</p>
       </div>
-      
+
       <div v-else class="text-center py-12">
         <p class="text-muted-foreground">Enter a query to start searching.</p>
       </div>
     </div>
 
     <!-- Viewer Dialog (LayoutView style) -->
-    <div
-      v-if="viewerOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-      @click="closeViewer"
-    >
+    <Teleport to="body">
+      <div
+        v-if="viewerOpen"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+        @click="closeViewer"
+      >
       <div
         class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
         @click.stop
@@ -552,6 +553,7 @@ function onMetadataLoaded() {
           />
         </div>
       </div>
-    </div>
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -156,20 +156,20 @@ async function loadThumbnailPages() {
 // Enhanced stats from detailed backend call
 const enhancedStats = computed(() => {
   if (!backendStats.value) return null
-  
+
   const stats = backendStats.value
-  const avgDetectionsPerPage = stats.unique_pages && stats.total 
-    ? (stats.total / stats.unique_pages).toFixed(1) 
+  const avgDetectionsPerPage = stats.unique_pages && stats.total
+    ? (stats.total / stats.unique_pages).toFixed(1)
     : '0'
-  
+
   // Calculate text vs image ratio from counts
   const textClasses = ['Paragraph', 'Heading', 'Caption', 'Text']
   const imageClasses = ['Image', 'Picture', 'Photo', 'Illustration']
-  
+
   let textCount = 0
   let imageCount = 0
   let totalOtherCount = 0
-  
+
   // Access counts from the stats object (it's in the Any type from backend)
   const counts = (stats as any).counts
   if (counts) {
@@ -183,11 +183,11 @@ const enhancedStats = computed(() => {
       }
     })
   }
-  
+
   const totalTextImage = textCount + imageCount
   const textPercentage = totalTextImage > 0 ? ((textCount / totalTextImage) * 100).toFixed(1) : '0'
   const imagePercentage = totalTextImage > 0 ? ((imageCount / totalTextImage) * 100).toFixed(1) : '0'
-  
+
   return {
     totalDetections: stats.total || 0,
     uniquePages: stats.unique_pages || 0,
@@ -228,25 +228,25 @@ async function loadStats() {
 
   try {
     console.log('📊 Loading stats for', selectedRunId.value)
-    
+
     // Load unfiltered stats for overview
     const unfilteredResponse = await api.get(
       `/layout/${sourceStore.currentSource}/stats`,
       { params: { run_id: selectedRunId.value, min_confidence: 0 } }
     )
     backendStats.value = unfilteredResponse.data
-    
+
     // Load filtered stats for pie chart
     const filteredResponse = await api.get(
       `/layout/${sourceStore.currentSource}/stats`,
       { params: { run_id: selectedRunId.value, min_confidence: minConfidence.value / 100 } }
     )
-    
+
     // Generate pie chart from filtered stats
     if (filteredResponse.data.counts) {
       pieChart.value = createPieChartFromCounts(filteredResponse.data.counts) as EChartsOption
     }
-    
+
     console.log('✅ Stats loaded')
   } catch (error) {
     console.error('Failed to load stats:', error)
@@ -262,7 +262,7 @@ async function loadTimeline() {
       { params: { aggregation: 'day', run_id: selectedRunId.value } }
     )
     console.log('📊 Timeline data loaded')
-    
+
     // Create timeline chart with all classes stacked
     timelineChart.value = createMultiClassTimelineChart(response.data)
   } catch (error) {
@@ -286,10 +286,10 @@ function createMultiClassTimelineChart(data: Record<string, { date: string; valu
   const series = Object.entries(data).map(([className, points]) => {
     // Create a map for quick lookup
     const valueMap = new Map(points.map(p => [p.date, p.value]))
-    
+
     // Fill in data for all dates (0 if no data)
     const seriesData = sortedDates.map(date => valueMap.get(date) || 0)
-    
+
     return {
       name: className,
       type: 'line' as const,
@@ -414,7 +414,7 @@ async function loadPages() {
 
   loading.value = true
   pages.value = []
-  
+
   try {
     const params: any = {
       page: currentPage.value,
@@ -488,10 +488,10 @@ watch(selectedRunId, async (newId, oldId) => {
     pieChart.value = {}
     return
   }
-  
+
   if (newId !== oldId) {
     isChangingRun.value = true
-    
+
     try {
       pages.value = []
       classNames.value = []
@@ -500,7 +500,7 @@ watch(selectedRunId, async (newId, oldId) => {
       totalPages.value = 0
       timelineChart.value = {}
       pieChart.value = {}
-      
+
       await loadClassNames()
       await loadPages()
       await loadStats()
@@ -528,10 +528,10 @@ watch(() => sourceStore.currentSource, () => {
 </script>
 
 <template>
-  <div class="space-y-4 pb-6">
-    <!-- Sticky header -->
-    <div class="sticky top-0 z-10 bg-background py-3 px-6">
-      <div class="flex flex-wrap items-start gap-4 mt-2 mb-1">
+  <div class="h-full flex flex-col overflow-auto">
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
+      <div class="flex flex-wrap items-start gap-4">
         <!-- Title -->
         <div class="flex items-center gap-2 min-w-0">
           <AnalysisHeader
@@ -577,7 +577,7 @@ watch(() => sourceStore.currentSource, () => {
                 <span>{{ className }}</span>
               </label>
             </div>
-            
+
             <!-- Confidence and Count Row -->
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-2 flex-1">
@@ -593,7 +593,7 @@ watch(() => sourceStore.currentSource, () => {
                   class="flex-1"
                 />
               </div>
-              
+
               <span v-if="statistics" class="text-xs text-muted-foreground whitespace-nowrap">
                 {{ statistics.uniquePages }} pages
               </span>
@@ -604,7 +604,7 @@ watch(() => sourceStore.currentSource, () => {
     </div>
 
     <!-- Content area -->
-    <div class="space-y-6 px-6">
+    <div class="px-4 pb-6 space-y-6">
       <!-- Statistics and Charts Section (Collapsible) -->
       <details v-if="hasData || loading" class="rounded-lg border bg-card" open>
         <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none">
@@ -630,7 +630,7 @@ watch(() => sourceStore.currentSource, () => {
               <div class="text-2xl font-bold">{{ enhancedStats.avgDetectionsPerPage }}</div>
               <p class="text-xs text-muted-foreground">Avg per Page</p>
             </div>
-            
+
             <!-- Row 2 -->
             <div class="rounded-lg border bg-card p-4">
               <div class="text-2xl font-bold">{{ enhancedStats.avgConfidence }}%</div>
@@ -656,7 +656,7 @@ watch(() => sourceStore.currentSource, () => {
             <div v-if="timelineChart.series" class="rounded-lg border bg-card p-4">
               <VChart :option="timelineChart" class="h-[400px]" autoresize />
             </div>
-            
+
             <!-- Pie Chart -->
             <div v-if="pieChart.series" class="rounded-lg border bg-card p-4">
               <VChart :option="pieChart" class="h-[400px]" autoresize />
@@ -708,12 +708,12 @@ watch(() => sourceStore.currentSource, () => {
                 <div class="h-3 bg-muted rounded animate-pulse w-1/2"></div>
                 <div class="h-4 bg-muted rounded animate-pulse w-2/5"></div>
               </div>
-              
+
               <!-- Image skeleton with black background -->
               <div class="bg-black" style="height: 384px">
                 <div class="w-full h-full bg-muted/20 animate-pulse"></div>
               </div>
-              
+
               <!-- Footer skeleton -->
               <div class="p-3 border-t flex justify-end">
                 <div class="h-8 bg-muted rounded animate-pulse w-28"></div>
@@ -753,11 +753,12 @@ watch(() => sourceStore.currentSource, () => {
     </div>
 
     <!-- Detection details dialog -->
-    <div
-      v-if="detailsDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      @click="detailsDialog = false"
-    >
+    <Teleport to="body">
+      <div
+        v-if="detailsDialog"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
+        @click="detailsDialog = false"
+      >
       <div
         class="bg-card rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-hidden m-4"
         @click.stop
@@ -799,14 +800,15 @@ watch(() => sourceStore.currentSource, () => {
           </button>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Image viewer dialog -->
-    <div
-      v-if="imageViewerDialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-      @click="imageViewerDialog = false"
-    >
+    <Teleport to="body">
+      <div
+        v-if="imageViewerDialog"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+        @click="imageViewerDialog = false"
+      >
       <div
         class="bg-card rounded-lg shadow-lg w-[90vw] max-w-[1400px] h-[95vh] overflow-hidden m-4 flex flex-col"
         @click.stop
@@ -839,7 +841,7 @@ watch(() => sourceStore.currentSource, () => {
           />
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Thumbnail Gallery Dialog -->
     <LayoutThumbnailGalleryDialog

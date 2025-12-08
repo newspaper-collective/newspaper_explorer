@@ -37,6 +37,11 @@ class SourceInfo(BaseModel):
     total_archive_size: Optional[str] = Field(
         default=None, description="Compressed XML archive size"
     )
+    xml_file_count: Optional[int] = Field(default=None, description="Number of XML files")
+    xml_total_size: Optional[str] = Field(
+        default=None, description="Total size of uncompressed XML files"
+    )
+    parquet_size: Optional[str] = Field(default=None, description="Size of parsed parquet file")
     image_size: Optional[str] = Field(default=None, description="Total size of downloaded images")
     image_count: Optional[int] = Field(default=None, description="Number of downloaded images")
     analysis_results: dict[str, AnalysisResultSummary] = Field(default_factory=dict)

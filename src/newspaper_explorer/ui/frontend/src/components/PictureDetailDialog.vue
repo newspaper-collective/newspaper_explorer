@@ -116,12 +116,12 @@ const captionCount = computed(() => {
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="fixed z-50 flex items-center justify-center"
-    style="top: -10px; left: -10px; right: -10px; bottom: -10px; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px)"
-    @click="emit('close')"
-  >
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      @click="emit('close')"
+    >
     <div
       class="relative w-full max-w-7xl h-[90vh] flex flex-col bg-background rounded-lg shadow-lg overflow-hidden"
       @click.stop
@@ -365,5 +365,5 @@ const captionCount = computed(() => {
         </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>

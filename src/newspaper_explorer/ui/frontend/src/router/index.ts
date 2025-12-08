@@ -73,6 +73,11 @@ const router = createRouter({
           name: 'preprocessing',
           component: () => import('@/views/PreprocessingView.vue'),
         },
+        {
+          path: 'data',
+          name: 'data',
+          component: () => import('@/views/DataView.vue'),
+        },
       ],
     },
   ],
