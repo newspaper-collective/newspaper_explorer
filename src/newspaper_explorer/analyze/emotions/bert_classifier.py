@@ -577,7 +577,7 @@ class EmotionPredictor:
             chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
             df_chunk.write_parquet(chunk_file)
 
-            logger.info(f"  ✓ Chunk {chunk_idx} saved to {chunk_file.name}")
+            logger.info(f"  [OK] Chunk {chunk_idx} saved to {chunk_file.name}")
 
         # Combine all chunk files into final output
         logger.info("\nCombining chunk files...")
@@ -642,7 +642,7 @@ class EmotionPredictor:
         metadata_path = save_metadata(metadata, output_file)
         logger.info(f"Metadata saved to: {metadata_path}")
 
-        logger.info(f"\n✓ Processing complete!")
+        logger.info(f"\n[OK] Processing complete!")
         logger.info(f"Results saved to: {output_file}")
         logger.info(f"Analysis ID: {metadata.analysis_id}")
 
@@ -800,7 +800,7 @@ class EmotionPredictor:
             chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
             df_chunk.write_parquet(chunk_file)
 
-            logger.info(f"  ✓ Chunk {chunk_idx} saved to {chunk_file.name}")
+            logger.info(f"  [OK] Chunk {chunk_idx} saved to {chunk_file.name}")
 
         # Stop worker processes
         for queue in texts_queues:
@@ -872,7 +872,7 @@ class EmotionPredictor:
         metadata_path = save_metadata(metadata, output_file)
         logger.info(f"Metadata saved to: {metadata_path}")
 
-        logger.info(f"\n✓ Processing complete!")
+        logger.info(f"\n[OK] Processing complete!")
         logger.info(f"Results saved to: {output_file}")
         logger.info(f"Analysis ID: {metadata.analysis_id}")
 

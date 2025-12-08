@@ -143,7 +143,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
     images_dir = config.data_dir / "raw" / source / "images"
 
     if not images_dir.exists():
-        click.echo(f"✗ Images directory not found: {images_dir}", err=True)
+        click.echo(f"[ERROR] Images directory not found: {images_dir}", err=True)
         click.echo("  Run 'newspaper-explorer data download-images' first", err=True)
         return
 
@@ -157,10 +157,10 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
             break
 
     if not image_paths:
-        click.echo(f"✗ No images found in {images_dir}", err=True)
+        click.echo(f"[ERROR] No images found in {images_dir}", err=True)
         return
 
-    click.echo(f"✓ Found {len(image_paths)} images")
+    click.echo(f"[OK] Found {len(image_paths)} images")
 
     # Generate analysis_id for this run
     model_short = f"yolo11{model_size[0]}"  # nano -> yolo11n, medium -> yolo11m
@@ -177,7 +177,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
 
         existing_df = pl.read_parquet(output_file)
         processed_pages = set(existing_df["page_id"].unique().to_list())
-        click.echo(f"✓ Resume mode: {len(processed_pages)} pages already processed")
+        click.echo(f"[OK] Resume mode: {len(processed_pages)} pages already processed")
 
         # Filter out already processed images
         from newspaper_explorer.analyze.layout.detection import LayoutDetector
@@ -193,10 +193,10 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
         ]
         skipped = original_count - len(image_paths)
         if skipped > 0:
-            click.echo(f"✓ Skipping {skipped} already processed pages")
+            click.echo(f"[OK] Skipping {skipped} already processed pages")
 
         if not image_paths:
-            click.echo("✓ All pages already processed!", err=False)
+            click.echo("[OK] All pages already processed!", err=False)
             return
 
     # Check GPU availability
@@ -206,17 +206,17 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
 
             if torch.cuda.is_available():
                 gpu_count = torch.cuda.device_count()
-                click.echo(f"✓ Found {gpu_count} GPU(s) available")
+                click.echo(f"[OK] Found {gpu_count} GPU(s) available")
 
                 if gpu_count > 1:
                     click.echo(f"  Note: YOLO only uses single GPU (device {device})")
                     click.echo(f"  Multi-GPU parallelism not supported by YOLO's predict() method")
                     click.echo(f"  Recommendation: Use largest possible batch size on single GPU")
             else:
-                click.echo("⚠ CUDA requested but no GPUs available, falling back to CPU", err=True)
+                click.echo("[WARNING] CUDA requested but no GPUs available, falling back to CPU", err=True)
                 device = "cpu"
         except ImportError:
-            click.echo("⚠ PyTorch not found, cannot check GPU availability", err=True)
+            click.echo("[WARNING] PyTorch not found, cannot check GPU availability", err=True)
 
     # Initialize detector
     click.echo(f"\nInitializing YOLOv11 {model_size} model...")
@@ -299,7 +299,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
                 skipped_count += 1
 
     if skipped_count > 0:
-        click.echo(f"⚠ Skipped {skipped_count} detections with incomplete data", err=True)
+        click.echo(f"[WARNING] Skipped {skipped_count} detections with incomplete data", err=True)
 
     # Create DataFrame and save with metadata
     if all_detections:
@@ -483,7 +483,7 @@ def extract_pictures(
     # Load detection results
     detections_dir = config.results_dir / source / "layout"
     if not detections_dir.exists():
-        click.echo(f"✗ No layout detections found in {detections_dir}", err=True)
+        click.echo(f"[ERROR] No layout detections found in {detections_dir}", err=True)
         click.echo("  Run 'newspaper-explorer analyze layout detect' first", err=True)
         return
 
@@ -501,10 +501,10 @@ def extract_pictures(
         ]
 
     if not detection_files:
-        click.echo(f"✗ No detection files found", err=True)
+        click.echo(f"[ERROR] No detection files found", err=True)
         return
 
-    click.echo(f"✓ Found {len(detection_files)} detection files")
+    click.echo(f"[OK] Found {len(detection_files)} detection files")
 
     # Initialize extractor with filtering options
     from newspaper_explorer.analyze.layout.region_extraction import RegionExtractor
@@ -521,13 +521,13 @@ def extract_pictures(
     if any([exclude_top_percent, exclude_bottom_percent, min_height, min_width]):
         click.echo("\nFiltering configuration:")
         if exclude_top_percent:
-            click.echo(f"  ✓ Excluding top {exclude_top_percent}% of page (headers)")
+            click.echo(f"  [OK] Excluding top {exclude_top_percent}% of page (headers)")
         if exclude_bottom_percent:
-            click.echo(f"  ✓ Excluding bottom {exclude_bottom_percent}% of page (footers)")
+            click.echo(f"  [OK] Excluding bottom {exclude_bottom_percent}% of page (footers)")
         if min_height:
-            click.echo(f"  ✓ Minimum height: {min_height}px")
+            click.echo(f"  [OK] Minimum height: {min_height}px")
         if min_width:
-            click.echo(f"  ✓ Minimum width: {min_width}px")
+            click.echo(f"  [OK] Minimum width: {min_width}px")
 
     # Extract images
     output_dir = config.results_dir / source / "layout" / "images"
@@ -540,7 +540,7 @@ def extract_pictures(
     if resume and metadata_path.exists():
         existing_df = pl.read_parquet(metadata_path)
         processed_pages = set(existing_df["page_id"].unique().to_list())
-        click.echo(f"✓ Resume mode: {len(processed_pages)} pages already processed")
+        click.echo(f"[OK] Resume mode: {len(processed_pages)} pages already processed")
 
     total_images = 0
     skipped_pages = 0
@@ -607,7 +607,7 @@ def extract_pictures(
     if save_crops:
         click.echo(f"Crops saved to: {output_dir}")
     click.echo(f"Metadata saved to: {metadata_path}")
-    click.echo(f"\n💡 To match captions, run:")
+    click.echo(f"\nTo match captions, run:")
     click.echo(f"   newspaper-explorer analyze layout match-captions --source {source}")
     click.echo(f"{'=' * 60}\n")
 
@@ -670,7 +670,7 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
     # Load detection results
     detections_dir = config.results_dir / source / "layout"
     if not detections_dir.exists():
-        click.echo(f"✗ No layout detections found in {detections_dir}", err=True)
+        click.echo(f"[ERROR] No layout detections found in {detections_dir}", err=True)
         click.echo("  Run 'newspaper-explorer analyze layout detect' first", err=True)
         return
 
@@ -688,15 +688,15 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
         ]
 
     if not detection_files:
-        click.echo(f"✗ No detection files found", err=True)
+        click.echo(f"[ERROR] No detection files found", err=True)
         return
 
-    click.echo(f"✓ Found {len(detection_files)} detection files")
+    click.echo(f"[OK] Found {len(detection_files)} detection files")
 
     # Load parsed text for caption OCR extraction
     lines_path = get_text_data_path(source, text_data)
     if not lines_path.exists():
-        click.echo(f"✗ Text data not found: {lines_path}", err=True)
+        click.echo(f"[ERROR] Text data not found: {lines_path}", err=True)
         click.echo("  Run 'newspaper-explorer data parse' or 'preprocess' first", err=True)
         return
 
@@ -707,7 +707,7 @@ def match_captions(source, year, caption_position, search_radius, overlap_thresh
     if year:
         lines_df = lines_df.filter(pl.col("year") == year)
 
-    click.echo(f"✓ Loaded {len(lines_df)} text lines for caption extraction")
+    click.echo(f"[OK] Loaded {len(lines_df)} text lines for caption extraction")
 
     # Initialize proximity matcher (handles text extraction + spatial matching)
     from newspaper_explorer.analyze.layout.region_matching import ProximityMatcher
@@ -859,7 +859,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
     # Load detection results
     layout_dir = config.results_dir / source / "layout"
     if not layout_dir.exists():
-        click.echo(f"✗ Layout results not found: {layout_dir}", err=True)
+        click.echo(f"[ERROR] Layout results not found: {layout_dir}", err=True)
         return
 
     # Find the layout run to use
@@ -872,7 +872,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
             d for d in layout_dir.iterdir() if d.is_dir() and (d / "layout.parquet").exists()
         ]
         if not result_dirs:
-            click.echo(f"✗ No layout results found in {layout_dir}", err=True)
+            click.echo(f"[ERROR] No layout results found in {layout_dir}", err=True)
             return
         result_dirs.sort(reverse=True)
         layout_path = result_dirs[0] / "layout.parquet"
@@ -880,7 +880,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
         run_id = result_dirs[0].name
 
     if not layout_path.exists():
-        click.echo(f"✗ Layout data not found: {layout_path}", err=True)
+        click.echo(f"[ERROR] Layout data not found: {layout_path}", err=True)
         return
 
     click.echo(f"Using layout results: {run_id}")
@@ -899,15 +899,15 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
         ).filter(pl.col("year") == year)
 
     if len(captions_df) == 0:
-        click.echo(f"✗ No caption detections found", err=True)
+        click.echo(f"[ERROR] No caption detections found", err=True)
         return
 
-    click.echo(f"✓ Found {len(captions_df)} caption detections")
+    click.echo(f"[OK] Found {len(captions_df)} caption detections")
 
     # Load text data
     lines_path = get_text_data_path(source, text_data)
     if not lines_path.exists():
-        click.echo(f"✗ Text data not found: {lines_path}", err=True)
+        click.echo(f"[ERROR] Text data not found: {lines_path}", err=True)
         click.echo("  Run 'newspaper-explorer data parse' first", err=True)
         return
 
@@ -917,7 +917,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
     if year:
         lines_df = lines_df.filter(pl.col("year") == year)
 
-    click.echo(f"✓ Loaded {len(lines_df)} text lines")
+    click.echo(f"[OK] Loaded {len(lines_df)} text lines")
 
     # Initialize TextLinker with image index for coordinate scaling
     click.echo(f"\nInitializing TextLinker with image index...")
@@ -931,7 +931,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
 
     if linker.image_index is None:
         click.echo(
-            f"⚠ Warning: Image index not found. Run: newspaper-explorer data index-images --source {source}",
+            f"[WARNING] Warning: Image index not found. Run: newspaper-explorer data index-images --source {source}",
             err=True,
         )
         click.echo(f"  Coordinate scaling may be inaccurate!", err=True)
@@ -1035,7 +1035,7 @@ def extract_caption_text(source, year, run_id, min_iou, text_data):
                 click.echo(f"  [{row['page_id']}] {text_preview}")
                 click.echo(f"    Lines: {row['num_lines']}")
     else:
-        click.echo(f"\n✗ No caption text extracted", err=True)
+        click.echo(f"\n[ERROR] No caption text extracted", err=True)
 
 
 @layout_group.command()
@@ -1086,7 +1086,7 @@ def match_headlines(source, year, overlap_threshold, text_data):
     click.echo(f"Loading text data from: {lines_path}")
 
     if not lines_path.exists():
-        click.echo(f"✗ Parsed text not found: {lines_path}", err=True)
+        click.echo(f"[ERROR] Parsed text not found: {lines_path}", err=True)
         click.echo("  Run 'newspaper-explorer data parse' first", err=True)
         return
 
@@ -1097,7 +1097,7 @@ def match_headlines(source, year, overlap_threshold, text_data):
     if year:
         lines_df = lines_df.filter(pl.col("year") == year)
 
-    click.echo(f"✓ Loaded {len(lines_df)} text lines")
+    click.echo(f"[OK] Loaded {len(lines_df)} text lines")
 
     # Load detection results
     detections_dir = config.results_dir / source / "layout"
@@ -1108,7 +1108,7 @@ def match_headlines(source, year, overlap_threshold, text_data):
             f for f in detection_files if f"/{year}/" in str(f) or f"_{year}_" in f.stem
         ]
 
-    click.echo(f"✓ Found {len(detection_files)} detection files")
+    click.echo(f"[OK] Found {len(detection_files)} detection files")
 
     # Initialize matcher
     matcher = HeadlineMatcher(overlap_threshold=overlap_threshold)
@@ -1270,7 +1270,7 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
     detections_file = detections_dir / f"{source}_layout_detections.parquet"
 
     if not detections_file.exists():
-        click.echo(f"✗ No layout detections found: {detections_file}", err=True)
+        click.echo(f"[ERROR] No layout detections found: {detections_file}", err=True)
         click.echo("  Run 'newspaper-explorer analyze layout detect' first", err=True)
         return
 
@@ -1291,16 +1291,16 @@ def visualize(source, page_id, year, limit, element_types, comparison, show_link
         unique_pages = detections_df["page_id"].unique().to_list()[:limit]
         detections_df = detections_df.filter(pl.col("page_id").is_in(unique_pages))
     else:
-        click.echo("✗ Must specify either --page-id or --year", err=True)
+        click.echo("[ERROR] Must specify either --page-id or --year", err=True)
         return
 
     if len(detections_df) == 0:
-        click.echo(f"✗ No detections found for the specified criteria", err=True)
+        click.echo(f"[ERROR] No detections found for the specified criteria", err=True)
         return
 
     # Group by page
     pages_to_visualize = detections_df["page_id"].unique().to_list()
-    click.echo(f"✓ Found {len(pages_to_visualize)} page(s) to visualize")
+    click.echo(f"[OK] Found {len(pages_to_visualize)} page(s) to visualize")
 
     # Initialize visualizer
     visualizer = LayoutVisualizer(show_text=show_linked_text)
@@ -1404,7 +1404,7 @@ def build_articles(source, year, text_data):
     headlines_path = config.results_dir / source / "layout" / f"{source}_headlines.parquet"
 
     if not headlines_path.exists():
-        click.echo(f"✗ Matched headlines not found: {headlines_path}", err=True)
+        click.echo(f"[ERROR] Matched headlines not found: {headlines_path}", err=True)
         click.echo("  Run 'newspaper-explorer analyze layout match-headlines' first", err=True)
         return
 
@@ -1416,7 +1416,7 @@ def build_articles(source, year, text_data):
     if year:
         headlines_df = headlines_df.filter(pl.col("year") == year)
 
-    click.echo(f"✓ Loaded {len(headlines_df)} matched headlines")
+    click.echo(f"[OK] Loaded {len(headlines_df)} matched headlines")
 
     # Load text lines
     lines_path = get_text_data_path(source, text_data)
@@ -1426,7 +1426,7 @@ def build_articles(source, year, text_data):
     if year:
         lines_df = lines_df.filter(pl.col("year") == year)
 
-    click.echo(f"✓ Loaded {len(lines_df)} text lines")
+    click.echo(f"[OK] Loaded {len(lines_df)} text lines")
 
     # TODO: Load detection results for media (images, tables)
     # For now, we'll build articles with just headlines and text
@@ -1436,12 +1436,12 @@ def build_articles(source, year, text_data):
 
     # Build articles (this needs proper Headline object reconstruction from DataFrame)
     # For now, placeholder
-    click.echo("\n⚠ Article building requires full implementation")
+    click.echo("\n[WARNING] Article building requires full implementation")
     click.echo("  (Headline object reconstruction from DataFrame)")
 
     click.echo(f"\n{'=' * 60}\n")
     # For now, placeholder
-    click.echo("\n⚠ Article building requires full implementation")
+    click.echo("\n[WARNING] Article building requires full implementation")
     click.echo("  (Headline object reconstruction from DataFrame)")
 
     click.echo(f"\n{'=' * 60}\n")

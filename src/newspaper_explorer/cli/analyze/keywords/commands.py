@@ -132,7 +132,7 @@ def tfidf(
     Document Levels:
     - page: One document per newspaper page (RECOMMENDED - best balance)
     - date: One document per publication date (RECOMMENDED - for trends)
-    - textblock: One document per text block (⚠️ Can cause OOM on large datasets)
+    - textblock: One document per text block ([WARNING] Can cause OOM on large datasets)
     - file: One document per XML file (entire issue)
 
     Examples:
@@ -248,7 +248,7 @@ def tfidf(
         output_file = extractor.save_results(results_df, output_name=output_name)
 
         click.echo(f"\n{'='*80}")
-        click.echo(f"✓ Keyword extraction complete!")
+        click.echo(f"[OK] Keyword extraction complete!")
         click.echo(f"{'='*80}\n")
         click.echo(f"Results saved to: {output_file}")
         click.echo(f"Total documents: {len(results_df):,}")
@@ -459,7 +459,7 @@ def rake(
         click.echo("\nSaving results...")
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n✓ Saved keyphrases to: {output_path}")
+        click.echo(f"\n[OK] Saved keyphrases to: {output_path}")
         click.echo(f"  Total documents: {len(df_keywords)}")
         click.echo(f"  Columns: {df_keywords.columns}")
 
@@ -639,7 +639,7 @@ def yake(
         click.echo("\nSaving results...")
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n✓ Saved keywords to: {output_path}")
+        click.echo(f"\n[OK] Saved keywords to: {output_path}")
         click.echo(f"  Total documents: {len(df_keywords)}")
         click.echo(f"  Columns: {df_keywords.columns}")
 
@@ -907,7 +907,7 @@ def keybert(
         # Save results with metadata
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n✓ Saved keywords to: {output_path}")
+        click.echo(f"\n[OK] Saved keywords to: {output_path}")
         click.echo(f"  Total groups: {len(df_keywords)}")
         click.echo(f"  Columns: {df_keywords.columns}")
 

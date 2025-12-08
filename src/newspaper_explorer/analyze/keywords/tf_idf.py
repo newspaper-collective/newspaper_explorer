@@ -260,7 +260,7 @@ class TFIDFExtractor:
             df = df.head(limit)
 
         logger.info(f"Loaded {len(df):,} rows")
-        print(f"✓ Loaded {len(df):,} rows", flush=True)
+        print(f"[OK] Loaded {len(df):,} rows", flush=True)
 
         # Filter out null/empty texts
         df = df.filter(pl.col(self.text_column).is_not_null())
@@ -324,13 +324,13 @@ class TFIDFExtractor:
         documents = df_grouped["document"].to_list()
         num_documents = len(documents)
         logger.info(f"Created {num_documents:,} documents")
-        print(f"✓ Created {num_documents:,} documents", flush=True)
+        print(f"[OK] Created {num_documents:,} documents", flush=True)
 
         # Memory warning for large document counts
         if num_documents > 5_000_000:
             logger.warning(
                 f"\n{'=' * 80}\n"
-                f"⚠️  MEMORY WARNING: {num_documents:,} documents will create a VERY LARGE TF-IDF matrix\n"
+                f"MEMORY WARNING: {num_documents:,} documents will create a VERY LARGE TF-IDF matrix\n"
                 f"This may cause out-of-memory errors.\n\n"
                 f"RECOMMENDATIONS:\n"
                 f"  1. Use --document-level page (fewer documents, better context)\n"
@@ -367,7 +367,7 @@ class TFIDFExtractor:
         logger.info(f"TF-IDF matrix shape: {tfidf_matrix.shape}")
         logger.info(f"Vocabulary size: {len(feature_names)}")
         print(
-            f"✓ TF-IDF matrix: {tfidf_matrix.shape[0]:,} documents × {tfidf_matrix.shape[1]:,} terms",
+            f"[OK] TF-IDF matrix: {tfidf_matrix.shape[0]:,} documents × {tfidf_matrix.shape[1]:,} terms",
             flush=True,
         )
         logger.info(

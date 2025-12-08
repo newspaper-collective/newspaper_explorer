@@ -715,7 +715,7 @@ onMounted(() => {
       <!-- Statistics and Charts Section (Collapsible) -->
       <details v-if="pictures.length > 0" class="rounded-lg border bg-card" open>
         <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none">
-          📊 Statistics & Charts
+          Statistics & Charts
         </summary>
         <div class="p-6 pt-2 space-y-6">
           <!-- Statistics Cards -->

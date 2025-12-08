@@ -202,7 +202,7 @@ def predict(
             )
 
         click.echo(f"\n{'='*80}")
-        click.echo(f"✓ Emotion prediction complete!")
+        click.echo(f"[OK] Emotion prediction complete!")
         click.echo(f"{'='*80}\n")
         click.echo(f"Results saved to: {output_file}")
         click.echo(f"\nTo analyze results:")
@@ -282,17 +282,17 @@ def models(model_dir: str):
         model_file = model_dir_path / f"{emotion}.pt"
         if model_file.exists():
             size_mb = model_file.stat().st_size / (1024**2)
-            click.echo(f"  ✓ {emotion:12s} ({size_mb:.1f} MB)")
+            click.echo(f"  [OK] {emotion:12s} ({size_mb:.1f} MB)")
         else:
-            click.echo(f"  ✗ {emotion:12s} (NOT FOUND)")
+            click.echo(f"  [ERROR] {emotion:12s} (NOT FOUND)")
             all_found = False
 
     click.echo()
 
     if all_found:
-        click.echo("✓ All models found! Ready to predict.")
+        click.echo("[OK] All models found! Ready to predict.")
     else:
-        click.echo("✗ Some models are missing.")
+        click.echo("[ERROR] Some models are missing.")
         click.echo("\nTo download models:")
         click.echo("  1. Download from your source")
         click.echo(f"  2. Extract to: {model_dir_path.absolute()}")

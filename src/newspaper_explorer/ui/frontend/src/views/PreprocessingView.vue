@@ -525,7 +525,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
                 class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
                 :title="`${key}: ${value}`"
               >
-                {{ key }}={{ typeof value === 'boolean' ? (value ? '✓' : '✗') : value }}
+                {{ key }}={{ typeof value === 'boolean' ? (value ? '[OK]' : '[ERROR]') : value }}
               </span>
             </template>
 

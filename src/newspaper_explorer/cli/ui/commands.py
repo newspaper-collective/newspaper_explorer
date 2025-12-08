@@ -78,7 +78,7 @@ def start(
         newspaper-explorer ui start --no-reload
     """
 
-    echo("🚀 Starting Historical Newspaper Explorer UI...")
+    echo("Starting Historical Newspaper Explorer UI...")
     echo(f"   Host: {host}")
     echo(f"   Backend port: {backend_port}")
     if not backend_only:
@@ -99,9 +99,9 @@ def start(
             backend_only=backend_only,
         )
     except KeyboardInterrupt:
-        echo("\n👋 Shutting down UI...")
+        echo("\nShutting down UI...")
     except Exception as e:
-        echo(f"❌ Error starting UI: {e}", err=True)
+        echo(f"[ERROR] Error starting UI: {e}", err=True)
         raise click.Abort() from e
 
 
@@ -113,7 +113,7 @@ def info() -> None:
 
     info_data = get_ui_info()
 
-    echo("📰 Historical Newspaper Explorer UI")
+    echo("Historical Newspaper Explorer UI")
     echo()
     echo("Framework:")
     echo(f"  Backend:  {info_data['framework']['backend']}")
@@ -129,8 +129,8 @@ def info() -> None:
     echo(f"  Results directory: {info_data['config']['results_dir']}")
     echo()
     echo("Status:")
-    echo(f"  Backend ready:  {'✅' if info_data['status']['backend_ready'] else '❌'}")
-    echo(f"  Frontend ready: {'✅' if info_data['status']['frontend_ready'] else '❌'}")
+    echo(f"  Backend ready:  {'[OK]' if info_data['status']['backend_ready'] else '[ERROR]'}")
+    echo(f"  Frontend ready: {'[OK]' if info_data['status']['frontend_ready'] else '[ERROR]'}")
     echo()
     echo("API Endpoints:")
     echo(f"  Documentation: {info_data['endpoints']['api_docs']}")

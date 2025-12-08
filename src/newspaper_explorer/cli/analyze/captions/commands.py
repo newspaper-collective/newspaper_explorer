@@ -250,47 +250,47 @@ def enrich_captions(source: str, run_id: str, overlap_threshold: float, classes:
     layout_path = Path(config.results_dir) / source / "layout" / run_id / "layout.parquet"
 
     if not layout_path.exists():
-        click.echo(f"❌ Layout file not found: {layout_path}", err=True)
+        click.echo(f"[ERROR] Layout file not found: {layout_path}", err=True)
         return
 
-    click.echo(f"📂 Loading layout detections from {layout_path}")
+    click.echo(f"Loading layout detections from {layout_path}")
     detections_df = pl.read_parquet(layout_path)
 
     # Filter by class
     detections_df = detections_df.filter(pl.col("class_name").is_in(class_list))
 
-    click.echo(f"📊 Found {len(detections_df)} detections for classes: {', '.join(class_list)}")
+    click.echo(f"Found {len(detections_df)} detections for classes: {', '.join(class_list)}")
 
     if len(detections_df) == 0:
-        click.echo("⚠️  No detections to process", err=True)
+        click.echo("No detections to process", err=True)
         return
 
     # Load parsed text lines
     lines_path = Path(config.data_dir) / "raw" / source / "text" / f"{source}_lines.parquet"
 
     if not lines_path.exists():
-        click.echo(f"❌ Lines file not found: {lines_path}", err=True)
-        click.echo(f"💡 Run: newspaper-explorer data parse --source {source}", err=True)
+        click.echo(f"[ERROR] Lines file not found: {lines_path}", err=True)
+        click.echo(f"Run: newspaper-explorer data parse --source {source}", err=True)
         return
 
-    click.echo(f"📂 Loading parsed text lines from {lines_path}")
+    click.echo(f"Loading parsed text lines from {lines_path}")
     lines_df = pl.read_parquet(lines_path)
 
     # Get unique page_ids from detections
     page_ids = detections_df["page_id"].unique().to_list()
-    click.echo(f"📄 Processing {len(page_ids)} unique pages")
+    click.echo(f"Processing {len(page_ids)} unique pages")
 
     # Filter lines to only pages we need
     lines_df = lines_df.filter(pl.col("page_id").is_in(page_ids))
 
     # Initialize TextLinker with source name for proper coordinate scaling
-    click.echo(f"🔧 Initializing TextLinker with image index for {source}...")
+    click.echo(f"Initializing TextLinker with image index for {source}...")
     text_linker = TextLinker(overlap_threshold=overlap_threshold, source_name=source)
 
     if text_linker.image_index is None:
-        click.echo("⚠️  Warning: Image index not loaded. Coordinate scaling may be inaccurate.")
+        click.echo("Warning: Image index not loaded. Coordinate scaling may be inaccurate.")
 
-    click.echo(f"🔍 Extracting text content (overlap threshold: {overlap_threshold})...")
+    click.echo(f"Extracting text content (overlap threshold: {overlap_threshold})...")
 
     # Process detections page by page for efficiency
     enriched_rows = []
@@ -362,14 +362,14 @@ def enrich_captions(source: str, run_id: str, overlap_threshold: float, classes:
     # Count successful extractions
     with_text = enriched_df.filter(pl.col("text_content").is_not_null())
     click.echo(
-        f"✅ Extracted text for {len(with_text)} / {len(enriched_df)} detections ({len(with_text) / len(enriched_df) * 100:.1f}%)"
+        f"[OK] Extracted text for {len(with_text)} / {len(enriched_df)} detections ({len(with_text) / len(enriched_df) * 100:.1f}%)"
     )
 
     # Save enriched parquet
     output_path = layout_path.parent / "layout_enriched.parquet"
     enriched_df.write_parquet(output_path)
 
-    click.echo(f"💾 Saved enriched data to {output_path}")
+    click.echo(f"Saved enriched data to {output_path}")
 
     # Update metadata
     metadata_path = layout_path.parent / "layout.json"
@@ -391,7 +391,7 @@ def enrich_captions(source: str, run_id: str, overlap_threshold: float, classes:
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        click.echo(f"📝 Updated metadata")
+        click.echo(f"Updated metadata")
 
 
 @captions_group.command(name="match")
@@ -449,38 +449,38 @@ def match_captions_to_pictures(source: str, run_id: str, max_distance: int):
     )
 
     if not layout_path.exists():
-        click.echo(f"❌ Layout file not found: {layout_path}", err=True)
+        click.echo(f"[ERROR] Layout file not found: {layout_path}", err=True)
         return
 
     if not enriched_path.exists():
-        click.echo(f"❌ Enriched layout file not found: {enriched_path}", err=True)
+        click.echo(f"[ERROR] Enriched layout file not found: {enriched_path}", err=True)
         click.echo(
-            "💡 Run 'enrich --classes Caption' command first to extract caption text", err=True
+            "Run 'enrich --classes Caption' command first to extract caption text", err=True
         )
         return
 
-    click.echo(f"📂 Loading layout data from {layout_path}")
+    click.echo(f"Loading layout data from {layout_path}")
     all_detections_df = pl.read_parquet(layout_path)
 
-    click.echo(f"📂 Loading enriched captions from {enriched_path}")
+    click.echo(f"Loading enriched captions from {enriched_path}")
     enriched_captions_df = pl.read_parquet(enriched_path)
 
     # Get pictures from original layout
     pictures_df = all_detections_df.filter(pl.col("class_name") == "Picture")
     captions_df = enriched_captions_df.filter(pl.col("class_name") == "Caption")
 
-    click.echo(f"📊 Found {len(pictures_df)} pictures and {len(captions_df)} captions")
+    click.echo(f"Found {len(pictures_df)} pictures and {len(captions_df)} captions")
 
     captions_with_text = captions_df.filter(pl.col("text_content").is_not_null())
-    click.echo(f"📝 {len(captions_with_text)} captions have extracted text")
+    click.echo(f"{len(captions_with_text)} captions have extracted text")
 
     if len(captions_with_text) == 0:
-        click.echo("❌ No captions with text found. Run 'enrich --classes Caption' first", err=True)
+        click.echo("[ERROR] No captions with text found. Run 'enrich --classes Caption' first", err=True)
         return
 
     # Match pictures to captions page-by-page using spatial-aware matching
-    click.echo(f"🔍 Matching pictures with nearest captions (max distance: {max_distance}px)...")
-    click.echo("📐 Using ProximityMatcher: prioritizes below/above position over pure distance")
+    click.echo(f"Matching pictures with nearest captions (max distance: {max_distance}px)...")
+    click.echo("Using ProximityMatcher: prioritizes below/above position over pure distance")
 
     # Initialize matcher
     matcher = ProximityMatcher(search_radius=max_distance, relative_position="any")
@@ -593,12 +593,12 @@ def match_captions_to_pictures(source: str, run_id: str, max_distance: int):
     enriched_df = pl.concat([pictures_and_captions, other_detections_df], how="diagonal")
 
     click.echo(
-        f"✅ Matched {matched_count} / {len(pictures_df)} pictures with captions ({matched_count / len(pictures_df) * 100:.1f}%)"
+        f"[OK] Matched {matched_count} / {len(pictures_df)} pictures with captions ({matched_count / len(pictures_df) * 100:.1f}%)"
     )
 
     # Save enriched data
     enriched_df.write_parquet(enriched_path)
-    click.echo(f"💾 Saved updated enriched data to {enriched_path}")
+    click.echo(f"Saved updated enriched data to {enriched_path}")
 
     # Update metadata
     metadata_path = enriched_path.parent / "layout.json"
@@ -620,7 +620,7 @@ def match_captions_to_pictures(source: str, run_id: str, max_distance: int):
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        click.echo(f"📝 Updated metadata")
+        click.echo(f"Updated metadata")
 
 
 if __name__ == "__main__":

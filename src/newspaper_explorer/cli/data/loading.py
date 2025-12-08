@@ -277,7 +277,7 @@ def register_loading_commands(data_group):
                     remaining = len(empty_list) - show
                     click.echo(f"  ... and {remaining:,} more")
             else:
-                click.echo("\n✓ No empty files found!")
+                click.echo("\n[OK] No empty files found!")
 
             click.echo("\n" + "=" * 60)
 

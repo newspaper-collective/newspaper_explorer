@@ -380,7 +380,7 @@ class FASTopicExtractor:
         }
 
         logger.info(
-            f"✓ Extracted topics for {len(results_df)} documents in {self._last_extraction_time:.2f}s"
+            f"[OK] Extracted topics for {len(results_df)} documents in {self._last_extraction_time:.2f}s"
         )
 
         return results_df
@@ -445,7 +445,7 @@ class FASTopicExtractor:
             results_filename="topics.parquet",
         )
 
-        logger.info(f"✓ Saved results to: {paths['results_path']}")
-        logger.info(f"✓ Metadata saved to: {paths['metadata_path']}")
+        logger.info(f"[OK] Saved results to: {paths['results_path']}")
+        logger.info(f"[OK] Metadata saved to: {paths['metadata_path']}")
 
         return paths["results_path"]

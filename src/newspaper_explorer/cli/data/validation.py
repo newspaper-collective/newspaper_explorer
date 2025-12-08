@@ -55,7 +55,7 @@ def register_validation_commands(data_group):
 
             # Show issues if any
             if result["alto_without_mets"] > 0 or result["alto_not_in_mets"] > 0:
-                click.echo("\n⚠ Issues found:")
+                click.echo("\n[WARNING] Issues found:")
 
                 if result["alto_without_mets"] > 0:
                     click.echo(
@@ -99,9 +99,9 @@ def register_validation_commands(data_group):
                             for path in result["unlisted_alto_list"]:
                                 f.write(f"  {path}\n")
 
-                    click.echo(f"\n✓ Report saved to: {report_path}")
+                    click.echo(f"\n[OK] Report saved to: {report_path}")
             else:
-                click.echo("\n✓ All ALTO files have valid METS relationships!")
+                click.echo("\n[OK] All ALTO files have valid METS relationships!")
 
         except Exception as e:
             click.echo(f"Error: {e}", err=True)

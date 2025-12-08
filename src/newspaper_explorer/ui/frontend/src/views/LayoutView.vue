@@ -210,14 +210,14 @@ async function loadClassNames() {
   if (!sourceStore.currentSource || !selectedRunId.value) return
 
   try {
-    console.log('🏷️  Loading class names for', selectedRunId.value)
+    console.log('Loading class names for', selectedRunId.value)
     const response = await api.get(
       `/layout/${sourceStore.currentSource}/labels`,
       { params: { run_id: selectedRunId.value } }
     )
     classNames.value = response.data
     selectedClasses.value = [...response.data]
-    console.log('✅ Loaded', response.data.length, 'classes:', response.data)
+    console.log('[OK] Loaded', response.data.length, 'classes:', response.data)
   } catch (error) {
     console.error('Failed to load class names:', error)
   }
@@ -227,7 +227,7 @@ async function loadStats() {
   if (!sourceStore.currentSource || !selectedRunId.value) return
 
   try {
-    console.log('📊 Loading stats for', selectedRunId.value)
+    console.log('Loading stats for', selectedRunId.value)
     
     // Load unfiltered stats for overview
     const unfilteredResponse = await api.get(
@@ -247,7 +247,7 @@ async function loadStats() {
       pieChart.value = createPieChartFromCounts(filteredResponse.data.counts) as EChartsOption
     }
     
-    console.log('✅ Stats loaded')
+    console.log('[OK] Stats loaded')
   } catch (error) {
     console.error('Failed to load stats:', error)
   }
@@ -261,7 +261,7 @@ async function loadTimeline() {
       `/layout/${sourceStore.currentSource}/timeline`,
       { params: { aggregation: 'day', run_id: selectedRunId.value } }
     )
-    console.log('📊 Timeline data loaded')
+    console.log('Timeline data loaded')
     
     // Create timeline chart with all classes stacked
     timelineChart.value = createMultiClassTimelineChart(response.data)
@@ -408,7 +408,7 @@ const totalPages = ref(0)
 
 async function loadPages() {
   if (!sourceStore.currentSource || !selectedRunId.value) {
-    console.log('⚠️ loadPages called but missing source or runId')
+    console.log('[WARNING] loadPages called but missing source or runId')
     return
   }
 
@@ -435,7 +435,7 @@ async function loadPages() {
     pages.value = response.data.pages
     totalPages.value = response.data.total
   } catch (error) {
-    console.error('❌ Failed to load pages:', error)
+    console.error('[ERROR] Failed to load pages:', error)
     pages.value = []
     totalPages.value = 0
   } finally {
@@ -471,7 +471,7 @@ const totalPagesCount = computed(() => {
 
 // Watch for filter changes
 watch([selectedClasses, minConfidence], () => {
-  console.log('🔍 Filter changed')
+  console.log('Filter changed')
   if (selectedRunId.value && !isChangingRun.value) {
     applyFilters()
   }
@@ -479,7 +479,7 @@ watch([selectedClasses, minConfidence], () => {
 
 // Watch for run changes
 watch(selectedRunId, async (newId, oldId) => {
-  console.log('🔄 selectedRunId changed from', oldId, 'to', newId)
+  console.log('selectedRunId changed from', oldId, 'to', newId)
   if (!newId) {
     pages.value = []
     classNames.value = []
@@ -506,7 +506,7 @@ watch(selectedRunId, async (newId, oldId) => {
       await loadStats()
       await loadTimeline()
     } catch (error) {
-      console.error('❌ Error loading run data:', error)
+      console.error('[ERROR] Error loading run data:', error)
     } finally {
       isChangingRun.value = false
     }
@@ -514,7 +514,7 @@ watch(selectedRunId, async (newId, oldId) => {
 }, { immediate: false })
 
 function onMetadataLoaded() {
-  console.log('📥 onMetadataLoaded called')
+  console.log('onMetadataLoaded called')
 }
 
 onMounted(() => {
@@ -608,7 +608,7 @@ watch(() => sourceStore.currentSource, () => {
       <!-- Statistics and Charts Section (Collapsible) -->
       <details v-if="hasData || loading" class="rounded-lg border bg-card" open>
         <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none">
-          📊 Statistics & Charts
+          Statistics & Charts
         </summary>
         <div class="p-6 pt-2 space-y-6">
           <!-- Statistics Cards - 2 rows of 4 cards -->

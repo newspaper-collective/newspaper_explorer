@@ -193,7 +193,7 @@ def register_image_commands(data_group):
                     err=True,
                 )
             else:
-                click.echo("\nAll images are valid! ✓")
+                click.echo("\nAll images are valid! [OK]")
 
         except Exception as e:
             click.echo(f"\nError: {e}", err=True)
@@ -297,16 +297,16 @@ def register_image_commands(data_group):
             if len(with_alto_dims) < len(image_index):
                 missing_dims = len(image_index) - len(with_alto_dims)
                 click.echo(
-                    f"\n⚠ {missing_dims:,} images missing ALTO dimensions (ALTO files not found)"
+                    f"\n[WARNING] {missing_dims:,} images missing ALTO dimensions (ALTO files not found)"
                 )
 
             if len(with_mets) < len(image_index):
                 missing_mets = len(image_index) - len(with_mets)
                 click.echo(
-                    f"⚠ {missing_mets:,} images missing METS metadata (METS files not available)"
+                    f"[WARNING] {missing_mets:,} images missing METS metadata (METS files not available)"
                 )
 
-            click.echo("\n✓ Image index created successfully!")
+            click.echo("\n[OK] Image index created successfully!")
             click.echo("=" * 60)
 
         except Exception as e:
