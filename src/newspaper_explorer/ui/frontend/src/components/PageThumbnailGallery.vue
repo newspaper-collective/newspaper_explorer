@@ -255,7 +255,7 @@ onMounted(() => {
             </div>
 
             <!-- Overlay on hover -->
-            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+            <div class="absolute inset-0 bg-transparent group-hover:bg-overlay-subtle transition-colors" />
           </div>
 
           <!-- Page Number Label with Preview Icon -->
@@ -282,7 +282,7 @@ onMounted(() => {
     <!-- Preview Dialog -->
     <div
       v-if="previewOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay-heavy"
       @click="closePreview"
     >
       <div

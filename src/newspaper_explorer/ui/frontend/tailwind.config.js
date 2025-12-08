@@ -48,6 +48,30 @@ export default {
                     DEFAULT: 'hsl(var(--card))',
                     foreground: 'hsl(var(--card-foreground))',
                 },
+                success: {
+                    DEFAULT: 'hsl(var(--success))',
+                    foreground: 'hsl(var(--success-foreground))',
+                },
+                warning: {
+                    DEFAULT: 'hsl(var(--warning))',
+                    foreground: 'hsl(var(--warning-foreground))',
+                },
+                info: {
+                    DEFAULT: 'hsl(var(--info))',
+                    foreground: 'hsl(var(--info-foreground))',
+                },
+                highlight: {
+                    DEFAULT: 'hsl(var(--highlight))',
+                    foreground: 'hsl(var(--highlight-foreground))',
+                },
+                overlay: {
+                    DEFAULT: 'hsl(var(--overlay))',
+                    subtle: 'hsl(var(--overlay-subtle))',
+                    light: 'hsl(var(--overlay-light))',
+                    muted: 'hsl(var(--overlay-muted))',
+                    medium: 'hsl(var(--overlay-medium))',
+                    heavy: 'hsl(var(--overlay-heavy))',
+                },
             },
             borderRadius: {
                 lg: 'var(--radius)',

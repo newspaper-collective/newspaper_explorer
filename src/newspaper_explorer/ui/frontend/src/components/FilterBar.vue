@@ -57,7 +57,7 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
             :checked="modelValue.onlyWithCaptions"
             @change="updateFilter('onlyWithCaptions', ($event.target as HTMLInputElement).checked)"
             type="checkbox"
-            class="rounded border-gray-300"
+            class="rounded border-input"
           />
           <span class="text-muted-foreground">Only with captions</span>
         </label>
@@ -70,7 +70,7 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
             :checked="modelValue.excludeHeadersFooters"
             @change="updateFilter('excludeHeadersFooters', ($event.target as HTMLInputElement).checked)"
             type="checkbox"
-            class="rounded border-gray-300"
+            class="rounded border-input"
           />
           <span class="text-muted-foreground">Exclude headers/footers</span>
         </label>

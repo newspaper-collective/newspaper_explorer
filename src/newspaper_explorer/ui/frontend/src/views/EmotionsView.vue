@@ -16,6 +16,7 @@ import VChart from 'vue-echarts'
 import api from '@/lib/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ResultsViewer from '@/components/ResultsViewer.vue'
+import { getEmotionColor, getChartAxisPointerColor, EMOTIONS as EMOTION_LIST } from '@/lib/colors'
 import type { EChartsOption } from 'echarts'
 
 // Register ECharts components
@@ -45,15 +46,7 @@ const peaks = ref<any[]>([])
 
 // UI state
 const selectedPeakEmotion = ref('sadness')
-const EMOTIONS = ['sadness', 'love', 'joy', 'fear', 'anger', 'agitation']
-const EMOTION_COLORS: Record<string, string> = {
-  joy: '#FFD700',      // Gold/Yellow - happiness, sunshine
-  love: '#FF69B4',     // Hot Pink - romance, affection
-  anger: '#DC143C',    // Crimson Red - rage, intensity
-  fear: '#9370DB',     // Medium Purple - anxiety, unease
-  sadness: '#4682B4',  // Steel Blue - melancholy, tears
-  agitation: '#FF4500', // Orange Red - restlessness, alarm
-}
+const EMOTIONS = [...EMOTION_LIST] // Use centralized list
 
 // Chart Options
 const distributionChart = ref<EChartsOption>({})
@@ -124,7 +117,7 @@ function updateCharts() {
     series: [{
       data: Object.entries(means).map(([k, v]: [string, any]) => ({
         value: Number((v / total * 100).toFixed(1)),
-        itemStyle: { color: EMOTION_COLORS[k] }
+        itemStyle: { color: getEmotionColor(k) }
       })),
       type: 'bar'
     }]
@@ -143,7 +136,7 @@ function updateCharts() {
         name: emo.charAt(0).toUpperCase() + emo.slice(1),
         type: 'line',
         data: timelineYear.value.map(d => d[emo]),
-        itemStyle: { color: EMOTION_COLORS[emo] },
+        itemStyle: { color: getEmotionColor(emo) },
         smooth: true
       }))
     }
@@ -156,7 +149,7 @@ function updateCharts() {
 
     streamChart.value = {
       title: { text: 'Relative Emotion Shares (Monthly)', left: 'center' },
-      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } } },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: getChartAxisPointerColor() } } },
       legend: { bottom: 0 },
       grid: { bottom: 80, left: '3%', right: '4%', containLabel: true },
       xAxis: {
@@ -176,7 +169,7 @@ function updateCharts() {
           const rowTotal = EMOTIONS.reduce((sum, e) => sum + (d[e] || 0), 0)
           return rowTotal > 0 ? Number(((d[emo] || 0) / rowTotal * 100).toFixed(1)) : 0
         }),
-        itemStyle: { color: EMOTION_COLORS[emo] },
+        itemStyle: { color: getEmotionColor(emo) },
         showSymbol: false
       }))
     }
@@ -204,7 +197,7 @@ function updateCharts() {
         name: emo.charAt(0).toUpperCase() + emo.slice(1),
         type: 'boxplot',
         data: data,
-        itemStyle: { color: EMOTION_COLORS[emo] }
+        itemStyle: { color: getEmotionColor(emo) }
       })
     })
 
@@ -247,7 +240,7 @@ function updatePeaksChart() {
         const emotionCapitalized = selectedPeakEmotion.value.charAt(0).toUpperCase() + selectedPeakEmotion.value.slice(1)
         return [p.date, p[`${emotionCapitalized}_prob`], p.era]
       }),
-      itemStyle: { color: EMOTION_COLORS[selectedPeakEmotion.value] }
+      itemStyle: { color: getEmotionColor(selectedPeakEmotion.value) }
     }]
   }
 }

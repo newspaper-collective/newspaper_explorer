@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { X, Tag, ChevronDown, ChevronRight, Frown, HeartHandshake, Smile, Skull, Flame, Zap, Users, MessageSquare, Network, LayoutDashboard, User, Building2, MapPin, Calendar } from 'lucide-vue-next'
 import api from '@/lib/api'
+import { getEntityColor, getEmotionColor, getLayoutColor } from '@/lib/colors'
 
 interface Props {
   isOpen: boolean
@@ -124,23 +125,17 @@ const emotionIcons: Record<string, any> = {
   'Agitation': Zap,
 }
 
-const emotionColors: Record<string, string> = {
-  'Joy': '#FFD700',      // Gold/Yellow - happiness, sunshine
-  'Love': '#FF69B4',     // Hot Pink - romance, affection
-  'Anger': '#DC143C',    // Crimson Red - rage, intensity
-  'Fear': '#9370DB',     // Medium Purple - anxiety, unease
-  'Sadness': '#4682B4',  // Steel Blue - melancholy, tears
-  'Agitation': '#FF4500', // Orange Red - restlessness, alarm
+// Helper functions for colors (use centralized palette)
+function getEntityTypeColor(type: string): string {
+  return getEntityColor(type)
 }
 
-// Entity type colors and icons
-const entityTypeColors: Record<string, string> = {
-  person: '#2E5EFF',      // Vibrant Blue
-  organization: '#FF3333', // Vivid Red
-  location: '#00E676',     // Bright Green
-  date: '#9C27FF',        // Vivid Purple
-  event: '#FF9100',       // Bright Orange
-  misc: '#00E5FF',        // Bright Cyan
+function getEmotionTypeColor(emotion: string): string {
+  return getEmotionColor(emotion.toLowerCase())
+}
+
+function getLayoutClassColor(className: string): string {
+  return getLayoutColor(className)
 }
 
 const entityTypeIcons: Record<string, any> = {
@@ -150,21 +145,6 @@ const entityTypeIcons: Record<string, any> = {
   event: Calendar,
   date: Calendar,
   misc: Tag,
-}
-
-// Layout class colors (from imageAnnotation.ts)
-const layoutClassColors: Record<string, string> = {
-  'Text': '#FF4444',
-  'Picture': '#44FF44',
-  'Section-header': '#4444FF',
-  'Table': '#FFFF44',
-  'Page-header': '#FF44FF',
-  'Page-footer': '#44FFFF',
-  'Caption': '#FFA500',
-  'List': '#800080',
-  'Title': '#FF1493',
-  'Figure': '#00CED1',
-  'Formula': '#FFD700',
 }
 
 // Group emotions by text line
@@ -230,7 +210,7 @@ watch(() => analysisData.value, (data) => {
 
 async function loadAnalysis() {
   if (!props.pageId || !props.sourceName) return
-  
+
   loading.value = true
   try {
     const response = await api.get(`/data/${props.sourceName}/page-analysis/${props.pageId}`)
@@ -288,12 +268,12 @@ function close() {
                     v-for="stat in emotionStats"
                     :key="stat.name"
                     class="p-2 rounded-lg"
-                    :style="{ backgroundColor: emotionColors[stat.name] + '20' }"
+                    :style="{ backgroundColor: getEmotionTypeColor(stat.name) + '20' }"
                   >
                     <div class="flex items-center justify-center gap-2 mb-1">
-                      <component 
-                        :is="emotionIcons[stat.name] || Smile" 
-                        class="h-5 w-5" 
+                      <component
+                        :is="emotionIcons[stat.name] || Smile"
+                        class="h-5 w-5"
                       />
                       <div class="text-2xl font-bold">
                         {{ stat.count }}
@@ -302,7 +282,7 @@ function close() {
                     <div class="text-xs text-muted-foreground text-center">{{ stat.name }}</div>
                   </div>
                 </div>
-                
+
                 <!-- Detailed Listing (nested collapsible) -->
                 <div class="border-t pt-3">
                   <button
@@ -323,10 +303,10 @@ function close() {
                           v-for="(em, idx) in emotions"
                           :key="idx"
                           class="flex items-center gap-1 px-2 py-1 rounded text-xs"
-                          :style="{ backgroundColor: emotionColors[em.label || em.emotion] + '20' }"
+                          :style="{ backgroundColor: getEmotionTypeColor(em.label || em.emotion) + '20' }"
                         >
-                          <component 
-                            :is="emotionIcons[em.label || em.emotion] || Smile" 
+                          <component
+                            :is="emotionIcons[em.label || em.emotion] || Smile"
                             class="h-3 w-3"
                           />
                           <span class="font-medium">
@@ -367,19 +347,19 @@ function close() {
               <div v-if="entitiesExpanded" class="p-4 pt-0 space-y-3">
                 <div class="border-t mb-3"></div>
                 <p v-if="selectedEntities" class="text-xs text-muted-foreground">{{ selectedEntities }} ({{ getEntitiesCount(selectedEntities) }} entities)</p>
-                
+
                 <!-- Aggregated Stats -->
                 <div class="grid grid-cols-3 gap-2">
                   <div
                     v-for="stat in entityStats"
                     :key="stat.name"
                     class="p-2 rounded-lg"
-                    :style="{ backgroundColor: (entityTypeColors[stat.name] || '#888') + '20' }"
+                    :style="{ backgroundColor: getEntityTypeColor(stat.name) + '20' }"
                   >
                     <div class="flex items-center justify-center gap-2 mb-1">
-                      <component 
-                        :is="entityTypeIcons[stat.name] || Tag" 
-                        class="h-5 w-5" 
+                      <component
+                        :is="entityTypeIcons[stat.name] || Tag"
+                        class="h-5 w-5"
                       />
                       <div class="text-2xl font-bold">
                         {{ stat.count }}
@@ -398,12 +378,12 @@ function close() {
                 >
                   <div class="flex justify-between items-center gap-2">
                     <span class="font-medium">{{ ent.entity_text || ent.text }}</span>
-                    <span 
+                    <span
                       class="flex items-center gap-1 text-sm px-2 py-1 rounded"
-                      :style="{ backgroundColor: (entityTypeColors[(ent.entity_type || ent.label)?.toLowerCase()] || '#888') + '20' }"
+                      :style="{ backgroundColor: getEntityTypeColor((ent.entity_type || ent.label)?.toLowerCase()) + '20' }"
                     >
-                      <component 
-                        :is="entityTypeIcons[(ent.entity_type || ent.label)?.toLowerCase()] || Tag" 
+                      <component
+                        :is="entityTypeIcons[(ent.entity_type || ent.label)?.toLowerCase()] || Tag"
                         class="h-3 w-3"
                       />
                       <span class="font-medium">{{ ent.entity_type || ent.label }}</span>
@@ -486,7 +466,7 @@ function close() {
                     v-for="stat in layoutStats"
                     :key="stat.name"
                     class="p-2 rounded-lg"
-                    :style="{ backgroundColor: (layoutClassColors[stat.name] || '#888') + '20' }"
+                    :style="{ backgroundColor: getLayoutClassColor(stat.name) + '20' }"
                   >
                     <div class="flex items-center justify-center gap-2 mb-1">
                       <LayoutDashboard class="h-5 w-5" />
@@ -495,7 +475,7 @@ function close() {
                     <div class="text-xs text-muted-foreground text-center">{{ stat.name }}</div>
                   </div>
                 </div>
-                
+
                 <!-- Detailed Listing (nested collapsible) -->
                 <div class="border-t pt-3">
                   <button
@@ -513,9 +493,9 @@ function close() {
                     >
                       <div class="flex flex-col gap-1">
                         <div class="flex items-center justify-between gap-1">
-                          <span 
+                          <span
                             class="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
-                            :style="{ backgroundColor: (layoutClassColors[region.class_name] || '#888') + '20' }"
+                            :style="{ backgroundColor: getLayoutClassColor(region.class_name) + '20' }"
                           >
                             <LayoutDashboard class="h-3 w-3" />
                             <span class="truncate">{{ region.class_name }}</span>

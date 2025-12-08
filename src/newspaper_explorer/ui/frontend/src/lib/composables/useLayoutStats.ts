@@ -1,12 +1,13 @@
 /**
  * Layout statistics composable for analysis views
- * 
+ *
  * Handles loading statistics from backend and generating chart configurations
  * Used in PicturesView, LayoutView, and other analysis views
  */
 
 import { ref, computed } from 'vue'
 import type { EChartsOption } from 'echarts'
+import { getResultColor } from '@/lib/colors'
 
 export interface LayoutStats {
   total?: number
@@ -98,7 +99,7 @@ export function useLayoutStats() {
           type: 'line',
           data: values,
           smooth: true,
-          itemStyle: { color: '#2E5EFF' },
+          itemStyle: { color: getResultColor(1) },
           areaStyle: { opacity: 0.3 },
         },
       ],
@@ -136,7 +137,7 @@ export function useLayoutStats() {
         {
           type: 'bar',
           data: counts,
-          itemStyle: { color: '#2E5EFF' },
+          itemStyle: { color: getResultColor(1) },
         },
       ],
       grid: { bottom: 80 },
@@ -182,7 +183,7 @@ export function useLayoutStats() {
         {
           type: 'bar',
           data: posData.map((d) => d.value),
-          itemStyle: { color: '#00E676' },
+          itemStyle: { color: getResultColor(3) },
         },
       ],
       grid: { bottom: 80 },
@@ -217,7 +218,7 @@ export function useLayoutStats() {
         {
           type: 'scatter',
           data: distribution,
-          itemStyle: { color: '#FF9100', opacity: 0.6 },
+          itemStyle: { color: getResultColor(5), opacity: 0.6 },
           symbolSize: 6,
         },
       ],

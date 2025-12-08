@@ -2,6 +2,8 @@
  * Image annotation utilities for drawing bounding boxes on images
  */
 
+import { getLayoutColor, getLayoutColors } from './colors'
+
 export interface BoundingBox {
   x1: number
   y1: number
@@ -25,20 +27,24 @@ export interface AnnotationOptions {
   colors?: Record<string, string>
 }
 
-// Color map for detection classes
-export const DETECTION_COLORS: Record<string, string> = {
-  'Text': '#FF4444',
-  'Picture': '#44FF44',
-  'Section-header': '#4444FF',
-  'Table': '#FFFF44',
-  'Page-header': '#FF44FF',
-  'Page-footer': '#44FFFF',
-  'Caption': '#FFA500',
-  'List': '#800080',
-  'Title': '#FF1493',
-  'Figure': '#00CED1',
-  'Formula': '#FFD700',
+// Re-export color utilities for backward compatibility
+export { getLayoutColor as getDetectionColor }
+
+// Lazy-loaded color map (reads from CSS variables)
+let _detectionColors: Record<string, string> | null = null
+export function getDetectionColors(): Record<string, string> {
+  if (!_detectionColors) {
+    _detectionColors = getLayoutColors()
+  }
+  return _detectionColors
 }
+
+// For backward compatibility - will be populated on first access
+export const DETECTION_COLORS = new Proxy({} as Record<string, string>, {
+  get(_, prop: string) {
+    return getLayoutColor(prop)
+  },
+})
 
 /**
  * Draw bounding boxes on a canvas
@@ -54,7 +60,7 @@ export function drawAnnotations(
     lineWidth = 2,
     fontSize = 12,
     showLabels = true,
-    colors = DETECTION_COLORS,
+    colors = getDetectionColors(),
   } = options
 
   const ctx = canvas.getContext('2d')
@@ -137,11 +143,4 @@ export async function createAnnotatedImageUrl(
 
     image.src = imageUrl
   })
-}
-
-/**
- * Get color for a detection class
- */
-export function getDetectionColor(className: string): string {
-  return DETECTION_COLORS[className] || '#FFFFFF'
 }

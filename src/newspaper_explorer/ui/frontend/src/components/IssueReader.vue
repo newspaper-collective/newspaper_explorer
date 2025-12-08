@@ -70,7 +70,7 @@ const displayedLayoutRegions = computed(() => {
 
 async function loadIssueMetadata() {
   if (!sourceStore.currentSource) return
-  
+
   loading.value = true
   try {
     // Get all pages for this issue
@@ -84,18 +84,18 @@ async function loadIssueMetadata() {
     if (pages.value.length > 0) {
       const firstPage = pages.value[0]
       const issueId = firstPage.issue_id || props.issueId
-      
+
       // Extract issue_number and daily_count from issue_id
       // Format: {source}_{YYYY-MM-DD}_{issue:03d}_{daily}
       const issueParts = issueId.split('_')
       const issueNumber = issueParts.length >= 3 ? issueParts[issueParts.length - 2] : null
       const dailyCount = issueParts.length >= 4 ? issueParts[issueParts.length - 1] : null
-      
+
       // Extract year and month from date
       const date = new Date(firstPage.date)
       const year = date.getFullYear()
       const month = date.getMonth() + 1
-      
+
       metadata.value = {
         title: firstPage.newspaper_title,
         date: firstPage.date,
@@ -105,7 +105,7 @@ async function loadIssueMetadata() {
         year,
         month,
       }
-      
+
       // Load first page content
       await loadPageContent(currentPage.value)
     }
@@ -118,26 +118,26 @@ async function loadIssueMetadata() {
 
 async function loadPageContent(pageNum: number) {
   if (!sourceStore.currentSource || !pages.value[pageNum - 1]) return
-  
+
   loading.value = true
   try {
     const page = pages.value[pageNum - 1]
-    
+
     // Get text lines for this page (individual lines with bounding boxes)
     const linesResponse = await api.get(
       `/data/${sourceStore.currentSource}/lines`,
       { params: { page_id: page.page_id, page_size: 5000 } }
     )
-    
+
     // Scale coordinates from ALTO to image dimensions
     const altoWidth = page.alto_width
     const altoHeight = page.alto_height
     const imageWidth = page.image_width
     const imageHeight = page.image_height
-    
+
     const scaleX = (altoWidth && imageWidth) ? imageWidth / altoWidth : 1
     const scaleY = (altoHeight && imageHeight) ? imageHeight / altoHeight : 1
-    
+
     // Apply scaling to all lines
     const scaledLines = linesResponse.data.map((line: any) => ({
       ...line,
@@ -146,9 +146,9 @@ async function loadPageContent(pageNum: number) {
       width: Math.round(line.width * scaleX),
       height: Math.round(line.height * scaleY),
     }))
-    
+
     textLines.value = scaledLines
-    
+
     // Group lines by text_block_id for display
     const blockMap = new Map()
     scaledLines.forEach((line: any) => {
@@ -161,19 +161,19 @@ async function loadPageContent(pageNum: number) {
       }
       blockMap.get(line.text_block_id).lines.push(line)
     })
-    
+
     // Create blocks with concatenated text
     const blocks = Array.from(blockMap.values()).map(block => ({
       ...block,
       text: block.lines.map((l: any) => l.text).join(' '),
     }))
-    
+
     pageContent.value = {
       page,
       blocks,
       imageUrl: page.image_url,
     }
-    
+
     // Load available layout analysis results
     await loadLayoutResults()
   } catch (error) {
@@ -185,17 +185,17 @@ async function loadPageContent(pageNum: number) {
 
 async function loadLayoutResults() {
   if (!sourceStore.currentSource || !pageContent.value?.page?.page_id) return
-  
+
   try {
     const response = await api.get(
       `/data/${sourceStore.currentSource}/page-analysis/${pageContent.value.page.page_id}`
     )
-    
+
     console.log('Layout analysis response:', response.data)
     const layoutData = response.data.layout || {}
     availableLayoutSets.value = Object.keys(layoutData)
     console.log('Available layout sets:', availableLayoutSets.value)
-    
+
     // Auto-select first available set or keep current selection
     if (availableLayoutSets.value.length > 0) {
       if (!selectedLayoutSet.value) {
@@ -217,17 +217,17 @@ async function updateLayoutRegions() {
     layoutRegions.value = []
     return
   }
-  
+
   try {
     const response = await api.get(
       `/data/${sourceStore.currentSource}/page-analysis/${pageContent.value.page.page_id}`
     )
-    
+
     const layoutData = response.data.layout || {}
     const regions = layoutData[selectedLayoutSet.value] || []
     console.log(`Raw layout regions for ${selectedLayoutSet.value}:`, regions)
     console.log('First region structure:', JSON.stringify(regions[0], null, 2))
-    
+
     // Layout detection coordinates are already in image pixel space, no scaling needed
     const filteredRegions = regions.filter((region: any) => {
       // Check if bbox exists as an object with x1, or if coordinates are at top level
@@ -239,7 +239,7 @@ async function updateLayoutRegions() {
       return hasValidBbox
     })
     console.log(`Regions after filtering: ${filteredRegions.length} of ${regions.length}`)
-    
+
     layoutRegions.value = filteredRegions.map((region: any) => {
       // Handle both nested bbox and top-level coordinates
       let bbox
@@ -251,7 +251,7 @@ async function updateLayoutRegions() {
         console.error('Region has no valid bbox structure:', region)
         return null
       }
-      
+
       // No scaling - layout detections are already in image pixel coordinates
       return {
         ...region,
@@ -292,10 +292,10 @@ function handleLineClick(lineId: string) {
       const containerHeight = scrollContainer.clientHeight
       const lineTop = lineElement.offsetTop
       const lineHeight = lineElement.clientHeight
-      
+
       // Calculate scroll position to center the line in the container
       const scrollTo = lineTop - containerTop - (containerHeight / 2) + (lineHeight / 2)
-      
+
       scrollContainer.scrollTo({ top: scrollTo, behavior: 'smooth' })
     } else {
       // Fallback to scrollIntoView if container not found
@@ -437,7 +437,7 @@ onMounted(() => {
         </template>
         • {{ metadata.pageCount }} {{ metadata.pageCount === 1 ? 'page' : 'pages' }}
       </div>
-      
+
       <div class="flex items-center gap-4">
         <!-- Layout Overlay Toggle with Dropdown (hidden when no detections) -->
         <div v-if="availableLayoutSets.length > 0" class="flex items-center gap-2">
@@ -451,7 +451,7 @@ onMounted(() => {
               {{ set.split('_').slice(0, 2).join(' ') }}
             </option>
           </select>
-          
+
           <button
             @click="showLayoutOverlays = !showLayoutOverlays"
             class="flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
@@ -462,7 +462,7 @@ onMounted(() => {
             <span>Layout</span>
           </button>
         </div>
-        
+
         <!-- Text Overlay Toggle -->
         <button
           @click="showOverlays = !showOverlays"
@@ -473,7 +473,7 @@ onMounted(() => {
           <component :is="showOverlays ? Eye : EyeOff" class="h-4 w-4" />
           <span>Text</span>
         </button>
-        
+
         <!-- Analysis Sidebar Toggle -->
         <button
           @click="showAnalysisSidebar = !showAnalysisSidebar"
@@ -484,7 +484,7 @@ onMounted(() => {
           <BarChart3 class="h-4 w-4" />
           <span>Analysis</span>
         </button>
-        
+
         <!-- Page Navigation -->
         <div class="flex items-center gap-2">
           <button
@@ -545,7 +545,7 @@ onMounted(() => {
             :data-line-id="line.line_id"
             class="px-2 py-1 rounded transition-colors cursor-pointer"
             :class="{
-              'bg-blue-400 dark:bg-blue-500 text-white dark:text-white font-medium': highlightedLineId === line.line_id,
+              'bg-highlight text-highlight-foreground font-medium': highlightedLineId === line.line_id,
               'hover:bg-accent': highlightedLineId !== line.line_id,
             }"
             @mouseenter="handleLineHover(line.line_id)"

@@ -22,6 +22,7 @@ import OpenSeadragonViewer from '@/components/OpenSeadragonViewer.vue'
 import LayoutThumbnailGalleryDialog from '@/components/LayoutThumbnailGalleryDialog.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import { getDetectionColor } from '@/lib/imageAnnotation'
+import { getChartAxisPointerColor, getChartPieBorderColor } from '@/lib/colors'
 import { useLayoutStats } from '@/lib/composables/useLayoutStats'
 import type { EChartsOption } from 'echarts'
 
@@ -319,7 +320,7 @@ function createMultiClassTimelineChart(data: Record<string, { date: string; valu
       axisPointer: {
         type: 'cross' as const,
         label: {
-          backgroundColor: '#6a7985'
+          backgroundColor: getChartAxisPointerColor()
         }
       }
     },
@@ -383,7 +384,7 @@ function createPieChartFromCounts(counts: Record<string, number>) {
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 4,
-          borderColor: '#fff',
+          borderColor: getChartPieBorderColor(),
           borderWidth: 2
         },
         label: {
@@ -756,13 +757,13 @@ watch(() => sourceStore.currentSource, () => {
     <Teleport to="body">
       <div
         v-if="detailsDialog"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-medium"
         @click="detailsDialog = false"
       >
-      <div
-        class="bg-card rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-hidden m-4"
-        @click.stop
-      >
+        <div
+          class="bg-card rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-hidden m-4"
+          @click.stop
+        >
         <div class="flex items-center justify-between p-6 border-b">
           <h2 class="text-lg font-semibold">Detection Details</h2>
           <button
@@ -799,6 +800,7 @@ watch(() => sourceStore.currentSource, () => {
             Close
           </button>
         </div>
+        </div>
       </div>
     </Teleport>
 
@@ -806,13 +808,13 @@ watch(() => sourceStore.currentSource, () => {
     <Teleport to="body">
       <div
         v-if="imageViewerDialog"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-heavy"
         @click="imageViewerDialog = false"
       >
-      <div
-        class="bg-card rounded-lg shadow-lg w-[90vw] max-w-[1400px] h-[95vh] overflow-hidden m-4 flex flex-col"
-        @click.stop
-      >
+        <div
+          class="bg-card rounded-lg shadow-lg w-[90vw] max-w-[1400px] h-[95vh] overflow-hidden m-4 flex flex-col"
+          @click.stop
+        >
         <div class="flex items-center justify-between p-4 border-b bg-muted/50">
           <div v-if="selectedPageMetadata" class="space-y-1">
             <p class="font-semibold text-base">
@@ -839,6 +841,7 @@ watch(() => sourceStore.currentSource, () => {
             :total-pages="1"
             :detections="selectedImageDetections"
           />
+        </div>
         </div>
       </div>
     </Teleport>

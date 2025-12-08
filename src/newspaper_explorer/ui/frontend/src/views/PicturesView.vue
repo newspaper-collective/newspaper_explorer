@@ -23,6 +23,7 @@ import PictureDetailDialog from '@/components/PictureDetailDialog.vue'
 import ThumbnailGalleryDialog from '@/components/ThumbnailGalleryDialog.vue'
 import PaginationControls from '@/components/PaginationControls.vue'
 import type { EChartsOption } from 'echarts'
+import { getLayoutColor } from '@/lib/colors'
 
 // Composables
 import {
@@ -480,7 +481,7 @@ async function loadPageThumbnailWithOverlay(picture: Picture) {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
     // Draw picture detection box
-    ctx.strokeStyle = '#3b82f6' // blue
+    ctx.strokeStyle = getLayoutColor('Picture')
     ctx.lineWidth = 2
     ctx.strokeRect(
       picture.bbox_x1 * scale,
@@ -491,7 +492,7 @@ async function loadPageThumbnailWithOverlay(picture: Picture) {
 
     // Draw caption detection box if available
     if (picture.caption_bbox) {
-      ctx.strokeStyle = '#10b981' // green
+      ctx.strokeStyle = getLayoutColor('Caption')
       ctx.lineWidth = 2
       ctx.strokeRect(
         picture.caption_bbox.x1 * scale,
@@ -750,16 +751,16 @@ onMounted(() => {
       </details>
 
       <!-- Error Message -->
-      <div v-if="errorMessage" class="rounded-lg border border-orange-500 bg-orange-50 dark:bg-orange-950/20 p-4">
+      <div v-if="errorMessage" class="rounded-lg border border-warning bg-warning/10 p-4">
         <div class="flex items-start gap-3">
-          <svg class="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <div class="flex-1">
-            <h4 class="font-semibold text-orange-900 dark:text-orange-200 mb-1">Caption Filter Unavailable</h4>
-            <p class="text-sm text-orange-800 dark:text-orange-300">{{ errorMessage }}</p>
-            <p class="text-xs text-orange-700 dark:text-orange-400 mt-2">
-              To enable caption filtering, run: <code class="bg-orange-100 dark:bg-orange-900 px-1 py-0.5 rounded">newspaper-explorer analyze captions enrich --source {{ sourceStore.currentSource }} --run-id YOUR_RUN_ID --classes Caption</code> followed by <code class="bg-orange-100 dark:bg-orange-900 px-1 py-0.5 rounded">newspaper-explorer analyze captions match</code>
+            <h4 class="font-semibold text-warning mb-1">Caption Filter Unavailable</h4>
+            <p class="text-sm text-warning/80">{{ errorMessage }}</p>
+            <p class="text-xs text-warning/70 mt-2">
+              To enable caption filtering, run: <code class="bg-warning/20 px-1 py-0.5 rounded">newspaper-explorer analyze captions enrich --source {{ sourceStore.currentSource }} --run-id YOUR_RUN_ID --classes Caption</code> followed by <code class="bg-warning/20 px-1 py-0.5 rounded">newspaper-explorer analyze captions match</code>
             </p>
           </div>
         </div>

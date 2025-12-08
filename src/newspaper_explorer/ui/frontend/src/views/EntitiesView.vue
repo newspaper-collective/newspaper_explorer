@@ -17,6 +17,7 @@ import api from '@/lib/api'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import EntityOccurrencesDialog from '@/components/EntityOccurrencesDialog.vue'
+import { getEntityColor, getEntityTypeColors, ENTITY_TYPES } from '@/lib/colors'
 import {
   useBarChart,
   usePieChart,
@@ -56,16 +57,6 @@ const resultsViewer = ref<InstanceType<typeof ResultsViewer>>()
 const searchQuery = ref('')
 const minConfidence = ref(0)
 const wordcloudEntityCount = ref(100)
-
-// Entity type colors - consistent across all visualizations
-const ENTITY_TYPE_COLORS: Record<string, string> = {
-  person: '#2E5EFF',      // Vibrant Blue
-  organization: '#FF3333', // Vivid Red
-  location: '#00E676',     // Bright Green
-  date: '#9C27FF',        // Vivid Purple
-  event: '#FF9100',       // Bright Orange
-  misc: '#00E5FF',        // Bright Cyan
-}
 
 // Chart options
 const topEntitiesChart = ref<EChartsOption>({})
@@ -152,7 +143,7 @@ async function loadTimeline() {
 }
 
 function getEntityTypeColor(entityType: string): string {
-  return ENTITY_TYPE_COLORS[entityType.toLowerCase()] || '#666'
+  return getEntityColor(entityType)
 }
 
 function capitalizeEntityType(entityType: string): string {
@@ -225,7 +216,7 @@ function updateCharts() {
         fontWeight: 'normal',
       },
     },
-    color: Object.values(ENTITY_TYPE_COLORS),
+    color: Object.values(getEntityTypeColors()),
   })
 
   // Wordcloud with entity type colors

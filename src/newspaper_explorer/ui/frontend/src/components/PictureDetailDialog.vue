@@ -119,13 +119,13 @@ const captionCount = computed(() => {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-medium backdrop-blur-sm"
       @click="emit('close')"
     >
-    <div
-      class="relative w-full max-w-7xl h-[90vh] flex flex-col bg-background rounded-lg shadow-lg overflow-hidden"
-      @click.stop
-    >
+      <div
+        class="relative w-full max-w-7xl h-[90vh] flex flex-col bg-background rounded-lg shadow-lg overflow-hidden"
+        @click.stop
+      >
       <!-- Header -->
       <div class="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
         <div v-if="pageMetadata" class="flex items-center gap-3">
@@ -177,7 +177,7 @@ const captionCount = computed(() => {
                 Overview
               </h3>
               <label class="flex items-center gap-2 text-xs cursor-pointer">
-                <input v-model="showAllDetections" type="checkbox" class="rounded border-gray-300" />
+                <input v-model="showAllDetections" type="checkbox" class="rounded border-input" />
                 <span>Show all</span>
               </label>
             </div>
@@ -228,11 +228,11 @@ const captionCount = computed(() => {
             <div class="text-xs text-muted-foreground space-y-2 border-b pb-4">
               <div class="flex items-center gap-4">
                 <div class="flex items-center gap-2">
-                  <div class="w-3 h-3 border border-blue-500 rounded bg-blue-500/20"></div>
+                  <div class="w-3 h-3 border border-info rounded bg-info/20"></div>
                   <span>Picture</span>
                 </div>
                 <div class="flex items-center gap-2">
-                  <div class="w-3 h-3 border border-green-500 rounded bg-green-500/20"></div>
+                  <div class="w-3 h-3 border border-success rounded bg-success/20"></div>
                   <span>Caption</span>
                 </div>
               </div>
@@ -363,6 +363,7 @@ const captionCount = computed(() => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </Teleport>

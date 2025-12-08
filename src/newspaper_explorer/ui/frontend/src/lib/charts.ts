@@ -4,24 +4,15 @@
 
 import type { EChartsOption } from 'echarts'
 import 'echarts-wordcloud'
+import { getResultColors, getChartThemeColors, getChartShadowColor, getChartIconBorderColor, getChartPieBorderColor, getChartTextShadowColor } from './colors'
 
 /**
  * Default theme configuration for all charts
  */
 export function useChartTheme() {
+  const theme = getChartThemeColors()
   return {
-    color: [
-      '#2E5EFF', // Vibrant Blue
-      '#FF3333', // Vivid Red
-      '#00E676', // Bright Green
-      '#9C27FF', // Vivid Purple
-      '#FF9100', // Bright Orange
-      '#00E5FF', // Bright Cyan
-      '#FF1744', // Bright Pink/Red
-      '#76FF03', // Neon Green
-      '#E040FB', // Bright Magenta
-      '#FFEA00', // Bright Yellow
-    ],
+    color: theme.palette,
     backgroundColor: 'transparent',
     textStyle: {
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -34,6 +25,7 @@ export function useChartTheme() {
  */
 export function useCommonChartOptions(): Partial<EChartsOption> {
   const theme = useChartTheme()
+  const colors = getChartThemeColors()
 
   return {
     color: theme.color,
@@ -48,16 +40,16 @@ export function useCommonChartOptions(): Partial<EChartsOption> {
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#ddd',
+      backgroundColor: colors.tooltip.backgroundColor,
+      borderColor: colors.tooltip.borderColor,
       borderWidth: 1,
       textStyle: {
-        color: '#333',
+        color: colors.tooltip.textColor,
       },
       axisPointer: {
         type: 'shadow',
         shadowStyle: {
-          color: 'rgba(0, 0, 0, 0.05)',
+          color: colors.grid,
         },
       },
     },
@@ -75,7 +67,7 @@ export function useCommonChartOptions(): Partial<EChartsOption> {
         },
       },
       iconStyle: {
-        borderColor: '#666',
+        borderColor: getChartIconBorderColor(),
       },
     },
   }
@@ -116,7 +108,7 @@ export function useBarChart(
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
-            shadowColor: 'rgba(0, 0, 0, 0.3)',
+            shadowColor: getChartShadowColor(),
           },
         },
         ...(options.series?.[0] || {}),
@@ -195,7 +187,7 @@ export function usePieChart(
         avoidLabelOverlap: false,
         itemStyle: {
           borderRadius: 4,
-          borderColor: '#fff',
+          borderColor: getChartPieBorderColor(),
           borderWidth: 2,
         },
         label: {
@@ -242,7 +234,7 @@ export function useTimelineChart(
   const series = Object.entries(data).map(([name, values], index) => {
     const valueMap = new Map(values.map((v) => [v.date, v.value]))
     const color = customColors?.[index]
-    
+
     return {
       name,
       type: chartType,
@@ -331,7 +323,7 @@ export function useWordCloud(
           focus: 'self',
           textStyle: {
             textShadowBlur: 10,
-            textShadowColor: '#333',
+            textShadowColor: getChartTextShadowColor(),
           },
         },
         data: data,

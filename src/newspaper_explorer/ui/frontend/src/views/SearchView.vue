@@ -288,8 +288,8 @@ function onMetadataLoaded() {
         <div class="rounded-lg border bg-card p-3 flex-1 min-w-[300px] self-stretch">
           <div class="flex flex-col gap-1.5 h-full">
             <!-- Header -->
-            <div class="text-sm font-medium text-muted-foreground mb-1">Search Input</div>
-            
+            <label class="text-sm font-medium mb-0.5">Search Input</label>
+
             <!-- Search Input and Button -->
             <div class="flex">
               <input
@@ -512,13 +512,13 @@ function onMetadataLoaded() {
     <Teleport to="body">
       <div
         v-if="viewerOpen"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-heavy"
         @click="closeViewer"
       >
-      <div
-        class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
-        @click.stop
-      >
+        <div
+          class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
+          @click.stop
+        >
         <div class="flex items-center justify-between p-4 border-b bg-muted/50">
           <div v-if="selectedResult" class="space-y-1">
             <p class="font-semibold text-base">

@@ -33,6 +33,106 @@
         --ring: 222.2 84% 4.9%;
 
         --radius: 0.5rem;
+
+        /* Status colors */
+        --success: 142 76% 36%;
+        --success-foreground: 0 0% 100%;
+        --warning: 38 92% 50%;
+        --warning-foreground: 0 0% 0%;
+        --info: 217 91% 60%;
+        --info-foreground: 0 0% 100%;
+
+        /* Highlight/Selection colors (blue-600 variants) */
+        --highlight: 217 91% 60%;
+        --highlight-foreground: 0 0% 100%;
+        --highlight-border: 217 91% 50%;
+        --selection: 217 91% 55%;
+        --selection-light: 217 91% 55% / 0.1;
+        --selection-medium: 217 91% 55% / 0.4;
+        --selection-border: 217 91% 55% / 0.5;
+
+        /* Overlay/Modal colors */
+        --overlay: 0 0% 0%;
+        --overlay-subtle: 0 0% 0% / 0.2;
+        --overlay-light: 0 0% 0% / 0.5;
+        --overlay-muted: 0 0% 0% / 0.6;
+        --overlay-medium: 0 0% 0% / 0.8;
+        --overlay-heavy: 0 0% 0% / 0.9;
+
+        /* Chart/UI chrome colors */
+        --chart-tooltip-bg: 0 0% 100% / 0.95;
+        --chart-tooltip-border: 0 0% 87%;
+        --chart-tooltip-text: 0 0% 20%;
+        --chart-grid: 0 0% 0% / 0.05;
+        --chart-axis-pointer: 210 9% 49%;
+        --chart-shadow: 0 0% 0% / 0.3;
+        --chart-icon-border: 0 0% 40%;
+        --chart-pie-border: 0 0% 100%;
+        --chart-text-shadow: 0 0% 20%;
+
+        /* ===== Result Color Palette (Base) ===== */
+        /* Define your palette here - change these to theme the entire app */
+        --result-1: 224 100% 59%;
+        /* Blue */
+        --result-2: 0 100% 60%;
+        /* Red */
+        --result-3: 145 100% 40%;
+        /* Green */
+        --result-4: 276 100% 58%;
+        /* Purple */
+        --result-5: 34 100% 50%;
+        /* Orange */
+        --result-6: 187 100% 45%;
+        /* Cyan */
+        --result-7: 51 100% 50%;
+        /* Gold */
+        --result-8: 330 100% 65%;
+        /* Pink */
+        --result-9: 348 83% 47%;
+        /* Crimson */
+        --result-10: 260 55% 60%;
+        /* Lavender */
+        --result-11: 207 44% 49%;
+        /* Steel Blue */
+        --result-12: 16 100% 50%;
+        /* Orange Red */
+
+        /* ===== Entity Type Colors (mapped from palette) ===== */
+        --entity-person: var(--result-1);
+        --entity-organization: var(--result-2);
+        --entity-location: var(--result-3);
+        --entity-date: var(--result-4);
+        --entity-event: var(--result-5);
+        --entity-misc: var(--result-6);
+
+        /* ===== Emotion Colors (mapped from palette) ===== */
+        --emotion-joy: var(--result-7);
+        --emotion-love: var(--result-8);
+        --emotion-anger: var(--result-9);
+        --emotion-fear: var(--result-10);
+        --emotion-sadness: var(--result-11);
+        --emotion-agitation: var(--result-12);
+
+        /* ===== Layout/Detection Class Colors (mapped from palette) ===== */
+        --layout-text: var(--result-2);
+        --layout-picture: var(--result-3);
+        --layout-section-header: var(--result-1);
+        --layout-table: var(--result-7);
+        --layout-page-header: var(--result-8);
+        --layout-page-footer: var(--result-6);
+        --layout-caption: var(--result-5);
+        --layout-list: var(--result-4);
+        --layout-title: var(--result-8);
+        --layout-figure: var(--result-6);
+        --layout-formula: var(--result-7);
+
+        /* ===== Preprocessing Category Colors (mapped from palette) ===== */
+        --preprocessing-normalization: var(--result-1);
+        --preprocessing-cleaning: var(--result-3);
+        --preprocessing-filtering: var(--result-5);
+        --preprocessing-modernization: var(--result-4);
+        --preprocessing-linguistic: var(--result-9);
+        --preprocessing-quality: var(--result-6);
     }
 
     .dark {
@@ -63,6 +163,71 @@
         --border: 217.2 32.6% 17.5%;
         --input: 217.2 32.6% 17.5%;
         --ring: 212.7 26.8% 83.9%;
+
+        /* Status colors (dark mode) */
+        --success: 142 69% 31%;
+        --success-foreground: 0 0% 100%;
+        --warning: 38 92% 50%;
+        --warning-foreground: 0 0% 0%;
+        --info: 217 91% 55%;
+        --info-foreground: 0 0% 100%;
+
+        /* Highlight/Selection colors */
+        --highlight: 217 91% 55%;
+        --highlight-foreground: 0 0% 100%;
+        --highlight-border: 217 91% 50%;
+        --selection: 217 91% 55%;
+        --selection-light: 217 91% 55% / 0.15;
+        --selection-medium: 217 91% 55% / 0.4;
+        --selection-border: 217 91% 55% / 0.5;
+
+        /* Overlay/Modal colors (same in dark mode) */
+        --overlay: 0 0% 0%;
+        --overlay-subtle: 0 0% 0% / 0.2;
+        --overlay-light: 0 0% 0% / 0.5;
+        --overlay-muted: 0 0% 0% / 0.6;
+        --overlay-medium: 0 0% 0% / 0.8;
+        --overlay-heavy: 0 0% 0% / 0.9;
+
+        /* Chart/UI chrome colors (dark mode) */
+        --chart-tooltip-bg: 222.2 84% 8% / 0.95;
+        --chart-tooltip-border: 217.2 32.6% 25%;
+        --chart-tooltip-text: 210 40% 90%;
+        --chart-grid: 0 0% 100% / 0.05;
+        --chart-axis-pointer: 210 9% 49%;
+        --chart-shadow: 0 0% 0% / 0.5;
+        --chart-icon-border: 0 0% 70%;
+        --chart-pie-border: 222.2 84% 5%;
+        --chart-text-shadow: 0 0% 70%;
+
+        /* ===== Result Color Palette (Dark Mode) ===== */
+        /* Slightly brighter for dark backgrounds */
+        --result-1: 224 100% 65%;
+        /* Blue */
+        --result-2: 0 100% 65%;
+        /* Red */
+        --result-3: 145 100% 45%;
+        /* Green */
+        --result-4: 276 100% 65%;
+        /* Purple */
+        --result-5: 34 100% 55%;
+        /* Orange */
+        --result-6: 187 100% 50%;
+        /* Cyan */
+        --result-7: 51 100% 55%;
+        /* Gold */
+        --result-8: 330 100% 70%;
+        /* Pink */
+        --result-9: 348 83% 55%;
+        /* Crimson */
+        --result-10: 260 55% 70%;
+        /* Lavender */
+        --result-11: 207 44% 55%;
+        /* Steel Blue */
+        --result-12: 16 100% 55%;
+        /* Orange Red */
+
+        /* Entity/Emotion/Layout colors inherit from --result-* via :root */
     }
 }
 

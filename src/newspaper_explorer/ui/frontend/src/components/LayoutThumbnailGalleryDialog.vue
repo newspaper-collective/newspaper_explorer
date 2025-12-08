@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80" @click="$emit('close')">
-    <div class="relative w-[90vw] h-[90vh] bg-card rounded-lg shadow-xl flex flex-col" @click.stop>
+    <div v-if="open" class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-medium" @click="$emit('close')">
+      <div class="relative w-[90vw] h-[90vh] bg-card rounded-lg shadow-xl flex flex-col" @click.stop>
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b">
         <div>
@@ -39,7 +39,7 @@
               />
 
               <!-- Hover Overlay -->
-              <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <div class="absolute inset-0 bg-overlay-muted opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <span class="text-white text-sm font-medium">View Details</span>
               </div>
             </div>

@@ -466,14 +466,14 @@ const totalRunCount = computed(() =>
                     <td class="px-4 py-3 text-center">
                       <span
                         v-if="source.hasParsedData"
-                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success/20 text-success"
                       >
                         <CheckCircle class="h-3 w-3" />
                         Ready
                       </span>
                       <span
                         v-else-if="source.hasText"
-                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/20 text-warning"
                       >
                         <AlertCircle class="h-3 w-3" />
                         Raw Only

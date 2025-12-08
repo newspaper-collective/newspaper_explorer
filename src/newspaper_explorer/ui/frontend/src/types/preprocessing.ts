@@ -2,6 +2,8 @@
  * TypeScript types for preprocessing pipeline UI
  */
 
+import { getPreprocessingColor } from '@/lib/colors'
+
 export interface StepParameter {
   name: string
   type: 'int' | 'float' | 'bool' | 'string' | 'select'
@@ -107,13 +109,13 @@ export const CATEGORY_ORDER = [
   'quality',
 ] as const
 
-export const CATEGORY_INFO: Record<string, { label: string; color: string; icon: string }> = {
-  normalization: { label: 'Normalization', color: '#2E5EFF', icon: 'Type' },
-  cleaning: { label: 'Cleaning', color: '#00E676', icon: 'Eraser' },
-  filtering: { label: 'Filtering', color: '#FF9100', icon: 'Filter' },
-  modernization: { label: 'Modernization', color: '#9C27FF', icon: 'Sparkles' },
-  linguistic: { label: 'Lemmatization', color: '#FF3333', icon: 'Languages' },
-  quality: { label: 'Quality', color: '#00E5FF', icon: 'CheckCircle' },
+export const CATEGORY_INFO: Record<string, { label: string; icon: string; getColor: () => string }> = {
+  normalization: { label: 'Normalization', icon: 'Type', getColor: () => getPreprocessingColor('normalization') },
+  cleaning: { label: 'Cleaning', icon: 'Eraser', getColor: () => getPreprocessingColor('cleaning') },
+  filtering: { label: 'Filtering', icon: 'Filter', getColor: () => getPreprocessingColor('filtering') },
+  modernization: { label: 'Modernization', icon: 'Sparkles', getColor: () => getPreprocessingColor('modernization') },
+  linguistic: { label: 'Lemmatization', icon: 'Languages', getColor: () => getPreprocessingColor('linguistic') },
+  quality: { label: 'Quality', icon: 'CheckCircle', getColor: () => getPreprocessingColor('quality') },
 }
 
 export interface PreprocessedDatasetInfo {

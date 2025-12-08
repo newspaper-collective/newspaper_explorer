@@ -429,7 +429,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             :key="category"
             class="space-y-2"
           >
-            <div class="flex items-center gap-2 text-sm font-medium" :style="{ color: CATEGORY_INFO[category]?.color }">
+            <div class="flex items-center gap-2 text-sm font-medium" :style="{ color: CATEGORY_INFO[category]?.getColor() }">
               <component :is="categoryIcons[category]" class="h-4 w-4" />
               {{ CATEGORY_INFO[category]?.label || category }}
             </div>
@@ -518,7 +518,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             @dragleave="onDragLeave"
             @drop="draggedStepName ? onDrop($event, index) : onPipelineDrop($event, index)"
             class="flex items-center gap-1 px-3 py-2 rounded-md border bg-background group"
-            :style="{ borderColor: CATEGORY_INFO[getStepInfo(step.name)?.category ?? 'other']?.color }"
+            :style="{ borderColor: CATEGORY_INFO[getStepInfo(step.name)?.category ?? 'other']?.getColor() }"
           >
             <GripVertical class="h-4 w-4 text-muted-foreground cursor-grab" />
             <span class="text-sm font-medium">{{ getStepInfo(step.name)?.display_name || step.name }}</span>
@@ -565,7 +565,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
 
         <!-- Pipeline info -->
         <div v-if="!preprocessingStore.pipelineIsEmpty" class="flex items-center gap-4 mt-4 pt-4 border-t text-sm text-muted-foreground">
-          <span v-if="preprocessingStore.hasSlowSteps" class="flex items-center gap-1 text-amber-500">
+          <span v-if="preprocessingStore.hasSlowSteps" class="flex items-center gap-1 text-warning">
             <Clock class="h-4 w-4" />
             Contains slow steps
           </span>
@@ -616,7 +616,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
               v-for="(sample, idx) in preprocessingStore.previewSamples"
               :key="idx"
               class="p-3 rounded border transition-colors"
-              :class="sample.filtered ? 'bg-amber-500/10 border-amber-500/30' : 'bg-muted/50'"
+              :class="sample.filtered ? 'bg-warning/10 border-warning/30' : 'bg-muted/50'"
             >
               <div class="flex items-start gap-3">
                 <span class="text-xs font-mono text-muted-foreground shrink-0">{{ idx + 1 }}</span>
@@ -628,7 +628,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
                     <span v-if="sample.page_number">Page {{ sample.page_number }}</span>
                   </p>
                 </div>
-                <span v-if="sample.filtered" class="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 shrink-0">filtered</span>
+                <span v-if="sample.filtered" class="text-xs px-1.5 py-0.5 rounded bg-warning/20 text-warning shrink-0">filtered</span>
               </div>
             </div>
           </div>
@@ -645,7 +645,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           <div class="flex items-center justify-between w-full">
             <h2 class="text-sm font-medium">After Pipeline</h2>
             <div v-if="preprocessingStore.batchPreviewResult" class="flex items-center gap-2 text-xs">
-              <span v-if="preprocessingStore.batchPreviewResult.total_removed > 0" class="text-amber-500 flex items-center gap-1">
+              <span v-if="preprocessingStore.batchPreviewResult.total_removed > 0" class="text-warning flex items-center gap-1">
                 <Minus class="h-3 w-3" />
                 {{ preprocessingStore.batchPreviewResult.total_removed }} filtered
               </span>
@@ -678,7 +678,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
                   <template v-if="sample.filtered">
                     <!-- Skeleton placeholder for filtered row -->
                     <div class="flex items-center gap-2 text-muted-foreground">
-                      <Minus class="h-3 w-3 text-amber-500" />
+                      <Minus class="h-3 w-3 text-warning" />
                       <span class="text-xs italic">Row filtered out</span>
                     </div>
                     <!-- Spacer to match original row height -->
@@ -748,7 +748,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           <div class="text-sm">
             <span class="text-muted-foreground">Input:</span>
             <span class="font-medium ml-2">{{ currentInputDisplay }}</span>
-            <span v-if="inputType === 'dataset'" class="ml-2 text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">preprocessed</span>
+            <span v-if="inputType === 'dataset'" class="ml-2 text-xs px-1.5 py-0.5 rounded bg-info/20 text-info">preprocessed</span>
           </div>
 
           <button
@@ -792,10 +792,10 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           <span
             class="text-xs px-2 py-0.5 rounded-full"
             :class="{
-              'bg-amber-100 text-amber-800': preprocessingStore.runningJob.status === 'pending',
-              'bg-blue-100 text-blue-800': preprocessingStore.runningJob.status === 'running',
-              'bg-green-100 text-green-800': preprocessingStore.runningJob.status === 'completed',
-              'bg-red-100 text-red-800': preprocessingStore.runningJob.status === 'failed',
+              'bg-warning/20 text-warning': preprocessingStore.runningJob.status === 'pending',
+              'bg-info/20 text-info': preprocessingStore.runningJob.status === 'running',
+              'bg-success/20 text-success': preprocessingStore.runningJob.status === 'completed',
+              'bg-destructive/20 text-destructive': preprocessingStore.runningJob.status === 'failed',
             }"
           >
             {{ preprocessingStore.runningJob.status }}
@@ -809,7 +809,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           />
         </div>
 
-        <div v-if="preprocessingStore.runningJob.error" class="mt-2 text-sm text-red-500">
+        <div v-if="preprocessingStore.runningJob.error" class="mt-2 text-sm text-destructive">
           {{ preprocessingStore.runningJob.error }}
         </div>
 
@@ -825,7 +825,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
     <Teleport to="body">
       <div
         v-if="showStepConfig && configStep"
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+        class="fixed inset-0 bg-overlay-light flex items-center justify-center z-[100]"
         @click.self="closeStepConfig"
       >
         <div class="bg-card rounded-lg border shadow-lg w-full max-w-md p-6">
@@ -905,7 +905,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
     <Teleport to="body">
       <div
         v-if="showInputSelector"
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]"
+        class="fixed inset-0 bg-overlay-light flex items-center justify-center z-[100]"
         @click.self="showInputSelector = false"
       >
         <div class="bg-card rounded-lg border shadow-lg w-full max-w-lg p-6">

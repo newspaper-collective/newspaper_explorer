@@ -1,12 +1,13 @@
 /**
  * Keyword statistics composable for analysis views
- * 
+ *
  * Handles loading statistics from backend and generating chart configurations
  * Similar to useLayoutStats but for keyword data
  */
 
 import { ref, computed } from 'vue'
 import type { EChartsOption } from 'echarts'
+import { getResultColor } from '@/lib/colors'
 
 export interface KeywordStats {
   total?: number
@@ -89,7 +90,7 @@ export function useKeywordStats() {
         {
           type: 'bar',
           data: data.map((k) => k.frequency),
-          itemStyle: { color: '#5470c6' },
+          itemStyle: { color: getResultColor(1) },
         },
       ],
       grid: { bottom: 120 },
@@ -130,7 +131,7 @@ export function useKeywordStats() {
         {
           type: 'bar',
           data: scoreDistribution.counts,
-          itemStyle: { color: '#5470c6' },
+          itemStyle: { color: getResultColor(1) },
         },
       ],
       grid: { bottom: 80 },
@@ -182,7 +183,7 @@ export function useKeywordStats() {
         {
           type: 'bar',
           data: docBins,
-          itemStyle: { color: '#91cc75' },
+          itemStyle: { color: getResultColor(3) },
         },
       ],
     }

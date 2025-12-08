@@ -3,6 +3,13 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import OpenSeadragon from 'openseadragon'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2 } from 'lucide-vue-next'
 import { getDetectionColor } from '@/lib/imageAnnotation'
+import {
+  getHighlightColor,
+  getHighlightBorderColor,
+  getSelectionLightColor,
+  getSelectionMediumColor,
+  getSelectionBorderColor,
+} from '@/lib/colors'
 
 interface Detection {
   detection_id: string
@@ -66,7 +73,7 @@ const detectionOverlays = new Map<string, HTMLElement>()
 
 function addTextLineOverlays() {
   if (!viewer) return
-  
+
   // Clear existing text line overlays
   textLineOverlays.forEach((element) => {
     viewer?.removeOverlay(element)
@@ -78,7 +85,7 @@ function addTextLineOverlays() {
     console.log('No text lines to display, overlays cleared')
     return
   }
-  
+
   const tiledImage = viewer.world.getItemAt(0)
   if (!tiledImage) {
     console.warn('No tiled image loaded yet, skipping text line overlays')
@@ -104,30 +111,34 @@ function addTextLineOverlays() {
   props.textLines.forEach((line) => {
     const lineId = line.line_id || line.text_block_id || `${line.x}_${line.y}`
     const isHighlighted = lineId === props.highlightedLineId
-    
+
     const overlayDiv = document.createElement('div')
-    overlayDiv.style.border = isHighlighted ? '4px solid #2563eb' : '2px solid rgba(59, 130, 246, 0.5)'
-    overlayDiv.style.backgroundColor = isHighlighted ? 'rgba(37, 99, 235, 0.4)' : 'rgba(59, 130, 246, 0.1)'
+    overlayDiv.style.border = isHighlighted
+      ? `4px solid ${getHighlightBorderColor()}`
+      : `2px solid ${getSelectionBorderColor()}`
+    overlayDiv.style.backgroundColor = isHighlighted
+      ? getSelectionMediumColor()
+      : getSelectionLightColor()
     overlayDiv.style.cursor = 'pointer'
     overlayDiv.style.boxSizing = 'border-box'
     overlayDiv.style.transition = 'all 0.2s'
     overlayDiv.dataset.lineId = lineId
-    
+
     // Add hover effect
     overlayDiv.addEventListener('mouseenter', () => {
-      overlayDiv.style.backgroundColor = 'rgba(37, 99, 235, 0.4)'
-      overlayDiv.style.border = '4px solid #2563eb'
+      overlayDiv.style.backgroundColor = getSelectionMediumColor()
+      overlayDiv.style.border = `4px solid ${getHighlightBorderColor()}`
       emit('lineHover', lineId)
     })
-    
+
     overlayDiv.addEventListener('mouseleave', () => {
       if (lineId !== props.highlightedLineId) {
-        overlayDiv.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'
-        overlayDiv.style.border = '2px solid rgba(59, 130, 246, 0.5)'
+        overlayDiv.style.backgroundColor = getSelectionLightColor()
+        overlayDiv.style.border = `2px solid ${getSelectionBorderColor()}`
       }
       emit('lineHover', null)
     })
-    
+
     // Click to select line
     overlayDiv.addEventListener('click', (e) => {
       console.log('Overlay clicked in OpenSeadragonViewer:', lineId)
@@ -147,14 +158,14 @@ function addTextLineOverlays() {
       element: overlayDiv,
       location: new OpenSeadragon.Rect(x, y, width, height),
     })
-    
+
     textLineOverlays.set(lineId, overlayDiv)
   })
 }
 
 function addDetectionOverlays() {
   if (!viewer) return
-  
+
   // Clear existing detection overlays
   detectionOverlays.forEach((element) => {
     viewer?.removeOverlay(element)
@@ -166,7 +177,7 @@ function addDetectionOverlays() {
     console.log('No detections to display, overlays cleared')
     return
   }
-  
+
   // Get image size from OpenSeadragon's world
   const tiledImage = viewer.world.getItemAt(0)
   if (!tiledImage) {
@@ -196,14 +207,14 @@ function addDetectionOverlays() {
     }
 
     const color = getDetectionColor(detection.class_name)
-    
+
     // Create overlay element
     const overlayDiv = document.createElement('div')
     overlayDiv.style.border = `3px solid ${color}`
     overlayDiv.style.backgroundColor = `${color}33`
     overlayDiv.style.pointerEvents = 'none'
     overlayDiv.style.boxSizing = 'border-box'
-    
+
     // Create label
     const label = document.createElement('div')
     label.textContent = `${detection.class_name} (${(detection.confidence * 100).toFixed(0)}%)`
@@ -238,7 +249,7 @@ function addDetectionOverlays() {
         element: overlayDiv,
         location: new OpenSeadragon.Rect(x, y, width, height),
       })
-      
+
       // Track the overlay for later removal
       detectionOverlays.set(detection.detection_id, overlayDiv)
     }
@@ -324,16 +335,16 @@ watch(() => props.highlightedLineId, (newId, oldId) => {
   if (oldId) {
     const oldOverlay = textLineOverlays.get(oldId)
     if (oldOverlay) {
-      oldOverlay.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'
-      oldOverlay.style.border = '2px solid rgba(59, 130, 246, 0.5)'
+      oldOverlay.style.backgroundColor = getSelectionLightColor()
+      oldOverlay.style.border = `2px solid ${getSelectionBorderColor()}`
     }
   }
-  
+
   if (newId) {
     const newOverlay = textLineOverlays.get(newId)
     if (newOverlay) {
-      newOverlay.style.backgroundColor = 'rgba(37, 99, 235, 0.4)'
-      newOverlay.style.border = '4px solid #2563eb'
+      newOverlay.style.backgroundColor = getSelectionMediumColor()
+      newOverlay.style.border = `4px solid ${getHighlightBorderColor()}`
     }
   }
 })
@@ -393,7 +404,7 @@ function resetZoom() {
     <button
       v-if="currentPage > 1"
       @click="emit('changePage', -1)"
-      class="absolute left-0 top-0 h-full w-16 flex items-center justify-start pl-2 opacity-0 group-hover:opacity-100 hover:bg-black/20 transition-all z-10"
+      class="absolute left-0 top-0 h-full w-16 flex items-center justify-start pl-2 opacity-0 group-hover:opacity-100 hover:bg-overlay-subtle transition-all z-10"
     >
       <div class="p-2 rounded-full bg-background/90 shadow-lg">
         <ChevronLeft class="h-6 w-6" />
@@ -404,7 +415,7 @@ function resetZoom() {
     <button
       v-if="currentPage < totalPages"
       @click="emit('changePage', 1)"
-      class="absolute right-0 top-0 h-full w-16 flex items-center justify-end pr-2 opacity-0 group-hover:opacity-100 hover:bg-black/20 transition-all z-10"
+      class="absolute right-0 top-0 h-full w-16 flex items-center justify-end pr-2 opacity-0 group-hover:opacity-100 hover:bg-overlay-subtle transition-all z-10"
     >
       <div class="p-2 rounded-full bg-background/90 shadow-lg">
         <ChevronRight class="h-6 w-6" />
