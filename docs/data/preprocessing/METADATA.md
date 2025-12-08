@@ -1,10 +1,11 @@
 # Preprocessing Metadata System
 
-> **Status**: Production-ready (November 2025)
-> **Implementation**: `src/newspaper_explorer/data/utils/metadata.py`
-> **Pipeline**: `src/newspaper_explorer/data/preprocessing/pipeline.py`
+**Module:** `newspaper_explorer.data.utils.metadata` and `newspaper_explorer.models.data.metadata`
+**Status:** ✅ Production-ready
+**Purpose:** Track preprocessing steps for full reproducibility and provenance
 
-This document describes the preprocessing metadata system that tracks all preprocessing steps applied to newspaper text data, enabling full reproducibility and provenance tracking.
+> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
+> This document focuses specifically on the metadata tracking system.
 
 ---
 
@@ -17,6 +18,21 @@ The preprocessing metadata system provides:
 3. **Provenance Tracking** - Analysis results can trace back to preprocessing steps
 4. **Standardized Storage** - Same pattern as analysis results (subdirectories with parquet + JSON)
 
+### File Structure
+
+```
+src/newspaper_explorer/
+├── data/
+│   ├── preprocessing/
+│   │   └── pipeline.py          # TextPreprocessor.run() saves metadata
+│   └── utils/
+│       ├── metadata.py          # find_metadata_for_parquet(), load_metadata()
+│       └── results.py           # save_preprocessing_results()
+└── models/
+    └── data/
+        └── metadata.py          # PreprocessingMetadata, PreprocessingResult models
+```
+
 ---
 
 ## Quick Start
@@ -27,11 +43,11 @@ The preprocessing metadata system provides:
 # Run preprocessing - automatically saves metadata
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase,remove-stopwords \
+    --steps normalize_unicode,normalize_casing,remove_stopwords \
     --sample 1000
 
 # Output structure:
-# data/processed/der_tag/text/normalize_lowercase_remove_stopwords_20251110_120000/
+# data/processed/der_tag/text/normalize_unicode_normalize_casing_remove_stopwords_20251110_120000/
 #   ├── textblocks.parquet
 #   └── textblocks.json  # Preprocessing metadata
 ```
@@ -42,17 +58,17 @@ newspaper-explorer data preprocess \
 # First preprocessing
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase \
+    --steps normalize_unicode,normalize_casing \
     --output data/processed/der_tag/text/step1/textblocks.parquet
 
 # Second preprocessing (uses first as input)
 newspaper-explorer data preprocess \
     --source der_tag \
     --input data/processed/der_tag/text/step1/textblocks.parquet \
-    --steps remove-stopwords,lemmatize-spacy
+    --steps remove_stopwords,lemmatize_spacy
 
 # The metadata automatically chains steps:
-# All steps: ["normalize", "lowercase", "remove-stopwords", "lemmatize-spacy"]
+# All steps: ["normalize_unicode", "normalize_casing", "remove_stopwords", "lemmatize_spacy"]
 ```
 
 ---
@@ -63,9 +79,9 @@ newspaper-explorer data preprocess \
 
 ```python
 {
-  "preprocessing_id": "normalize_lowercase_remove_stopwords_20251110_120000",
+  "preprocessing_id": "normalize_unicode_normalize_casing_remove_stopwords_20251110_120000",
   "source": "der_tag",
-  "steps": ["normalize", "lowercase", "remove-stopwords"],
+  "steps": ["normalize_unicode", "normalize_casing", "remove_stopwords"],
   "parameters": {
     "text_column": "text",
     "output_column": "text_processed",
@@ -85,8 +101,8 @@ newspaper-explorer data preprocess \
     "columns": ["line_id", "text", "text_processed", "date", ...]
   },
   "previous_preprocessing": {
-    "preprocessing_id": "normalize_20251110_110000",
-    "steps": ["normalize"],
+    "preprocessing_id": "normalize_unicode_20251110_110000",
+    "steps": ["normalize_unicode"],
     "parameters": {...}
   },
   "status": "completed"
@@ -149,12 +165,11 @@ data/processed/der_tag/text/
 ### 1. Programmatic Usage
 
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import run_preprocessing
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
 # Simple usage - handles everything automatically
-result = run_preprocessing(
-    source="der_tag",
-    steps=["normalize-unicode", "normalize-casing", "remove-stopwords"],
+result = TextPreprocessor(source="der_tag").run(
+    steps=["normalize_unicode", "normalize_casing", "remove_stopwords"],
 )
 
 print(f"Processed {result.input_rows} → {result.output_rows} rows")
@@ -168,25 +183,24 @@ When you run preprocessing on already-preprocessed data, the metadata is automat
 chained to track the full pipeline history:
 
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import run_preprocessing
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
 # First preprocessing run
-result1 = run_preprocessing(
-    source="der_tag",
-    steps=["normalize-unicode", "normalize-casing"],
+preprocessor = TextPreprocessor(source="der_tag")
+result1 = preprocessor.run(
+    steps=["normalize_unicode", "normalize_casing"],
 )
 
 # Second preprocessing run (on the output of the first)
-result2 = run_preprocessing(
-    source="der_tag",
-    steps=["lemmatize-spacy"],
+result2 = TextPreprocessor(source="der_tag").run(
+    steps=["lemmatize_spacy"],
     input_path=result1.results_path,  # Use output from first run
 )
 
 # Get all steps (including previous)
 all_steps = result2.metadata.get_all_steps()
 print(f"Complete pipeline: {all_steps}")
-# Output: ['normalize-unicode', 'normalize-casing', 'lemmatize-spacy']
+# Output: ['normalize_unicode', 'normalize_casing', 'lemmatize_spacy']
 ```
 
 ### 3. Using Preprocessed Data in Analysis
@@ -230,20 +244,20 @@ metadata = AnalysisMetadata(
 # Step 1: Basic normalization
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase \
+    --steps normalize_unicode,normalize_casing \
     --sample 1000
 
 # Note the preprocessing ID in output:
-# Preprocessing ID: normalize_lowercase_20251110_120000
+# Preprocessing ID: normalize_unicode_normalize_casing_20251110_120000
 
 # Step 2: Use preprocessed data as input for more processing
 newspaper-explorer data preprocess \
     --source der_tag \
-    --input data/processed/der_tag/text/normalize_lowercase_20251110_120000/textblocks.parquet \
-    --steps remove-stopwords,lemmatize-spacy
+    --input data/processed/der_tag/text/normalize_unicode_normalize_casing_20251110_120000/textblocks.parquet \
+    --steps remove_stopwords,lemmatize_spacy
 
 # Output will show chained steps:
-# Previous preprocessing: normalize_lowercase_20251110_120000 (2 steps)
+# Previous preprocessing: normalize_unicode_normalize_casing_20251110_120000 (2 steps)
 # New steps: 2
 # Total pipeline: 4 steps
 ```
@@ -263,8 +277,8 @@ When you run analysis on preprocessed data, the analysis metadata automatically 
   "input_data": {
     "row_count": 98500,
     "preprocessing": {
-      "preprocessing_id": "normalize_lowercase_remove_stopwords_20251110_120000",
-      "steps": ["normalize", "lowercase", "remove-stopwords"],
+      "preprocessing_id": "normalize_unicode_normalize_casing_remove_stopwords_20251110_120000",
+      "steps": ["normalize_unicode", "normalize_casing", "remove_stopwords"],
       "parameters": {...},
       "metadata_path": "data/processed/der_tag/text/.../textblocks.json"
     }
@@ -323,7 +337,7 @@ newspaper-explorer data preprocess --source der_tag --steps normalize,lowercase
 
 # Use this path for analysis:
 newspaper-explorer analyze entities extract \
-    --input data/processed/der_tag/text/normalize_lowercase_20251110_120000/textblocks.parquet
+    --input data/processed/der_tag/text/normalize_unicode_normalize_casing_20251110_120000/textblocks.parquet
 ```
 
 ### 2. Keep Preprocessing Steps Modular
@@ -332,17 +346,17 @@ Instead of one giant preprocessing run, break into logical stages:
 
 ```bash
 # Stage 1: Normalization
-newspaper-explorer data preprocess --source der_tag --steps normalize,lowercase
+newspaper-explorer data preprocess --source der_tag --steps normalize_unicode,normalize_casing
 
 # Stage 2: Linguistic processing (can be slow, keep separate)
 newspaper-explorer data preprocess --source der_tag \
     --input <stage1_output> \
-    --steps lemmatize-spacy
+    --steps lemmatize_spacy
 
 # Stage 3: Analysis-specific preprocessing
 newspaper-explorer data preprocess --source der_tag \
     --input <stage2_output> \
-    --steps remove-stopwords
+    --steps remove_stopwords
 ```
 
 ### 3. Use Metadata for Analysis Configuration
@@ -353,7 +367,7 @@ When running analysis, extract preprocessing info to adapt parameters:
 input_stats = extract_input_stats(df, input_path=input_path)
 if "preprocessing" in input_stats:
     steps = input_stats["preprocessing"]["steps"]
-    if "lemmatize-spacy" in steps:
+    if "lemmatize_spacy" in steps:
         # Use lemmatized text column
         text_column = "text_lemma"
     else:
@@ -364,6 +378,7 @@ if "preprocessing" in input_stats:
 
 ## See Also
 
-- [Preprocessing Pipeline Documentation](PREPROCESSING.md) - Complete guide to preprocessing steps
-- [Analysis Metadata System](../../development/ANALYSIS_METADATA.md) - Analysis metadata pattern
-- [Configuration Management](../../development/CONFIGURATION.md) - Configuration system
+- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide
+- **[NORMALIZATION.md](NORMALIZATION.md)** - Text normalization methods
+- **[QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)** - OCR quality validation
+- **[WORDLISTS.md](WORDLISTS.md)** - German wordlists for OOV calculation

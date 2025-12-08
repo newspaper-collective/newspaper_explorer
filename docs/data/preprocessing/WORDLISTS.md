@@ -1,5 +1,14 @@
 # German Wordlists for OCR Quality Validation
 
+**Location:** `data/wordlist_de.txt` and `data/wordlists/`
+**Status:** ✅ Ready
+**Purpose:** Provide vocabulary for out-of-vocabulary (OOV) rate calculation
+
+> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
+> For quality validation details, see [QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)
+
+---
+
 ## Summary
 
 You now have **three German wordlists** for OCR quality validation:
@@ -56,12 +65,14 @@ from newspaper_explorer.data.preprocessing.validation import calculate_quality_m
 # Use spaCy wordlist (general modern German)
 df = calculate_quality_metrics(
     df,
+    input_column="text",
     german_wordlist_path="data/wordlist_de.txt"
 )
 
 # Or use Leipzig wordlist (frequency-based)
 df = calculate_quality_metrics(
     df,
+    input_column="text",
     german_wordlist_path="data/wordlists/wordlist_leipzig.txt"
 )
 ```
@@ -156,27 +167,19 @@ python3 test_quality_with_wordlist.py
 ### 3. Integrate with Preprocessing
 
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import PreprocessingPipeline
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
-pipeline = PreprocessingPipeline()
+preprocessor = TextPreprocessor()
 
 # Add quality validation to your pipeline
-df = pipeline.pipeline(
+df = preprocessor.pipeline(
     df,
     steps=[
-        "normalize-unicode",
-        "normalize-long-s",
-        "calculate-quality",  # Calculate quality metrics
-        "filter-by-quality",  # Remove poor quality
+        "normalize_unicode",
+        "normalize_long_s",
+        "calculate_quality_metrics",  # Calculate quality metrics
+        "filter_by_quality_score",    # Remove poor quality
     ],
-    parameters={
-        "calculate-quality": {
-            "german_wordlist_path": "data/wordlist_de.txt",
-        },
-        "filter-by-quality": {
-            "min_quality": "review",  # Keep good + review
-        },
-    },
 )
 ```
 
@@ -193,7 +196,7 @@ data/
 
 ## See Also
 
-- **QUALITY_VALIDATION.md**: Complete quality validation documentation
-- **test_quality_with_wordlist.py**: Test script with OOV calculation
-- **generate_wordlist.py**: spaCy wordlist generator
-- **download_more_wordlists.py**: Leipzig/Hunspell downloader
+- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide
+- **[QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)** - OCR quality validation
+- **[NORMALIZATION.md](NORMALIZATION.md)** - Text normalization methods
+- **[METADATA.md](METADATA.md)** - Preprocessing metadata system

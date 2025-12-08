@@ -8,36 +8,17 @@
 - ◼
 
 
-- donut or yolo page classification to detect add pages and classifieds
-
-unify datamodel for results or analysis types -> entityresults, topicresults, emotionsresults, etc.
 
 
+- Remove Emojis from source, documentation, output etc. -> improve copilot instructions to avoid them
 
-### CLI Refactoring - Move Logic to Library
-- **Problem**: CLI contains ~8,500 lines with significant business logic that should be in library modules
-- **Worst offenders**:
-  - `cli/analyze/topics/commands.py` (1,787 lines) - topic modeling orchestration
-  - `cli/analyze/layout/commands.py` (1,446 lines) - detection flattening, stats
-  - `cli/analyze/entities/commands.py` (961 lines) - entity extraction orchestration
-  - `cli/analyze/keywords/commands.py` (923 lines) - keyword extraction orchestration
-  - `cli/data/info.py` (897 lines) - token/char analysis, completeness checks
-- **What to move**:
-  - DataFrame transformations → library modules
-  - Statistics/analysis functions → `data/utils/` or `analyze/`
-  - Result saving patterns → shared utilities
-  - Progress bar wrapping → decorators/context managers
-- **CLI should only**:
-  - Parse arguments
-  - Call library functions
-  - Format output with click.echo()
-  - Handle errors gracefully
-- **Benefits**: Testable, reusable, cleaner separation of concerns
 
 - add source_name to aggregated blocks
-- spacy models?
+
 - yolo, spacy, hf cache dir move to .env
+
 - unify sample/limit cmd
+
 - do bertopic year by year
 
 - normalization output always named textblocks
@@ -49,6 +30,8 @@ unify datamodel for results or analysis types -> entityresults, topicresults, em
 - page samples not reactive slightly buggy
 - add drop shadows all around to flat elements
 - support preprocessing metadata
+
+
 ### Data Issues
 - Images need fixing too
 - 1900 issue mets file is needded
@@ -84,7 +67,6 @@ Transkribus OCR -> Problem with alto-export
 
 - keywords ui broken
 
-- unify results output
 
 - sort dataset by filename when loading
 

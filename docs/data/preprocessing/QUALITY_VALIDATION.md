@@ -1,12 +1,32 @@
 # OCR Quality Validation
 
-**Module:** `newspaper_explorer.data.preprocessing.validation`  
-**Status:** ✅ Complete (Stage 6 from normalize.md)  
+**Module:** `newspaper_explorer.data.preprocessing.validation`
+**Status:** ✅ Complete
 **Purpose:** Assess OCR text quality and filter low-quality content
+
+> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
+> This document focuses specifically on quality validation methods.
+
+---
 
 ## Overview
 
-The quality validation module provides comprehensive quality assessment for historical German newspaper OCR text. It implements the validation approach from normalize.md research (Stage 6), calculating multiple quality indicators to assess OCR accuracy and text cleanliness.
+The quality validation module provides comprehensive quality assessment for historical German newspaper OCR text. It calculates multiple quality indicators to assess OCR accuracy and text cleanliness.
+
+### File Structure
+
+```
+src/newspaper_explorer/data/preprocessing/
+└── validation.py        # Quality metrics and filtering
+```
+
+### Available Functions
+
+| Function | Purpose | Speed |
+|----------|---------|-------|
+| `calculate_quality_metrics()` | Calculate char/token ratio, OOV rate, proper noun density | ⚡⚡⚡⚡ Fast |
+| `filter_by_quality_score()` | Filter DataFrame by quality score threshold | ⚡⚡⚡⚡⚡ Instant |
+| `summarize_quality()` | Generate summary statistics for quality metrics | ⚡⚡⚡⚡⚡ Instant |
 
 ## Quality Metrics
 
@@ -87,8 +107,7 @@ Calculate comprehensive quality metrics for OCR text.
 ```python
 calculate_quality_metrics(
     df: pl.DataFrame,
-    text_column: str = "text",
-    input_column: Optional[str] = None,
+    input_column: str = "text",
     german_wordlist_path: Optional[str] = None,
     output_column_prefix: str = "quality_",
 ) -> pl.DataFrame
@@ -96,8 +115,7 @@ calculate_quality_metrics(
 
 **Parameters:**
 - `df`: Input DataFrame
-- `text_column`: Default column containing text (for backward compatibility)
-- `input_column`: Column to analyze (default: text_column)
+- `input_column`: Column to analyze (default: "text")
 - `german_wordlist_path`: Path to German word list file (optional)
 - `output_column_prefix`: Prefix for output metric columns (default: "quality_")
 
@@ -117,12 +135,12 @@ import polars as pl
 df = pl.read_parquet("data.parquet")
 
 # Calculate quality metrics (without wordlist)
-df = calculate_quality_metrics(df, text_column="text")
+df = calculate_quality_metrics(df, input_column="text")
 
 # Or with German wordlist for OOV calculation
 df = calculate_quality_metrics(
     df,
-    text_column="text",
+    input_column="text",
     german_wordlist_path="wordlist_de.txt",
 )
 
@@ -137,15 +155,15 @@ df.select([
 
 **Pipeline usage:**
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import PreprocessingPipeline
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
-pipeline = PreprocessingPipeline()
-df = pipeline.pipeline(
+preprocessor = TextPreprocessor()
+df = preprocessor.pipeline(
     df,
     steps=[
-        "normalize-unicode",
-        "normalize-long-s",
-        "calculate-quality",  # Add quality metrics
+        "normalize_unicode",
+        "normalize_long_s",
+        "calculate_quality_metrics",  # Add quality metrics
     ],
 )
 ```
@@ -193,12 +211,12 @@ df = filter_by_quality_score(df, min_quality="good")
 
 **Pipeline usage:**
 ```python
-df = pipeline.pipeline(
+df = preprocessor.pipeline(
     df,
     steps=[
-        "normalize-unicode",
-        "calculate-quality",
-        "filter-by-quality",  # Remove poor quality
+        "normalize_unicode",
+        "calculate_quality_metrics",
+        "filter_by_quality_score",  # Remove poor quality
     ],
 )
 ```
@@ -322,14 +340,16 @@ print(f"  Poor: {summary['pct_poor']:.1%}")
 Filter out poor quality text before analysis:
 
 ```python
-pipeline = PreprocessingPipeline()
-df = pipeline.pipeline(
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
+
+preprocessor = TextPreprocessor()
+df = preprocessor.pipeline(
     df,
     steps=[
-        "normalize-unicode",
-        "normalize-long-s",
-        "calculate-quality",
-        "filter-by-quality",  # Remove poor quality
+        "normalize_unicode",
+        "normalize_long_s",
+        "calculate_quality_metrics",
+        "filter_by_quality_score",  # Remove poor quality
     ],
 )
 ```
@@ -339,6 +359,10 @@ df = pipeline.pipeline(
 Apply different processing based on quality:
 
 ```python
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
+from newspaper_explorer.data.preprocessing.normalization import normalize_unicode
+from newspaper_explorer.data.preprocessing.validation import calculate_quality_metrics
+
 # Calculate quality
 df = calculate_quality_metrics(df)
 
@@ -347,14 +371,15 @@ df_good = df.filter(pl.col("quality_score") == "good")
 df_good = normalize_unicode(df_good)
 
 # Process poor quality more aggressively
+preprocessor = TextPreprocessor()
 df_poor = df.filter(pl.col("quality_score") == "poor")
-df_poor = pipeline.pipeline(
+df_poor = preprocessor.pipeline(
     df_poor,
     steps=[
-        "normalize-unicode",
-        "filter-repeating-chars",
-        "filter-number-only",
-        "normalize-long-s",
+        "normalize_unicode",
+        "remove_garbage_words",
+        "filter_number_only_lines",
+        "normalize_long_s",
     ],
 )
 
@@ -385,22 +410,22 @@ quality_by_year.write_csv("quality_report_by_year.csv")
 ### Basic Integration
 
 ```python
-from newspaper_explorer.data.preprocessing.pipeline import PreprocessingPipeline
+from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 
-pipeline = PreprocessingPipeline()
+preprocessor = TextPreprocessor()
 
-df = pipeline.pipeline(
+df = preprocessor.pipeline(
     df,
     steps=[
-        # Stage 1-4: Cleaning
-        "normalize-unicode",
-        "normalize-long-s",
-        "filter-repeating-chars",
-        "normalize-whitespace",
-        
-        # Stage 6: Quality validation
-        "calculate-quality",
-        "filter-by-quality",  # Remove poor quality
+        # Cleaning
+        "normalize_unicode",
+        "normalize_long_s",
+        "remove_garbage_words",
+        "normalize_whitespace",
+
+        # Quality validation
+        "calculate_quality_metrics",
+        "filter_by_quality_score",  # Remove poor quality
     ],
 )
 ```
@@ -409,27 +434,15 @@ df = pipeline.pipeline(
 
 ```python
 # Calculate quality with custom parameters
-df = pipeline.pipeline(
+df = preprocessor.pipeline(
     df,
-    steps=["calculate-quality"],
-    parameters={
-        "calculate-quality": {
-            "german_wordlist_path": "wordlist_de.txt",
-            "output_column_prefix": "q_",
-        }
-    },
+    steps=["calculate_quality_metrics"],
 )
 
 # Filter by quality with custom threshold
-df = pipeline.pipeline(
+df = preprocessor.pipeline(
     df,
-    steps=["filter-by-quality"],
-    parameters={
-        "filter-by-quality": {
-            "quality_column": "q_score",
-            "min_quality": "good",  # Keep only good
-        }
-    },
+    steps=["filter_by_quality_score"],
 )
 ```
 
@@ -507,7 +520,7 @@ Potential improvements for OCR quality validation:
 
 ## See Also
 
-- **normalize.md**: Complete 6-stage OCR cleaning pipeline research
-- **filtering.py**: OCR garbage detection functions
-- **normalization.py**: Unicode and historical German normalization
-- **PREPROCESSING.md**: Complete preprocessing documentation
+- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide
+- **[WORDLISTS.md](WORDLISTS.md)** - German wordlist documentation
+- **[NORMALIZATION.md](NORMALIZATION.md)** - Text normalization methods
+- **[METADATA.md](METADATA.md)** - Preprocessing metadata system

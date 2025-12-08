@@ -1,9 +1,13 @@
 # Text Normalization
 
+**Module:** `newspaper_explorer.data.preprocessing.normalization` and `newspaper_explorer.data.preprocessing.modernization`
+**Status:** ✅ Complete
+**Purpose:** Convert historical German text to modern orthography
+
 > **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
 > This document focuses specifically on normalization methods.
 
-Historical German newspaper text often uses outdated spelling conventions and characters that can pose challenges for modern NLP analysis. The Newspaper Explorer supports multiple normalization approaches, from simple character replacement to state-of-the-art neural models.
+---
 
 ## Overview
 
@@ -12,6 +16,28 @@ Text normalization converts historical German text to modern orthography, handli
 - **Outdated characters**: `ſ` → `s`, `aͤ` → `ä`, etc.
 - **Historical spelling**: `Königinn` → `Königin`, `Pallaſtes` → `Palastes`
 - **Grammatical modernization**: Historical verb forms and grammar
+
+### File Structure
+
+```
+src/newspaper_explorer/data/preprocessing/
+├── normalization.py     # Rule-based normalization (Unicode, hyphens, long-s, umlauts)
+└── modernization.py     # Neural/API normalization (Transnormer, DTA-CAB)
+```
+
+### Available Functions
+
+| Function | Module | Speed | Use Case |
+|----------|--------|-------|----------|
+| `normalize_unicode()` | normalization | ⚡⚡⚡⚡⚡ | NFKC, quotes, spaces, control chars |
+| `normalize_hyphens()` | normalization | ⚡⚡⚡⚡⚡ | Hyphen/dash unification |
+| `normalize_whitespace()` | normalization | ⚡⚡⚡⚡⚡ | Whitespace collapse |
+| `normalize_long_s()` | normalization | ⚡⚡⚡⚡⚡ | ſ → s conversion |
+| `normalize_umlauts()` | normalization | ⚡⚡⚡⚡⚡ | Historical umlaut forms |
+| `normalize_casing()` | normalization | ⚡⚡⚡⚡⚡ | Case normalization |
+| `dehyphenate()` | normalization | ⚡⚡⚡ | Line-break hyphen removal |
+| `transnormer()` | modernization | ⚡⚡⚡ | Neural spelling modernization |
+| `dta_cab()` | modernization | ⚡ | API spelling modernization |
 
 ## Historical Long S (ſ) Normalization
 
@@ -329,9 +355,9 @@ normalized_df = normalize_text(df, model="19c", batch_size=8)
 - Reduce `num_beams` (e.g., to 2)
 - Increase `batch_size` (if memory allows)
 
-## Related Documentation
+## See Also
 
-- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide with all methods
-- [Text Processing](TEXT_PROCESSING.md) - Text cleaning and processing
-- [Data Loading](LOADING.md) - Loading newspaper data
-- [Configuration](CONFIGURATION_PHILOSOPHY.md) - Environment setup
+- **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide
+- **[QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)** - OCR quality validation
+- **[METADATA.md](METADATA.md)** - Preprocessing metadata system
+- **[WORDLISTS.md](WORDLISTS.md)** - German wordlists for OOV calculation

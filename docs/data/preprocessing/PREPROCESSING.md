@@ -33,10 +33,11 @@ The preprocessing module provides a comprehensive pipeline for cleaning and norm
 - ✅ **Preserve traceability**: All foreign keys (IDs) maintained throughout pipeline
 
 **Preprocessing Categories**:
-1. **Normalization** - Transform text to standard form (Unicode, diacritics, historical characters, spelling)
-2. **Cleaning** - Remove noise (whitespace, case)
-3. **Filtering** - Remove content (punctuation, numbers, stopwords, OCR artifacts)
-4. **Linguistic** - Language-aware processing (dehyphenation, lemmatization)
+1. **Normalization** - Transform text to standard form (Unicode, diacritics, historical characters, spelling, dehyphenation)
+2. **Modernization** - Neural/API spelling modernization (Transnormer, DTA-CAB)
+3. **Cleaning** - Remove content (punctuation, numbers, stopwords, OCR artifacts)
+4. **Filtering** - Remove rows (by length, word count, empty lines)
+5. **Lemmatization** - Reduce words to base forms (spaCy, GermaLemma)
 
 ---
 
@@ -47,10 +48,13 @@ The preprocessing module provides a comprehensive pipeline for cleaning and norm
 ```
 src/newspaper_explorer/data/preprocessing/
 ├── pipeline.py              # Main TextPreprocessor class
-├── normalization.py         # Text normalization (Unicode, diacritics, historical chars, spelling)
-├── cleaning.py              # Text cleaning (whitespace, case)
-├── filtering.py             # Content filtering and removal
-└── linguistic.py            # Linguistic processing (dehyphenate, lemmatize)
+├── presets.py               # Pipeline presets (minimal, basic, standard, etc.)
+├── normalization.py         # Text normalization (Unicode, hyphens, whitespace, casing, long-s, dehyphenation)
+├── modernization.py         # Neural/API spelling modernization (Transnormer, DTA-CAB)
+├── cleaning.py              # Text cleaning (diacritics, punctuation, numbers, stopwords, garbage)
+├── filtering.py             # Row filtering (length, word count, empty lines)
+├── lemmatization.py         # Lemmatization (spaCy, GermaLemma)
+└── validation.py            # Quality metrics and filtering
 
 cli/data/
 └── preprocessing.py         # CLI command registration
@@ -58,7 +62,9 @@ cli/data/
 docs/data/preprocessing/
 ├── PREPROCESSING.md         # This comprehensive guide
 ├── NORMALIZATION.md         # Detailed normalization documentation
-└── METADATA.md              # Metadata system documentation
+├── QUALITY_VALIDATION.md    # OCR quality validation
+├── METADATA.md              # Metadata system documentation
+└── WORDLISTS.md             # German wordlists for OOV calculation
 ```
 
 ### Integration with Data Pipeline
@@ -69,32 +75,32 @@ Download → Parse ALTO/METS → Polars DataFrame
                               PREPROCESSING
                   (Sequential pipeline - steps chain together)
                                     ↓
-                            ┌───────────────┐  Unicode & Characters:
-                            │ Normalization │  - normalize-unicode (NFKC, quotes, spaces)
-                            │   (optional)  │  - remove-diacritics (ä→a, ö→o)
+                            ┌───────────────┐  normalization.py:
+                            │ Normalization │  - normalize_unicode (NFC, ftfy, quotes, spaces)
+                            │   (optional)  │  - normalize_hyphens (hyphen unification)
+                            └───────┬───────┘  - normalize_whitespace, normalize_casing
+                                    ↓          - normalize_long_s (ſ→s)
+                                    ↓          - dehyphenate (line-break removal)
+                                    ↓          modernization.py:
+                                    ↓          - modernization_transnormer (neural)
+                                    ↓          - modernization_dta-cab (API)
+                                    ↓
+                            ┌───────────────┐  cleaning.py:
+                            │   Cleaning    │  - remove_punctuation, remove_numbers
+                            │   (optional)  │  - remove_stopwords, remove_diacritics
+                            └───────┬───────┘  - remove_garbage_words
+                                    ↓          - only_keep_allowed_chars
+                                    ↓
+                            ┌───────────────┐  filtering.py:
+                            │   Filtering   │  - filter_by_total_character_length
+                            │   (optional)  │  - filter_by_word_count
+                            └───────┬───────┘  - filter_empty_lines
+                                    ↓          - filter_number_only_lines
+                                    ↓
+                            ┌───────────────┐  lemmatization.py:
+                            │ Lemmatization │  - lemmatize_spacy (fast)
+                            │   (optional)  │  - lemmatize_germalemma (thorough)
                             └───────┬───────┘
-                                    ↓          Historical German Spelling:
-                                    ↓          - normalize (simple: ſ→s, ß→ss)
-                                    ↓          - normalize-dtacab (API, slow)
-                                    ↓          - normalize-transnormer (neural, fast)
-                                    ↓
-                            ┌───────────────┐  Use any/all:
-                            │   Cleaning    │  - normalize-whitespace
-                            │   (optional)  │  - lowercase
-                            └───────┬───────┘
-                                    ↓
-                            ┌───────────────┐  Use any/all:
-                            │   Filtering   │  - filter-length
-                            │   (optional)  │  - filter-word-count
-                            └───────┬───────┘  - remove-punctuation
-                                    ↓          - remove-numbers
-                                    ↓          - remove-stopwords
-                                    ↓          - clean-ocr
-                                    ↓
-                            ┌───────────────┐  Linguistic processing:
-                            │  Linguistic   │  - dehyphenate (remove line-breaks)
-                            │   (optional)  │  - lemmatize-spacy (fast)
-                            └───────┬───────┘  - lemmatize (thorough)
                                     ↓
                                     ↓
                               Original text
@@ -142,7 +148,7 @@ preprocessor = TextPreprocessor(text_column="text")
 # Apply pipeline
 df = preprocessor.pipeline(
     df,
-    steps=["normalize", "lowercase", "remove-stopwords"],
+    steps=["normalize_unicode", "normalize_casing", "remove_stopwords"],
     output_column="text_processed"
 )
 ```
@@ -155,60 +161,82 @@ df = preprocessor.pipeline(
 
 **Example flow**:
 ```
-Original text → normalize → temp1 → lowercase → temp2 → remove-stopwords → text_processed
+Original text → normalize_unicode → temp1 → normalize_casing → temp2 → remove_stopwords → text_processed
 ```
 
-### Step Categories
+### Step Categories (by Module)
 
-The preprocessing steps fall into four categories that can all work together:
+The preprocessing steps are organized into modules. All steps can be chained together in any order:
 
-**1. Normalization** (use any/all, order matters):
-- `normalize-unicode` - Unicode normalization (NFKC, quotes, spaces, control chars) - **RECOMMENDED FIRST STEP**
-- `remove-diacritics` - Remove accents (ä→a, ö→o, ü→u)
-- `normalize` - Simple historical German (ſ→s, ß→ss)
-- `normalize-transnormer` - Neural historical German normalization (spelling modernization)
-- `normalize-dtacab` - API historical German normalization (slower, academic-grade)
+**1. Normalization** (`normalization.py`) - Text normalization:
+- `normalize_unicode` - Unicode normalization (NFC + ftfy, quotes, spaces, control chars) - **RECOMMENDED FIRST STEP**
+- `normalize_hyphens` - Hyphen/dash normalization (unify variants)
+- `normalize_whitespace` - Collapse/normalize whitespace
+- `normalize_casing` - Convert to lowercase
+- `normalize_umlauts` - Historical umlaut normalization (ae→ä)
+- `normalize_long_s` - Simple historical German (ſ→s)
+- `dehyphenate` - Remove line-break hyphens (smart heuristics for German)
 
-**2. Cleaning** (use any/all):
-- `normalize-whitespace` - Collapse/normalize whitespace
-- `lowercase` - Convert to lowercase
+**2. Modernization** (`modernization.py`) - Spelling modernization:
+- `modernization_transnormer` - Neural historical German normalization (GPU, fast)
+- `modernization_dta-cab` - API historical German normalization (slower, academic-grade)
 
-**3. Filtering** (use any/all):
-- `remove-punctuation` - Remove punctuation
-- `remove-numbers` - Remove digits
-- `remove-stopwords` - Remove common words
-- `filter-length` - Filter by character length
-- `filter-word-count` - Filter by word count
-- `clean-ocr` - Remove OCR artifacts
+**3. Cleaning** (`cleaning.py`) - Remove unwanted content:
+- `remove_diacritics` - Remove accents (ä→a, ö→o, ü→u)
+- `remove_punctuation` - Remove punctuation marks
+- `remove_numbers` - Remove digits
+- `remove_stopwords` - Remove common words (requires spaCy)
+- `remove_long_words` - Remove excessively long words
+- `remove_garbage_words` - Remove OCR artifacts (ssss, jjjj)
+- `only_keep_allowed_chars` - Remove non-allowed characters
 
-**4. Linguistic** (use any/all):
-- `dehyphenate` - Remove line-break hyphens (language-aware with pyphen)
-- `lemmatize-spacy` - Fast lemmatization (spaCy)
-- `lemmatize` - Thorough lemmatization (GermaLemma)
+**4. Filtering** (`filtering.py`) - Remove rows:
+- `filter_by_total_character_length` - Filter by character count
+- `filter_by_word_count` - Filter by word count
+- `filter_empty_lines` - Remove empty lines
+- `filter_number_only_lines` - Remove number-only lines
+- `filter_lines_without_alphabetic_chars` - Remove lines without letters
+
+**5. Lemmatization** (`lemmatization.py`) - Reduce words to base forms:
+- `lemmatize_spacy` - Fast lemmatization (spaCy, context-aware)
+- `lemmatize_germalemma` - Thorough lemmatization (GermaLemma, slower)
+
+**6. Validation** (`validation.py`) - Quality metrics:
+- `calculate_quality_metrics` - Calculate OCR quality scores
+- `filter_by_quality_score` - Filter by quality score
 
 **Key Insights**:
-- **normalize-unicode** should typically be **FIRST** - it handles OCR artifacts and standardizes characters
-- **Normalization methods are complementary**: `normalize-unicode` handles Unicode/OCR issues, while `normalize`/`normalize-transnormer`/`normalize-dtacab` handle historical spelling
-- **dehyphenate** is in Linguistic (not Cleaning) because it uses language-specific dictionaries to distinguish line-break hyphens from compound-word hyphens
-- All steps can be chained in any order, but recommended order: normalize-unicode → historical normalization → cleaning → filtering → linguistic
+- **normalize_unicode** should typically be **FIRST** - it handles OCR artifacts and standardizes characters
+- **Normalization methods are complementary**: `normalize_unicode` handles Unicode/OCR issues, while `normalize_long_s`/`modernization_transnormer`/`modernization_dta-cab` handle historical spelling
+- **dehyphenate** uses smart heuristics (conjunctions, capitalization, digits) to distinguish line-break hyphens from compound-word hyphens
+- All steps can be chained in any order, but recommended order: normalize_unicode → historical normalization → cleaning → filtering → lemmatization
 
 **Available Steps (Complete List)**:
-- `normalize-unicode` - Unicode normalization (NFKC + character translation)
-- `normalize` - Simple character normalization (ſ→s, ẞ→SS, ß→ss)
-- `normalize-transnormer` - Neural normalization with Transnormer
-- `normalize-dtacab` - API normalization with DTA-CAB
-- `remove-diacritics` - Remove accents (ä→a, ö→o)
-- `normalize-whitespace` - Normalize whitespace
-- `lowercase` - Convert to lowercase
-- `remove-punctuation` - Remove punctuation marks
-- `remove-numbers` - Remove numeric digits
-- `remove-stopwords` - Remove German stopwords
+- `normalize_unicode` - Unicode normalization (NFC + ftfy + character translation)
+- `normalize_hyphens` - Hyphen/dash normalization
+- `normalize_whitespace` - Whitespace normalization
+- `normalize_casing` - Case normalization (normalize_casing)
+- `normalize_umlauts` - Historical umlaut normalization
+- `normalize_long_s` - Simple character normalization (ſ→s)
 - `dehyphenate` - Remove line-break hyphens
-- `lemmatize-spacy` - Fast spaCy lemmatization
-- `lemmatize` - Thorough GermaLemma lemmatization
-- `filter-length` - Filter by character length
-- `filter-word-count` - Filter by word count
-- `clean-ocr` - Remove OCR artifacts
+- `modernization_transnormer` - Neural normalization with Transnormer
+- `modernization_dta-cab` - API normalization with DTA-CAB
+- `remove_diacritics` - Remove accents (ä→a, ö→o)
+- `remove_punctuation` - Remove punctuation marks
+- `remove_numbers` - Remove numeric digits
+- `remove_stopwords` - Remove German stopwords
+- `remove_long_words` - Remove excessively long words
+- `remove_garbage_words` - Remove OCR garbage words
+- `only_keep_allowed_chars` - Remove non-allowed characters
+- `lemmatize_spacy` - Fast spaCy lemmatization
+- `lemmatize_germalemma` - Thorough GermaLemma lemmatization
+- `filter_by_total_character_length` - Filter by character length
+- `filter_by_word_count` - Filter by word count
+- `filter_number_only_lines` - Remove number-only lines
+- `filter_lines_without_alphabetic_chars` - Remove lines without letters
+- `filter_empty_lines` - Remove empty lines
+- `calculate_quality_metrics` - Calculate quality scores
+- `filter_by_quality_score` - Filter by quality score
 
 ### 2. Normalization Module
 
@@ -231,12 +259,13 @@ df = normalize_unicode(df, input_column="text", output_column="text_unicode")
 ```
 
 **Transformations**:
-- NFKC normalization
+- NFC normalization (preserves character distinctions for historical text)
+- ftfy encoding repair (fixes mojibake like "schÃ¶n" → "schön")
 - Unifies quotation marks („"" → ")
 - Normalizes various space types → regular space
 - Removes soft hyphens, zero-width chars
 - Removes OCR artifacts (bullets, boxes)
-- Optional: strips control characters
+- Maps Cyrillic/Greek confusables to Latin equivalents
 
 **Note**: For hyphen/dash normalization, use `normalize_hyphens()` instead.
 
@@ -295,16 +324,16 @@ df = remove_diacritics(df, input_column="text", output_column="text_no_diacritic
 - ä → a, ö → o, ü → u
 - é → e, à → a, etc.
 
-#### 2.4 Simple Historical German
-- **Function**: `simple()`
+#### 2.4 Simple Historical German (Long S)
+- **Function**: `normalize_long_s()`
 - **Speed**: ⚡ Instant (regex replacement)
 - **Quality**: ★★☆☆☆ Basic
 - **Use case**: Quick character mapping
 
 ```python
-from newspaper_explorer.data.preprocessing.normalization import simple
+from newspaper_explorer.data.preprocessing.normalization import normalize_long_s
 
-df = simple(df, input_column="text", output_column="text_simple")
+df = normalize_long_s(df, input_column="text", output_column="text_simple", mode="simple")
 ```
 
 **Transformations**:
@@ -319,7 +348,7 @@ df = simple(df, input_column="text", output_column="text_simple")
 - **Use case**: High-quality spelling modernization at scale
 
 ```python
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 df = transnormer(
     df,
@@ -352,11 +381,11 @@ df = transnormer(
 - **Use case**: Small datasets, research validation
 
 ```python
-from newspaper_explorer.data.preprocessing.normalization import dta_cab
+from newspaper_explorer.data.preprocessing.modernization import dta_cab
 
 df = dta_cab(
     df,
-    text_column="text",
+    input_column="text",
     output_column="text_normalized",
     batch_size=100,
     timeout=30,
@@ -368,15 +397,17 @@ df = dta_cab(
 
 ### 3. Cleaning Module
 
-**Purpose**: Remove noise from text (whitespace, case).
+**Purpose**: Remove unwanted content from text (diacritics, punctuation, numbers, stopwords, OCR artifacts).
 
 **Location**: `src/newspaper_explorer/data/preprocessing/cleaning.py`
+
+**Note**: Whitespace and case normalization are in `normalization.py`, not here.
 
 **Functions**:
 
 #### 3.1 Whitespace Normalization
 ```python
-from newspaper_explorer.data.preprocessing.cleaning import normalize_whitespace
+from newspaper_explorer.data.preprocessing.normalization import normalize_whitespace
 
 # Default: Collapse ALL whitespace (spaces, tabs, newlines) to single space
 df = normalize_whitespace(df, input_column="text", output_column="text_clean")
@@ -431,16 +462,16 @@ den Friedensvertrag    dauern an."""
 
 #### 3.2 Lowercase Conversion
 ```python
-from newspaper_explorer.data.preprocessing.cleaning import lowercase
+from newspaper_explorer.data.preprocessing.normalization import normalize_casing
 
-df = lowercase(df, input_column="text", output_column="text_lower")
+df = normalize_casing(df, input_column="text", output_column="text_lower")
 ```
 - Converts all characters to lowercase
 - Useful for case-insensitive analysis
 
 ### 4. Cleaning Module (continued)
 
-**Purpose**: Transform text content while keeping all rows.
+**Purpose**: Remove unwanted content while keeping all rows.
 
 **Functions**:
 
@@ -527,31 +558,34 @@ df = filter_by_word_count(
 - Removes single-word artifacts
 - More meaningful than character length for content filtering
 
-### 5. Linguistic Module
+### 5. Dehyphenation & Lemmatization
 
-**Purpose**: Advanced linguistic processing.
+**Dehyphenation** is in `normalization.py`, **Lemmatization** is in `lemmatization.py`.
 
 **Functions**:
 
 #### 5.1 Dehyphenation
 ```python
-from newspaper_explorer.data.preprocessing.linguistic import dehyphenate
+from newspaper_explorer.data.preprocessing.normalization import dehyphenate
 
 df = dehyphenate(
     df,
     input_column="text",
     output_column="text_dehyphen",
-    language="de_DE"
 )
 ```
-- Removes line-break hyphens (`"Zeitung-\nspapier"` → `"Zeitungspapier"`)
+- Auto-detects line-level vs aggregated text structure
+- Removes line-break hyphens (`"Zeitung- papier"` → `"Zeitungspapier"`)
 - Preserves legitimate compound word hyphens (`"Nord-Süd"` stays `"Nord-Süd"`)
-- **Language-aware**: Uses pyphen library with language-specific dictionaries
-- **Why "linguistic"**: While it removes hyphens (like cleaning), it requires understanding of word formation rules and language-specific hyphenation patterns
+- **Smart heuristics**:
+  - Skips conjunctions ("Ost- und West-" stays intact)
+  - Skips pure digits ("20- 30" is a range, not a word)
+  - Keeps hyphen for capitalized compounds ("Nord- Süd" → "Nord-Süd")
+  - Joins lowercase continuations ("Zeitungs- papier" → "Zeitungspapier")
 
 #### 5.2 Lemmatization (spaCy - Fast)
 ```python
-from newspaper_explorer.data.preprocessing.linguistic import lemmatize_spacy
+from newspaper_explorer.data.preprocessing.lemmatization import lemmatize_spacy
 
 df = lemmatize_spacy(
     df,
@@ -567,7 +601,7 @@ df = lemmatize_spacy(
 
 #### 5.3 Lemmatization (GermaLemma - Thorough)
 ```python
-from newspaper_explorer.data.preprocessing.linguistic import lemmatize_germalemma
+from newspaper_explorer.data.preprocessing.lemmatization import lemmatize_germalemma
 
 df = lemmatize_germalemma(
     df,
@@ -596,7 +630,7 @@ newspaper-explorer data preprocess --source <name> --steps <steps> [options]
 # Simple character normalization
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase
+    --steps normalize_unicode,normalize_long_s,normalize_casing
 ```
 
 #### Full Cleaning Pipeline
@@ -604,7 +638,7 @@ newspaper-explorer data preprocess \
 # Complete preprocessing
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase,remove-punctuation,remove-stopwords
+    --steps normalize_unicode,normalize_long_s,normalize_casing,remove_punctuation,remove_stopwords
 ```
 
 #### Test on Sample
@@ -612,7 +646,7 @@ newspaper-explorer data preprocess \
 # Process only first 1000 rows
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase \
+    --steps normalize_unicode,normalize_long_s,normalize_casing \
     --sample 1000
 ```
 
@@ -623,7 +657,7 @@ newspaper-explorer data preprocess \
 # Default settings (balanced quality/speed)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer
+    --steps modernization_transnormer
 ```
 
 #### Fast Processing
@@ -631,7 +665,7 @@ newspaper-explorer data preprocess \
 # Optimize for speed
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --batch-size 128 \
     --num-beams 2
 ```
@@ -641,7 +675,7 @@ newspaper-explorer data preprocess \
 # Use all 4 GPUs for maximum speed
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --num-gpus 4 \
     --batch-size 128
 ```
@@ -651,13 +685,13 @@ newspaper-explorer data preprocess \
 # Resume processing (uses cached results)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer
+    --steps modernization_transnormer
     # Cache is enabled by default
 
 # Disable cache (reprocess everything)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --no-cache
 ```
 
@@ -669,7 +703,7 @@ newspaper-explorer data preprocess \
     --source der_tag \
     --input data/custom/input.parquet \
     --output data/custom/output.parquet \
-    --steps normalize,lowercase
+    --steps normalize_unicode,normalize_long_s,normalize_casing
 ```
 
 ### Combined Workflows
@@ -678,7 +712,7 @@ newspaper-explorer data preprocess \
 # Full preprocessing pipeline
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer,lowercase,remove-punctuation,remove-stopwords,lemmatize-spacy \
+    --steps modernization_transnormer,normalize_casing,remove_punctuation,remove_stopwords,lemmatize_spacy \
     --batch-size 64 \
     --num-gpus 2
 ```
@@ -719,7 +753,7 @@ preprocessor = TextPreprocessor(text_column="text")
 # Apply pipeline
 df = preprocessor.pipeline(
     df,
-    steps=["normalize", "lowercase", "remove-stopwords"],
+    steps=["normalize", "normalize_casing", "remove_stopwords"],
     output_column="text_processed"
 )
 
@@ -737,11 +771,11 @@ preprocessor = TextPreprocessor(text_column="text")
 df = preprocessor.pipeline(
     df,
     steps=[
-        "normalize-transnormer",
-        "lowercase",
-        "remove-punctuation",
-        "remove-stopwords",
-        "lemmatize-spacy"
+        "modernization_transnormer",
+        "normalize_casing",
+        "remove_punctuation",
+        "remove_stopwords",
+        "lemmatize_spacy"
     ],
     output_column="text_processed",
     batch_size=128,      # Larger batches for speed
@@ -755,10 +789,11 @@ df = preprocessor.pipeline(
 
 #### Import Individual Functions
 ```python
-from newspaper_explorer.data.preprocessing.normalization import simple, transnormer
-from newspaper_explorer.data.preprocessing.cleaning import lowercase, normalize_whitespace
+from newspaper_explorer.data.preprocessing.normalization import normalize_long_s, dehyphenate
+from newspaper_explorer.data.preprocessing.normalization import normalize_casing, normalize_whitespace
+from newspaper_explorer.data.preprocessing.modernization import transnormer, dta_cab
 from newspaper_explorer.data.preprocessing.cleaning import remove_stopwords, remove_punctuation
-from newspaper_explorer.data.preprocessing.linguistic import dehyphenate, lemmatize_spacy
+from newspaper_explorer.data.preprocessing.lemmatization import lemmatize_spacy, lemmatize_germalemma
 ```
 
 #### Manual Step-by-Step Processing
@@ -766,28 +801,29 @@ from newspaper_explorer.data.preprocessing.linguistic import dehyphenate, lemmat
 import polars as pl
 from newspaper_explorer.data.preprocessing import (
     normalization,
+    modernization,
     cleaning,
     filtering,
-    linguistic
+    lemmatization
 )
 
 # Load data
 df = pl.read_parquet("input.parquet")
 
 # Step 1: Normalize historical characters
-df = normalization.simple(df, text_column="text", output_column="text_norm")
+df = normalization.normalize_long_s(df, input_column="text", output_column="text_norm")
 
 # Step 2: Normalize whitespace
-df = cleaning.normalize_whitespace(df, input_column="text_norm", output_column="text_clean")
+df = normalization.normalize_whitespace(df, input_column="text_norm", output_column="text_clean")
 
 # Step 3: Lowercase
-df = cleaning.lowercase(df, input_column="text_clean", output_column="text_lower")
+df = normalization.normalize_casing(df, input_column="text_clean", output_column="text_lower")
 
 # Step 4: Remove stopwords
 df = cleaning.remove_stopwords(df, input_column="text_lower", output_column="text_nostop")
 
 # Step 5: Lemmatize
-df = linguistic.lemmatize_spacy(df, input_column="text_nostop", output_column="text_lemma")
+df = lemmatization.lemmatize_spacy(df, input_column="text_nostop", output_column="text_lemma")
 
 # Save
 df.write_parquet("output.parquet")
@@ -795,12 +831,12 @@ df.write_parquet("output.parquet")
 
 #### Custom Normalization Parameters
 ```python
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 # Fine-tune Transnormer
 df = transnormer(
     df,
-    text_column="text",
+    input_column="text",
     output_column="text_normalized",
     model="18-19c",              # For earlier texts (1700-1899)
     batch_size=64,               # Larger batches
@@ -817,7 +853,7 @@ df = transnormer(
 #### Process in Chunks (Memory Management)
 ```python
 import polars as pl
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 # Load data
 df = pl.read_parquet("large_file.parquet")
@@ -849,66 +885,67 @@ final_df.write_parquet("output.parquet")
 
 | Step | Speed | Quality | Use Case | Dependencies |
 |------|-------|---------|----------|-------------|
-| `normalize` | ⚡⚡⚡⚡⚡ Instant | ★★☆☆☆ | Quick char mapping | None |
-| `normalize-transnormer` | ⚡⚡⚡⚡ Fast | ★★★★★ | High-quality normalization | transformers, torch |
-| `normalize-dtacab` | ⚡ Very slow | ★★★★★ | Small datasets, validation | requests |
-| `remove-diacritics` | ⚡⚡⚡⚡⚡ Instant | ★★★☆☆ | ASCII conversion | unidecode |
-| `normalize-whitespace` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Clean whitespace | None |
-| `lowercase` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Case normalization | None |
-| `remove-punctuation` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Clean text | None |
-| `remove-numbers` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Remove digits | None |
-| `remove-stopwords` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Content words only | spacy |
-| `dehyphenate` | ⚡⚡⚡ Medium | ★★★★☆ | Remove line breaks | pyphen |
-| `lemmatize-spacy` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Reduce inflection | spacy |
-| `lemmatize` | ⚡ Very slow | ★★★★★ | Thorough lemmatization | germalemma |
-| `filter-length` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by char count | None |
-| `filter-word-count` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by word count | None |
-| `clean-ocr` | ⚡⚡⚡⚡ Fast | ★★★★☆ | OCR cleanup | None |
+| `normalize_unicode` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Unicode/OCR cleanup | None |
+| `normalize_long_s` | ⚡⚡⚡⚡⚡ Instant | ★★☆☆☆ | Quick char mapping | None |
+| `modernization_transnormer` | ⚡⚡⚡⚡ Fast | ★★★★★ | High-quality normalization | transformers, torch |
+| `modernization_dta-cab` | ⚡ Very slow | ★★★★★ | Small datasets, validation | requests |
+| `remove_diacritics` | ⚡⚡⚡⚡⚡ Instant | ★★★☆☆ | ASCII conversion | unidecode |
+| `normalize_whitespace` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Clean whitespace | None |
+| `normalize_casing` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Case normalization | None |
+| `remove_punctuation` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Clean text | None |
+| `remove_numbers` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Remove digits | None |
+| `remove_stopwords` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Content words only | spacy |
+| `dehyphenate` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Remove line breaks | None |
+| `lemmatize_spacy` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Reduce inflection | spacy |
+| `lemmatize_germalemma` | ⚡ Very slow | ★★★★★ | Thorough lemmatization | germalemma |
+| `filter_by_total_character_length` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by char count | None |
+| `filter_by_word_count` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by word count | None |
+| `remove_garbage_words` | ⚡⚡⚡⚡ Fast | ★★★★☆ | OCR cleanup | None |
 
 ### Step Compatibility
 
 **All steps can be chained together** - the pipeline applies them sequentially, with each step's output becoming the next step's input. However, some logical considerations:
 
 **Choose ONE normalization method:**
-- `normalize` - Basic character mapping (ſ→s, ß→ss)
-- `normalize-transnormer` - Neural normalization (recommended for quality)
-- `normalize-dtacab` - API-based normalization (best quality, slowest)
+- `normalize_long_s` - Basic character mapping (ſ→s)
+- `modernization_transnormer` - Neural normalization (recommended for quality)
+- `modernization_dta-cab` - API-based normalization (best quality, slowest)
 
 **Choose ONE lemmatization method:**
-- `lemmatize-spacy` - Fast, context-aware (recommended)
-- `lemmatize` - Thorough but very slow
+- `lemmatize_spacy` - Fast, context-aware (recommended)
+- `lemmatize_germalemma` - Thorough but very slow
 
 **Steps that work together:**
-- `normalize-transnormer` + `lowercase` + `remove-stopwords` ✅
-- `normalize` + `normalize-whitespace` + `lowercase` ✅
-- `dehyphenate` + `normalize-transnormer` + `lemmatize-spacy` ✅
+- `modernization_transnormer` + `normalize_casing` + `remove_stopwords` ✅
+- `normalize_unicode` + `normalize_whitespace` + `normalize_casing` ✅
+- `dehyphenate` + `modernization_transnormer` + `lemmatize_spacy` ✅
 
 **Steps that don't make sense together:**
 - Multiple normalization methods (choose one)
 - Multiple lemmatization methods (choose one)
-- `remove-diacritics` after `normalize-transnormer` (Transnormer already handles this)
+- `remove_diacritics` after `modernization_transnormer` (Transnormer already handles this)
 
 ### Recommended Step Order
 
 For best results, apply steps in this general order:
 
 1. **Dehyphenation** (if needed) - Before normalization to handle line breaks correctly
-2. **Normalization** - Choose ONE: `normalize`, `normalize-transnormer`, or `normalize-dtacab`
+2. **Normalization** - Choose ONE: `normalize_long_s`, `modernization_transnormer`, or `modernization_dta-cab`
 3. **Whitespace normalization** - Clean up spacing
-4. **Lowercase** - Case normalization
-5. **Content removal** - `remove-punctuation`, `remove-numbers`, `clean-ocr`
+4. **Case normalization** - `normalize_casing`
+5. **Content removal** - `remove_punctuation`, `remove_numbers`, `remove_garbage_words`
 6. **Stopword removal** - Remove common words
-7. **Lemmatization** - Choose ONE: `lemmatize-spacy` or `lemmatize`
-8. **Filtering** - `filter-length` to remove too short/long texts
+7. **Lemmatization** - Choose ONE: `lemmatize_spacy` or `lemmatize_germalemma`
+8. **Filtering** - `filter_by_total_character_length` to remove too short/long texts
 
 **Example of good ordering:**
 ```bash
---steps dehyphenate,normalize-transnormer,normalize-whitespace,lowercase,remove-punctuation,remove-stopwords,lemmatize-spacy
+--steps dehyphenate,modernization_transnormer,normalize_whitespace,normalize_casing,remove_punctuation,remove_stopwords,lemmatize_spacy
 ```
 
 **Why this order?**
 - Dehyphenation first prevents hyphens from interfering with normalization
-- Normalization before lowercase preserves historical case patterns
+- Normalization before normalize_casing preserves historical case patterns
 - Cleaning (punctuation, numbers) before stopword removal reduces vocabulary
 - Lemmatization last because it needs clean, normalized input
 
@@ -916,35 +953,35 @@ For best results, apply steps in this general order:
 
 #### Fast & Basic
 ```bash
---steps normalize,lowercase,remove-punctuation
+--steps normalize_unicode,normalize_long_s,normalize_casing,remove_punctuation
 ```
 - Good for: Quick exploration, testing
 - Time: <1 minute for 100k texts
 
 #### Balanced Quality/Speed
 ```bash
---steps normalize-transnormer,lowercase,remove-stopwords
+--steps modernization_transnormer,normalize_casing,remove_stopwords
 ```
 - Good for: Most use cases
 - Time: 5-30 minutes for 100k texts (GPU)
 
 #### High Quality (Research)
 ```bash
---steps normalize-transnormer,lowercase,remove-punctuation,remove-stopwords,lemmatize-spacy
+--steps modernization_transnormer,normalize_casing,remove_punctuation,remove_stopwords,lemmatize_spacy
 ```
 - Good for: Academic research, publications
 - Time: 10-60 minutes for 100k texts (GPU)
 
 #### Topic Modeling Optimized
 ```bash
---steps normalize-transnormer,lowercase,remove-punctuation,remove-numbers,remove-stopwords,lemmatize-spacy
+--steps modernization_transnormer,normalize_casing,remove_punctuation,remove_numbers,remove_stopwords,lemmatize_spacy
 ```
 - Good for: Topic modeling, keyword analysis
 - Time: 10-60 minutes for 100k texts (GPU)
 
 #### Entity Extraction Optimized
 ```bash
---steps normalize-transnormer,normalize-whitespace
+--steps modernization_transnormer,normalize_whitespace
 ```
 - Good for: Named entity recognition (preserve case, punctuation)
 - Time: 5-30 minutes for 100k texts (GPU)
@@ -1099,7 +1136,7 @@ df = transnormer(df, use_cache=False)
 For very large datasets (>1M texts), process in chunks:
 
 ```python
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 import polars as pl
 
 df = pl.read_parquet("large_file.parquet")
@@ -1228,9 +1265,9 @@ newspaper-explorer data aggregate --source der_tag
 # Preprocess
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase,remove-punctuation
+    --steps normalize_unicode,normalize_long_s,normalize_casing,remove_punctuation
 
-# Output: data/processed/der_tag/text/der_tag_preprocessed_normalize_lowercase_remove-punctuation.parquet
+# Output: data/processed/der_tag/text/der_tag_preprocessed_normalize_normalize_casing_remove_punctuation.parquet
 ```
 
 ### Workflow 2: High-Quality Normalization for NLP
@@ -1241,7 +1278,7 @@ newspaper-explorer data preprocess \
 # Full preprocessing pipeline
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer,lowercase,remove-stopwords,lemmatize-spacy \
+    --steps modernization_transnormer,normalize_casing,remove_stopwords,lemmatize_spacy \
     --batch-size 128 \
     --num-gpus 4
 
@@ -1263,20 +1300,20 @@ newspaper-explorer analyze topics extract \
 # Test on sample
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase \
+    --steps normalize_unicode,normalize_long_s,normalize_casing \
     --sample 1000 \
     --output test_output.parquet
 
 # Compare normalization methods
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize \
+    --steps normalize_long_s \
     --sample 5000 \
     --output simple_norm.parquet
 
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --sample 5000 \
     --output transnormer_norm.parquet
 
@@ -1292,7 +1329,7 @@ newspaper-explorer data preprocess \
 # Stage 1: Normalization only
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --output-column text_normalized \
     --batch-size 128 \
     --num-gpus 4
@@ -1300,17 +1337,17 @@ newspaper-explorer data preprocess \
 # Stage 2: Cleaning (use normalized text as input)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --input data/processed/der_tag/text/der_tag_preprocessed_normalize-transnormer.parquet \
+    --input data/processed/der_tag/text/der_tag_preprocessed_modernization_transnormer.parquet \
     --text-column text_normalized \
-    --steps lowercase,remove-punctuation,remove-stopwords \
+    --steps normalize_casing,remove_punctuation,remove_stopwords \
     --output-column text_clean
 
 # Stage 3: Lemmatization (use cleaned text as input)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --input data/processed/der_tag/text/der_tag_preprocessed_lowercase_remove-punctuation_remove-stopwords.parquet \
+    --input data/processed/der_tag/text/der_tag_preprocessed_normalize_casing_remove_punctuation_remove_stopwords.parquet \
     --text-column text_clean \
-    --steps lemmatize-spacy \
+    --steps lemmatize_spacy \
     --output-column text_lemma
 ```
 
@@ -1336,14 +1373,14 @@ preprocessor = TextPreprocessor(text_column="text")
 # Pipeline 1: Basic
 df1 = preprocessor.pipeline(
     sample_df,
-    steps=["normalize", "lowercase"],
+    steps=["normalize", "normalize_casing"],
     output_column="text_basic"
 )
 
 # Pipeline 2: Advanced
 df2 = preprocessor.pipeline(
     sample_df,
-    steps=["normalize-transnormer", "lowercase", "remove-stopwords", "lemmatize-spacy"],
+    steps=["modernization_transnormer", "normalize_casing", "remove_stopwords", "lemmatize_spacy"],
     output_column="text_advanced",
     batch_size=64,
     num_gpus=2
@@ -1361,7 +1398,7 @@ for i in range(3):
 # Choose best and process full dataset
 best_df = preprocessor.pipeline(
     df,
-    steps=["normalize-transnormer", "lowercase", "remove-stopwords", "lemmatize-spacy"],
+    steps=["modernization_transnormer", "normalize_casing", "remove_stopwords", "lemmatize_spacy"],
     output_column="text_processed",
     batch_size=128,
     num_gpus=4
@@ -1482,7 +1519,7 @@ for word, count in word_freq.most_common(20):
 # Preprocess (preserve case and punctuation for NER)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer,normalize-whitespace \
+    --steps modernization_transnormer,normalize_whitespace \
     --output-column text_normalized
 
 # Extract entities from normalized text
@@ -1498,7 +1535,7 @@ newspaper-explorer analyze entities gliner \
 # Preprocess (aggressive cleaning for topic modeling)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer,lowercase,remove-punctuation,remove-numbers,remove-stopwords,lemmatize-spacy \
+    --steps modernization_transnormer,normalize_casing,remove_punctuation,remove_numbers,remove_stopwords,lemmatize_spacy \
     --output-column text_clean
 
 # Extract topics from cleaned text
@@ -1514,7 +1551,7 @@ newspaper-explorer analyze topics extract \
 # Preprocess (moderate cleaning for emotion analysis)
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer,lowercase \
+    --steps modernization_transnormer,normalize_casing \
     --output-column text_normalized
 
 # Analyze emotions from normalized text
@@ -1578,7 +1615,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 # Reduce batch size
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer \
+    --steps modernization_transnormer \
     --batch-size 16  # Smaller batches
 
 # Or process in chunks (Python)
@@ -1592,7 +1629,7 @@ newspaper-explorer data preprocess \
 ```python
 # Process in smaller chunks
 import polars as pl
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 df = pl.read_parquet("large_file.parquet")
 
@@ -1626,7 +1663,7 @@ final_df = pl.concat(results)
 --num-gpus 4
 
 # Use simpler normalization
---steps normalize  # instead of normalize-transnormer
+--steps normalize_long_s  # instead of modernization_transnormer
 ```
 
 #### 5. spaCy Model Not Found
@@ -1654,7 +1691,7 @@ ls -la .cache/transnormer/
 # Explicitly enable cache
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize-transnormer
+    --steps modernization_transnormer
     # (cache is enabled by default, --no-cache disables it)
 
 # Clear cache if corrupted
@@ -1691,7 +1728,7 @@ torch.cuda.memory_summary()
 ```python
 import time
 import polars as pl
-from newspaper_explorer.data.preprocessing.normalization import transnormer
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 # Load sample
 df = pl.read_parquet("data.parquet").head(1000)
@@ -1742,7 +1779,7 @@ df = pl.DataFrame({
 preprocessor = TextPreprocessor()
 result = preprocessor.pipeline(
     df,
-    steps=["normalize", "lowercase"],
+    steps=["normalize", "normalize_casing"],
     output_column="text_processed"
 )
 
@@ -1751,13 +1788,14 @@ print(result.select(["text", "text_processed"]))
 
 #### Test Normalization
 ```python
-from newspaper_explorer.data.preprocessing.normalization import simple, transnormer
+from newspaper_explorer.data.preprocessing.normalization import normalize_long_s
+from newspaper_explorer.data.preprocessing.modernization import transnormer
 
 df = pl.DataFrame({"text": ["Das iſt ein Beiſpiel"]})
 
-# Test simple
-simple_result = simple(df)
-print(simple_result)
+# Test normalize_long_s
+long_s_result = normalize_long_s(df, mode="simple")
+print(long_s_result)
 
 # Test transnormer (requires GPU)
 transnormer_result = transnormer(df, batch_size=1)
@@ -1770,7 +1808,7 @@ print(transnormer_result)
 # Test full workflow
 newspaper-explorer data preprocess \
     --source der_tag \
-    --steps normalize,lowercase \
+    --steps normalize_unicode,normalize_long_s,normalize_casing \
     --sample 100 \
     --output test_output.parquet
 
@@ -1790,6 +1828,7 @@ print(df.head())
 ### Core Dependencies
 - **polars** - DataFrame operations
 - **numpy** - Numerical operations
+- **ftfy** - Encoding repair and Unicode normalization
 
 ### Normalization
 - **transformers** - Transnormer models
@@ -1802,8 +1841,7 @@ print(df.head())
 ### Filtering
 - **spacy** - Stopword removal
 
-### Linguistic
-- **pyphen** - Dehyphenation
+### Lemmatization
 - **spacy** - Fast lemmatization
 - **germalemma** - Thorough lemmatization
 
