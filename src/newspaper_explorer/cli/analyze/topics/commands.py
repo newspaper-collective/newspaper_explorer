@@ -260,7 +260,7 @@ def lda(
             )
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Model training complete!")
+            click.echo(f"[OK] Model training complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Status: {model_info['status']}")
             click.echo(f"Model saved to: {model_info['model_path']}")
@@ -284,7 +284,7 @@ def lda(
             output_file = extractor.save_results(results_df, output_name=output_name)
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Topic term extraction complete!")
+            click.echo(f"[OK] Topic term extraction complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Results saved to: {output_file}")
             click.echo(f"Total topics: {len(results_df)}")
@@ -327,7 +327,7 @@ def lda(
             output_file = extractor.save_results(results_df, output_name=output_name)
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Topic assignment complete!")
+            click.echo(f"[OK] Topic assignment complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Results saved to: {output_file}")
             click.echo(f"Total documents: {len(results_df):,}")
@@ -645,7 +645,7 @@ def mallet(
             )
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Model training complete!")
+            click.echo(f"[OK] Model training complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Status: {model_info['status']}")
             if model_info["status"] == "trained":
@@ -669,7 +669,7 @@ def mallet(
             output_file = extractor.save_results(results_df, output_name=output_name)
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Topic term extraction complete!")
+            click.echo(f"[OK] Topic term extraction complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Results saved to: {output_file}")
             click.echo(f"Total topics: {len(results_df)}")
@@ -707,7 +707,7 @@ def mallet(
             output_file = extractor.save_results(results_df, output_name=output_name)
 
             click.echo(f"\n{'=' * 80}")
-            click.echo(f"✓ Topic assignment complete!")
+            click.echo(f"[OK] Topic assignment complete!")
             click.echo(f"{'=' * 80}\n")
             click.echo(f"Results saved to: {output_file}")
             click.echo(f"Total documents: {len(results_df):,}")
@@ -1072,7 +1072,7 @@ def bertopic(
         output_file = extractor.save_results(results_df, output_name=output_name, top_k=top_k)
 
         click.echo(f"\n{'=' * 80}")
-        click.echo(f"✓ Topic extraction complete!")
+        click.echo(f"[OK] Topic extraction complete!")
         click.echo(f"{'=' * 80}\n")
         click.echo(f"Results saved to: {output_file}")
 
@@ -1303,7 +1303,7 @@ def fastopic(
         output_file = extractor.save_results(results_df, output_name=output_name, top_k=top_k)
 
         click.echo(f"\n{'=' * 80}")
-        click.echo(f"✓ Topic extraction complete!")
+        click.echo(f"[OK] Topic extraction complete!")
         click.echo(f"{'=' * 80}\n")
         click.echo(f"Results saved to: {output_file}")
 
@@ -1513,7 +1513,7 @@ def bertopic_batch(
             )
 
             if len(results_df) == 0:
-                click.echo(f"  ⚠ No results for year {year} - skipping", err=True)
+                click.echo(f"  [WARNING] No results for year {year} - skipping", err=True)
                 failed += 1
                 if stop_on_error:
                     click.echo("\nStopping due to error (--stop-on-error)", err=True)
@@ -1523,12 +1523,12 @@ def bertopic_batch(
             # Save results
             extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"  ✓ Year {year} completed: {len(results_df):,} documents")
+            click.echo(f"  [OK] Year {year} completed: {len(results_df):,} documents")
             click.echo(f"  → {output_file}")
             completed += 1
 
         except Exception as e:
-            click.echo(f"  ✗ Year {year} failed: {e}", err=True)
+            click.echo(f"  [ERROR] Year {year} failed: {e}", err=True)
             failed += 1
             if stop_on_error:
                 click.echo("\nStopping due to error (--stop-on-error)", err=True)
@@ -1548,7 +1548,7 @@ def bertopic_batch(
     click.echo(f"{'=' * 80}\n")
 
     if completed > 0:
-        click.echo("✓ Results saved to:")
+        click.echo("[OK] Results saved to:")
         click.echo(f"  {results_dir}/topics_*.parquet")
         click.echo("\nNext step: Merge yearly results")
         click.echo(f"  newspaper-explorer analyze topics merge-yearly \\")
@@ -1641,7 +1641,7 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
             missing_years.append(year)
 
     if not yearly_files:
-        click.echo(f"✗ No yearly results found in {results_dir}", err=True)
+        click.echo(f"[ERROR] No yearly results found in {results_dir}", err=True)
         click.echo(f"\nRun bertopic-batch first:", err=True)
         click.echo(
             f"  newspaper-explorer analyze topics bertopic-batch "
@@ -1651,7 +1651,7 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
         return
 
     if missing_years:
-        click.echo(f"⚠ Missing {len(missing_years)} years: {missing_years}\n")
+        click.echo(f"[WARNING] Missing {len(missing_years)} years: {missing_years}\n")
 
     click.echo(f"Loading {len(yearly_files)} yearly files...")
 
@@ -1664,7 +1664,7 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
         click.echo(f"  [{year}] {len(df):,} documents")
 
     combined = pl.concat(dfs)
-    click.echo(f"\n✓ Combined: {len(combined):,} documents across {len(yearly_files)} years\n")
+    click.echo(f"\n[OK] Combined: {len(combined):,} documents across {len(yearly_files)} years\n")
 
     # Analyze topic evolution
     click.echo("Analyzing topic evolution...")
@@ -1710,15 +1710,15 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
 
     combined_file = output_dir / f"{source}_topics_all_years.parquet"
     combined.write_parquet(combined_file)
-    click.echo(f"✓ Combined data: {combined_file}")
+    click.echo(f"[OK] Combined data: {combined_file}")
 
     evolution_file = output_dir / f"{source}_topic_evolution.parquet"
     topic_evolution.write_parquet(evolution_file)
-    click.echo(f"✓ Topic evolution: {evolution_file}")
+    click.echo(f"[OK] Topic evolution: {evolution_file}")
 
     evolution_csv = output_dir / f"{source}_topic_evolution.csv"
     topic_evolution.write_csv(evolution_csv)
-    click.echo(f"✓ Topic evolution CSV: {evolution_csv}")
+    click.echo(f"[OK] Topic evolution CSV: {evolution_csv}")
 
     # Generate visualizations
     if visualize:
@@ -1754,7 +1754,7 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
 
             heatmap_file = output_dir / f"{source}_topic_heatmap.png"
             plt.savefig(heatmap_file, dpi=300, bbox_inches="tight")
-            click.echo(f"✓ Heatmap: {heatmap_file}")
+            click.echo(f"[OK] Heatmap: {heatmap_file}")
             plt.close()
 
             # Line plot
@@ -1771,16 +1771,16 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
 
             trends_file = output_dir / f"{source}_topic_trends.png"
             plt.savefig(trends_file, dpi=300, bbox_inches="tight")
-            click.echo(f"✓ Trends plot: {trends_file}")
+            click.echo(f"[OK] Trends plot: {trends_file}")
             plt.close()
 
         except ImportError:
-            click.echo("⚠ matplotlib not installed - skipping visualizations", err=True)
+            click.echo("[WARNING] matplotlib not installed - skipping visualizations", err=True)
         except Exception as e:
-            click.echo(f"⚠ Error generating visualizations: {e}", err=True)
+            click.echo(f"[WARNING] Error generating visualizations: {e}", err=True)
 
     click.echo(f"\n{'=' * 80}")
-    click.echo("✓ Merge complete!")
+    click.echo("[OK] Merge complete!")
     click.echo(f"{'=' * 80}\n")
     click.echo(f"Results in: {output_dir}")
     click.echo(f"Total documents: {len(combined):,}")

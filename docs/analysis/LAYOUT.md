@@ -30,11 +30,11 @@ The layout analysis system provides comprehensive document structure detection a
 6. **Filtering** - Coordinate-based filtering to exclude false positives
 
 **Key Features**:
-- ✅ **Generalized API**: Works with any element type, not just images
-- ✅ **DataFrame-based**: Fast batch processing using pre-parsed Polars DataFrames
-- ✅ **Coordinate filtering**: Exclude headers, footers, and small decorative elements
-- ✅ **Spatial reasoning**: Match elements by proximity (above, below, left, right)
-- ✅ **Library-first design**: No CLI mixing, proper logging, type hints
+- **Generalized API**: Works with any element type, not just images
+- **DataFrame-based**: Fast batch processing using pre-parsed Polars DataFrames
+- **Coordinate filtering**: Exclude headers, footers, and small decorative elements
+- **Spatial reasoning**: Match elements by proximity (above, below, left, right)
+- **Library-first design**: No CLI mixing, proper logging, type hints
 
 ---
 

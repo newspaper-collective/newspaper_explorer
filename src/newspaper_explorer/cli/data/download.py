@@ -156,7 +156,7 @@ def register_download_commands(data_group):
                 click.echo(f"Unpacking {part_name}...")
                 downloader.extract_part(part_name, fix_errors=fix)
 
-            click.echo("\n✓ Unpacking complete!")
+            click.echo("\n[OK] Unpacking complete!")
 
         except FileNotFoundError as e:
             click.echo(f"\nError: {e}", err=True)

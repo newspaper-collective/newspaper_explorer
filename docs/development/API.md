@@ -400,8 +400,8 @@ alto_filename = f"{filename_prefix}_1902-09-05_000_415_H_2_005.xml"
 ### Use Polars, Not Pandas
 
 ```python
-import polars as pl  # ✅ Fast, memory-efficient
-import pandas as pd  # ❌ Not used in this project
+import polars as pl  # Fast, memory-efficient
+import pandas as pd  # Not used in this project
 
 # Polars syntax
 df = pl.read_parquet("data.parquet")
@@ -412,25 +412,25 @@ grouped = df.group_by("text_block_id").agg(pl.col("text").str.concat(" "))
 ### Query Large Datasets with DuckDB
 
 ```python
-# ✅ Use QueryEngine for large datasets (avoids memory issues)
+# Use QueryEngine for large datasets (avoids memory issues)
 engine = QueryEngine(source_name="der_tag")
 result = engine.query("SELECT * FROM lines WHERE year = 1901")
 
-# ❌ Avoid loading entire datasets into memory
+# Avoid loading entire datasets into memory
 df = pl.read_parquet("huge_file.parquet")  # Memory intensive!
 ```
 
 ### Leverage Foreign Keys
 
 ```python
-# ✅ Join using foreign keys
+# Join using foreign keys
 result = engine.query("""
     SELECT l.*, e.entity_text
     FROM lines l
     JOIN entities e ON l.line_id = e.line_id
 """)
 
-# ✅ Filter by hierarchical IDs
+# Filter by hierarchical IDs
 issue_data = df.filter(pl.col("issue_id") == "...")
 page_data = df.filter(pl.col("page_id").str.starts_with("3074409-X_1901-01-08"))
 ```

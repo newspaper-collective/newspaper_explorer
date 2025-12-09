@@ -33,16 +33,16 @@ The emotion analysis module provides BERT-based emotion classification for newsp
 - **Agitation** (Unruhe/Erregung)
 
 **Key Features**:
-- ✅ **Binary classification**: Each emotion predicted independently (0 or 1)
-- ✅ **Probability scores**: Confidence values (0.0-1.0) for each prediction
-- ✅ **Multi-GPU support**: Process-based parallelism (each GPU processes different emotions simultaneously)
-- ✅ **Advanced optimizations**: 
+- **Binary classification**: Each emotion predicted independently (0 or 1)
+- **Probability scores**: Confidence values (0.0-1.0) for each prediction
+- **Multi-GPU support**: Process-based parallelism (each GPU processes different emotions simultaneously)
+- **Advanced optimizations**: 
   - Pre-tokenization with per-batch dynamic padding (6x speedup + 30-50% less computation)
   - FP16 mixed precision (30% faster, enabled by default on Ampere+ GPUs)
   - torch.compile support (20-30% additional speedup with PyTorch 2.0+)
   - TF32 precision for Ampere+ GPUs (20% speedup)
-- ✅ **Resume functionality**: Automatically skip already-processed texts
-- ✅ **Chunked processing**: Memory-efficient handling of millions of texts
+- **Resume functionality**: Automatically skip already-processed texts
+- **Chunked processing**: Memory-efficient handling of millions of texts
 
 ---
 
@@ -1393,7 +1393,7 @@ for emotion in emotion_cols:
     if len(low_prob) > 0:
         assert low_prob[binary_col].mean() < 0.2, f"{emotion}: Low prob but high binary rate"
 
-print("✓ All validation checks passed")
+print("[OK] All validation checks passed")
 ```
 
 

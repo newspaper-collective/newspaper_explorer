@@ -1,10 +1,10 @@
 # Preprocessing Metadata System
 
 **Module:** `newspaper_explorer.data.utils.metadata` and `newspaper_explorer.models.data.metadata`
-**Status:** ✅ Production-ready
+**Status:** Production-ready
 **Purpose:** Track preprocessing steps for full reproducibility and provenance
 
-> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
+> **For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
 > This document focuses specifically on the metadata tracking system.
 
 ---

@@ -169,13 +169,13 @@ Each analysis run creates a `metadata.json` alongside results:
 
 ### Why DuckDB?
 
-- ✅ **Queries Parquet directly** - No data loading/duplication
-- ✅ **SQL interface** - Familiar, powerful
-- ✅ **Blazing fast** - Built for analytics
-- ✅ **Polars compatible** - Can convert to/from Polars DataFrames
-- ✅ **Join across files** - Query multiple Parquet files as tables
-- ✅ **Python-friendly** - Excellent Python API
-- ✅ **Small footprint** - No server, embedded database
+- **Queries Parquet directly** - No data loading/duplication
+- **SQL interface** - Familiar, powerful
+- **Blazing fast** - Built for analytics
+- **Polars compatible** - Can convert to/from Polars DataFrames
+- **Join across files** - Query multiple Parquet files as tables
+- **Python-friendly** - Excellent Python API
+- **Small footprint** - No server, embedded database
 
 ### Installation
 
@@ -390,7 +390,7 @@ if entity:
 
 ### Phase 1: Current State
 
-- ✅ Parquet source files exist
+- [OK] Parquet source files exist
 - Results saved as Parquet (implement new schema)
 
 ### Phase 2: Query Layer
@@ -415,7 +415,7 @@ if entity:
 ### 1. Always Use `line_id` as Foreign Key
 
 ```python
-# ✅ Good - maintains link to source
+# [OK] Good - maintains link to source
 df = pl.DataFrame({
     "line_id": source_df["line_id"],
     "entity_text": entities,
@@ -500,8 +500,8 @@ result = con.execute("SELECT * FROM entity_mentions WHERE entity_text = 'Berlin'
 
 This architecture is:
 
-- ✅ Scalable (handles multi-GB files)
-- ✅ Efficient (no data duplication)
-- ✅ Queryable (SQL interface)
-- ✅ Flexible (compare methods, track provenance)
-- ✅ UI-friendly (fast queries, paginated results)
+- Scalable (handles multi-GB files)
+- Efficient (no data duplication)
+- Queryable (SQL interface)
+- Flexible (compare methods, track provenance)
+- UI-friendly (fast queries, paginated results)

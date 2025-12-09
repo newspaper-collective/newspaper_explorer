@@ -263,18 +263,19 @@ Known data issues are automatically corrected during extraction:
 - **Type hints**: Optional but preferred (mypy with `disallow_untyped_defs = false`)
 - **Docstrings**: Required for public APIs
 - **CLI**: Rich examples in docstrings
+- **Emojis**: Do not use emojis in any generated code, comments, docstrings, log messages, CLI output, documentation, or commit messages.
 
 ### Data Validation with Pydantic
 
 **Always validate external data immediately at boundaries using Pydantic models:**
 
 ```python
-# ❌ BAD: Raw dict from API/file
+# BAD: Raw dict from API/file
 def process_user_data(data: dict) -> None:
     name = data["name"]  # Could fail, no validation
     age = data.get("age", 0)  # Type is Any
 
-# ✅ GOOD: Pydantic model + immediate validation
+# GOOD: Pydantic model + immediate validation
 from pydantic import BaseModel, Field
 
 class UserData(BaseModel):
@@ -300,10 +301,10 @@ def process_user_data(data: dict) -> None:
 **Never use positional boolean parameters - they make code unreadable:**
 
 ```python
-# ❌ BAD: What does True mean here?
+# BAD: What does True mean here?
 send_email(user, True, False)
 
-# ✅ GOOD: Use enums or keyword-only args
+# GOOD: Use enums or keyword-only args
 from enum import Enum
 
 class EmailFormat(Enum):
@@ -371,7 +372,7 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 
 ## Critical Patterns
 
-✅ **DO**:
+**DO**:
 - Initialize classes with source names: `DataIngester("der_tag")`
 - Use Polars for DataFrames (not Pandas)
 - Parse METS for metadata enrichment
@@ -379,7 +380,7 @@ See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
 - Use configuration for all paths
 - Use `QueryEngine` for all data queries (source + analysis)
 
-❌ **AVOID**:
+**AVOID**:
 - `__init__.py` files anywhere
 - Hardcoded paths (use `get_config()`)
 - Pandas operations (use Polars)

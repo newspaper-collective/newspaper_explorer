@@ -25,12 +25,12 @@
 The preprocessing module provides a comprehensive pipeline for cleaning and normalizing historical German newspaper texts. It addresses challenges specific to OCR'd historical documents including outdated spelling conventions, OCR artifacts, and archaic characters.
 
 **Key Features**:
-- ✅ **Modular pipeline**: Chain multiple preprocessing steps in any order
-- ✅ **Historical text support**: Three normalization methods (simple, Transnormer, DTA-CAB)
-- ✅ **Multi-GPU support**: Parallel Transnormer processing across multiple GPUs
-- ✅ **Resume functionality**: Cache results to avoid reprocessing (Transnormer & DTA-CAB)
-- ✅ **Configurable**: Fine-tune batch sizes, beam search, and GPU allocation
-- ✅ **Preserve traceability**: All foreign keys (IDs) maintained throughout pipeline
+- **Modular pipeline**: Chain multiple preprocessing steps in any order
+- **Historical text support**: Three normalization methods (simple, Transnormer, DTA-CAB)
+- **Multi-GPU support**: Parallel Transnormer processing across multiple GPUs
+- **Resume functionality**: Cache results to avoid reprocessing (Transnormer & DTA-CAB)
+- **Configurable**: Fine-tune batch sizes, beam search, and GPU allocation
+- **Preserve traceability**: All foreign keys (IDs) maintained throughout pipeline
 
 **Preprocessing Categories**:
 1. **Normalization** - Transform text to standard form (Unicode, diacritics, historical characters, spelling, dehyphenation)
@@ -248,8 +248,8 @@ The preprocessing steps are organized into modules. All steps can be chained tog
 
 #### 2.1 Unicode Normalization
 - **Function**: `normalize_unicode()`
-- **Speed**: ⚡⚡ Fast (Python built-ins)
-- **Quality**: ★★★★★ Essential
+- **Speed**: (2/5) Fast (Python built-ins)
+- **Quality**: 5/5 Essential
 - **Use case**: **ALWAYS FIRST** - handles OCR artifacts, unifies quotes/spaces
 
 ```python
@@ -271,8 +271,8 @@ df = normalize_unicode(df, input_column="text", output_column="text_unicode")
 
 #### 2.2 Hyphen Normalization
 - **Function**: `normalize_hyphens()`
-- **Speed**: ⚡⚡ Fast (translation table)
-- **Quality**: ★★★★★ Essential for OCR
+- **Speed**: (2/5) Fast (translation table)
+- **Quality**: 5/5 Essential for OCR
 - **Use case**: Normalize hyphen variants from Fraktur OCR - **RUN BEFORE DEHYPHENATE**
 
 ```python
@@ -310,8 +310,8 @@ df = normalize_hyphens(df, input_column="text", mode="soft_only")
 
 #### 2.3 Diacritic Removal
 - **Function**: `remove_diacritics()`
-- **Speed**: ⚡⚡ Fast (unidecode)
-- **Quality**: ★★★☆☆ Lossy but useful
+- **Speed**: (2/5) Fast (unidecode)
+- **Quality**: 3/5 Lossy but useful
 - **Use case**: ASCII normalization, searchability
 
 ```python
@@ -326,8 +326,8 @@ df = remove_diacritics(df, input_column="text", output_column="text_no_diacritic
 
 #### 2.4 Simple Historical German (Long S)
 - **Function**: `normalize_long_s()`
-- **Speed**: ⚡ Instant (regex replacement)
-- **Quality**: ★★☆☆☆ Basic
+- **Speed**: (1/5) Instant (regex replacement)
+- **Quality**: 2/5 Basic
 - **Use case**: Quick character mapping
 
 ```python
@@ -343,8 +343,8 @@ df = normalize_long_s(df, input_column="text", output_column="text_simple", mode
 
 #### 2.5 Transnormer (Neural Historical German)
 - **Function**: `transnormer()`
-- **Speed**: ⚡⚡⚡ Medium-Fast (GPU: 100-500 sent/sec, CPU: 10-100 sent/sec)
-- **Quality**: ★★★★★ Excellent (98.88% accuracy)
+- **Speed**: (3/5) Medium-Fast (GPU: 100-500 sent/sec, CPU: 10-100 sent/sec)
+- **Quality**: 5/5 Excellent (98.88% accuracy)
 - **Use case**: High-quality spelling modernization at scale
 
 ```python
@@ -376,8 +376,8 @@ df = transnormer(
 
 #### 2.6 DTA-CAB (API)
 - **Function**: `dta_cab()`
-- **Speed**: ⚡ Slow (API calls)
-- **Quality**: ★★★★★ Excellent
+- **Speed**: (1/5) Slow (API calls)
+- **Quality**: 5/5 Excellent
 - **Use case**: Small datasets, research validation
 
 ```python
@@ -885,22 +885,22 @@ final_df.write_parquet("output.parquet")
 
 | Step | Speed | Quality | Use Case | Dependencies |
 |------|-------|---------|----------|-------------|
-| `normalize_unicode` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Unicode/OCR cleanup | None |
-| `normalize_long_s` | ⚡⚡⚡⚡⚡ Instant | ★★☆☆☆ | Quick char mapping | None |
-| `modernization_transnormer` | ⚡⚡⚡⚡ Fast | ★★★★★ | High-quality normalization | transformers, torch |
-| `modernization_dta-cab` | ⚡ Very slow | ★★★★★ | Small datasets, validation | requests |
-| `remove_diacritics` | ⚡⚡⚡⚡⚡ Instant | ★★★☆☆ | ASCII conversion | unidecode |
-| `normalize_whitespace` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Clean whitespace | None |
-| `normalize_casing` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Case normalization | None |
-| `remove_punctuation` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Clean text | None |
-| `remove_numbers` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Remove digits | None |
-| `remove_stopwords` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Content words only | spacy |
-| `dehyphenate` | ⚡⚡⚡⚡⚡ Instant | ★★★★☆ | Remove line breaks | None |
-| `lemmatize_spacy` | ⚡⚡⚡⚡ Fast | ★★★★☆ | Reduce inflection | spacy |
-| `lemmatize_germalemma` | ⚡ Very slow | ★★★★★ | Thorough lemmatization | germalemma |
-| `filter_by_total_character_length` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by char count | None |
-| `filter_by_word_count` | ⚡⚡⚡⚡⚡ Instant | ★★★★★ | Remove by word count | None |
-| `remove_garbage_words` | ⚡⚡⚡⚡ Fast | ★★★★☆ | OCR cleanup | None |
+| `normalize_unicode` | (5/5) Instant | 5/5 | Unicode/OCR cleanup | None |
+| `normalize_long_s` | (5/5) Instant | 2/5 | Quick char mapping | None |
+| `modernization_transnormer` | (4/5) Fast | 5/5 | High-quality normalization | transformers, torch |
+| `modernization_dta-cab` | (1/5) Very slow | 5/5 | Small datasets, validation | requests |
+| `remove_diacritics` | (5/5) Instant | 3/5 | ASCII conversion | unidecode |
+| `normalize_whitespace` | (5/5) Instant | 5/5 | Clean whitespace | None |
+| `normalize_casing` | (5/5) Instant | 5/5 | Case normalization | None |
+| `remove_punctuation` | (5/5) Instant | 4/5 | Clean text | None |
+| `remove_numbers` | (5/5) Instant | 4/5 | Remove digits | None |
+| `remove_stopwords` | (4/5) Fast | 4/5 | Content words only | spacy |
+| `dehyphenate` | (5/5) Instant | 4/5 | Remove line breaks | None |
+| `lemmatize_spacy` | (4/5) Fast | 4/5 | Reduce inflection | spacy |
+| `lemmatize_germalemma` | (1/5) Very slow | 5/5 | Thorough lemmatization | germalemma |
+| `filter_by_total_character_length` | (5/5) Instant | 5/5 | Remove by char count | None |
+| `filter_by_word_count` | (5/5) Instant | 5/5 | Remove by word count | None |
+| `remove_garbage_words` | (4/5) Fast | 4/5 | OCR cleanup | None |
 
 ### Step Compatibility
 
@@ -916,9 +916,9 @@ final_df.write_parquet("output.parquet")
 - `lemmatize_germalemma` - Thorough but very slow
 
 **Steps that work together:**
-- `modernization_transnormer` + `normalize_casing` + `remove_stopwords` ✅
-- `normalize_unicode` + `normalize_whitespace` + `normalize_casing` ✅
-- `dehyphenate` + `modernization_transnormer` + `lemmatize_spacy` ✅
+- `modernization_transnormer` + `normalize_casing` + `remove_stopwords`
+- `normalize_unicode` + `normalize_whitespace` + `normalize_casing`
+- `dehyphenate` + `modernization_transnormer` + `lemmatize_spacy`
 
 **Steps that don't make sense together:**
 - Multiple normalization methods (choose one)
@@ -994,12 +994,12 @@ For best results, apply steps in this general order:
 
 | Feature | Simple | Transnormer | DTA-CAB |
 |---------|--------|-------------|---------|
-| **Speed** | ⚡⚡⚡⚡⚡ Instant | ⚡⚡⚡⚡ Fast (GPU) | ⚡ Very slow (API) |
-| **Quality** | ★★☆☆☆ Basic | ★★★★★ Excellent | ★★★★★ Excellent |
+| **Speed** | (5/5) Instant | (4/5) Fast (GPU) | (1/5) Very slow (API) |
+| **Quality** | 2/5 Basic | 5/5 Excellent | 5/5 Excellent |
 | **Accuracy** | ~90% | 98.88% | ~99% |
-| **Offline** | ✅ Yes | ✅ Yes | ❌ No (API) |
-| **Multi-GPU** | N/A | ✅ Yes | N/A |
-| **Resume** | N/A | ✅ Yes | ✅ Yes |
+| **Offline** | Yes | Yes | No (API) |
+| **Multi-GPU** | N/A | Yes | N/A |
+| **Resume** | N/A | Yes | Yes |
 | **Memory** | ~0 MB | ~1-2 GB | ~0 MB |
 | **Model Size** | None | ~500 MB | None |
 | **Dependencies** | None | transformers, torch | requests |

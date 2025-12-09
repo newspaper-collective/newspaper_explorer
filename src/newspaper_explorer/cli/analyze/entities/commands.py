@@ -183,7 +183,7 @@ def gliner(
             num_gpus=num_gpus,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
+        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 
@@ -351,7 +351,7 @@ def gliner2(
             id_column=id_col,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
+        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 
@@ -484,7 +484,7 @@ def llm(
             id_column=id_col,
         )
 
-        click.echo(f"\n✓ Complete! Method ID: {results['metadata'].analysis_id}")
+        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
         click.echo(f"  Entities: {len(results['results_df'])}")
         click.echo(f"  Output: {results['output_dir']}")
 
@@ -800,7 +800,7 @@ def find_path(
         path = analyzer.find_path(source_entity, target_entity, max_degrees=max_degrees)
 
         if path is None:
-            click.echo(f"\n❌ No path found within {max_degrees} degrees of separation")
+            click.echo(f"\n[ERROR] No path found within {max_degrees} degrees of separation")
             click.echo("\nTips:")
             click.echo("  - Check entity names (case-sensitive)")
             click.echo("  - Try increasing --max-degrees")
@@ -810,7 +810,7 @@ def find_path(
 
         # Show path
         click.echo("=" * 80)
-        click.echo(f"✓ FOUND PATH: {path.degrees} DEGREES OF SEPARATION")
+        click.echo(f"[OK] FOUND PATH: {path.degrees} DEGREES OF SEPARATION")
         click.echo("=" * 80)
         click.echo("")
 
@@ -923,7 +923,7 @@ def entity_connections(
         )
 
         if not connections:
-            click.echo(f"❌ Entity not found or no connections: '{entity}'")
+            click.echo(f"[ERROR] Entity not found or no connections: '{entity}'")
             click.echo("\nTips:")
             click.echo("  - Check spelling (case-sensitive)")
             click.echo("  - Try lowering --min-cooccur")

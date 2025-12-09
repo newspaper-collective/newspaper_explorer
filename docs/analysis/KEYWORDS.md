@@ -396,10 +396,10 @@ TF-IDF scores typically range from 0 to ~1 (or higher for very unique terms):
 - **Distinctive**: Captures unique content
 
 Example for a WWI article:
-- ✅ "weltkrieg" (high score) - specific to war articles
-- ✅ "offensive" (high score) - military-specific term
-- ❌ "krieg" (lower score) - appears in many articles
-- ❌ "der" (filtered) - appears everywhere
+- [GOOD] "weltkrieg" (high score) - specific to war articles
+- [GOOD] "offensive" (high score) - military-specific term
+- [BAD] "krieg" (lower score) - appears in many articles
+- [BAD] "der" (filtered) - appears everywhere
 
 ## Tips & Best Practices
 
@@ -587,15 +587,15 @@ Columns:
 ## When to Use RAKE
 
 **Use RAKE when:**
-- ✅ You need multi-word technical terms or concepts
-- ✅ You want fast extraction without training
-- ✅ You're analyzing domain-specific text with specialized vocabulary
-- ✅ You want to capture German compound concepts ("soziale frage", "neue zeit")
+- You need multi-word technical terms or concepts
+- You want fast extraction without training
+- You're analyzing domain-specific text with specialized vocabulary
+- You want to capture German compound concepts ("soziale frage", "neue zeit")
 
 **Don't use RAKE when:**
-- ❌ You need semantic similarity (use KeyBERT)
-- ❌ You only want single distinctive words (use TF-IDF)
-- ❌ You want corpus-wide themes (use LDA)
+- You need semantic similarity (use KeyBERT)
+- You only want single distinctive words (use TF-IDF)
+- You want corpus-wide themes (use LDA)
 
 ---
 
@@ -683,20 +683,20 @@ Columns:
 - `keywords`: List of extracted keywords
 - `scores`: YAKE scores (**lower = more important**, inverted from others)
 
-⚠️ **Note**: YAKE scores are inverted - lower scores indicate more important keywords!
+[WARNING] **Note**: YAKE scores are inverted - lower scores indicate more important keywords!
 
 ## When to Use YAKE
 
 **Use YAKE when:**
-- ✅ You want balanced statistical extraction
-- ✅ You need language-aware processing
-- ✅ You want mix of single and multi-word keywords
-- ✅ You want unsupervised extraction without dependencies
+- You want balanced statistical extraction
+- You need language-aware processing
+- You want mix of single and multi-word keywords
+- You want unsupervised extraction without dependencies
 
 **Don't use YAKE when:**
-- ❌ You need semantic understanding (use KeyBERT)
-- ❌ You only want distinctive vocabulary (use TF-IDF)
-- ❌ You specifically need long multi-word phrases (use RAKE)
+- You need semantic understanding (use KeyBERT)
+- You only want distinctive vocabulary (use TF-IDF)
+- You specifically need long multi-word phrases (use RAKE)
 
 ---
 
@@ -801,16 +801,16 @@ Columns:
 ## When to Use KeyBERT
 
 **Use KeyBERT when:**
-- ✅ You want semantic understanding of document content
-- ✅ You need context-aware keyword extraction
-- ✅ You want to capture conceptual themes, not just frequent words
-- ✅ You're working with German text (multilingual models)
+- You want semantic understanding of document content
+- You need context-aware keyword extraction
+- You want to capture conceptual themes, not just frequent words
+- You're working with German text (multilingual models)
 
 **Don't use KeyBERT when:**
-- ❌ You need fast extraction (slower due to BERT inference)
-- ❌ You want purely statistical distinctive vocabulary (use TF-IDF)
-- ❌ You need corpus-wide topic discovery (use LDA)
-- ❌ You have limited computational resources (use RAKE or YAKE)
+- You need fast extraction (slower due to BERT inference)
+- You want purely statistical distinctive vocabulary (use TF-IDF)
+- You need corpus-wide topic discovery (use LDA)
+- You have limited computational resources (use RAKE or YAKE)
 
 ## Model Notes
 
@@ -845,11 +845,11 @@ newspaper-explorer analyze topics lda --source der_tag --mode documents
 
 | Method | Type | Speed | Training | Semantic | Multi-word | Best For |
 |--------|------|-------|----------|----------|-----------|----------|
-| **TF-IDF** | Statistical | ⚡⚡⚡ Very Fast | None | ❌ No | ❌ No | Distinctive vocabulary |
-| **RAKE** | Rule-based | ⚡⚡ Fast | None | ❌ No | ✅ Yes | Domain terminology, phrases |
-| **YAKE** | Statistical | ⚡⚡ Fast | None | ⚠️ Limited | ✅ Yes | Balanced extraction |
-| **KeyBERT** | Embedding | ⚡ Moderate | Pre-trained | ✅ Yes | ✅ Yes | Semantic concepts |
-| **LDA** | Topic Model | ⚡ Slow | Required | ⚠️ Themes | ❌ No | Topic discovery |
+| **TF-IDF** | Statistical | Very Fast | None | No | No | Distinctive vocabulary |
+| **RAKE** | Rule-based | Fast | None | No | Yes | Domain terminology, phrases |
+| **YAKE** | Statistical | Fast | None | Limited | Yes | Balanced extraction |
+| **KeyBERT** | Embedding | Moderate | Pre-trained | Yes | Yes | Semantic concepts |
+| **LDA** | Topic Model | Slow | Required | Themes | No | Topic discovery |
 
 ## Methodological Framework
 
@@ -901,39 +901,39 @@ While LDA's topic terms *can* be used like keywords, they are fundamentally diff
 ### By Text Characteristics
 
 **Short documents (< 100 words)**:
-- ✅ TF-IDF (document-level distinctive terms)
-- ✅ RAKE (phrase extraction)
-- ⚠️ YAKE (may struggle with limited context)
-- ❌ KeyBERT (needs sufficient semantic context)
+- [GOOD] TF-IDF (document-level distinctive terms)
+- [GOOD] RAKE (phrase extraction)
+- [WARNING] YAKE (may struggle with limited context)
+- [BAD] KeyBERT (needs sufficient semantic context)
 
 **Long documents (> 1000 words)**:
-- ✅ All methods work well
-- ⚡ TF-IDF, RAKE, YAKE for speed
-- ✅ KeyBERT for semantic depth
+- [GOOD] All methods work well
+- TF-IDF, RAKE, YAKE for speed
+- [GOOD] KeyBERT for semantic depth
 
 **Domain-specific vocabulary**:
-- ✅✅ RAKE - extracts technical multi-word terms
-- ✅ TF-IDF - finds distinctive domain terms
-- ✅ KeyBERT - understands domain concepts (with domain-tuned model)
-- ⚠️ YAKE - good but less specialized
+- [GREAT] RAKE - extracts technical multi-word terms
+- [GOOD] TF-IDF - finds distinctive domain terms
+- [GOOD] KeyBERT - understands domain concepts (with domain-tuned model)
+- [WARNING] YAKE - good but less specialized
 
 **Multilingual/Historical German**:
-- ✅ KeyBERT with multilingual models
-- ✅ TF-IDF (language-agnostic)
-- ✅ RAKE with German stopwords
-- ✅ YAKE with language="de"
+- [GOOD] KeyBERT with multilingual models
+- [GOOD] TF-IDF (language-agnostic)
+- [GOOD] RAKE with German stopwords
+- [GOOD] YAKE with language="de"
 
 ### By Computational Resources
 
 **Limited resources (CPU only, < 8GB RAM)**:
-- ✅✅ TF-IDF - very efficient
-- ✅✅ RAKE - fast rule-based
-- ✅ YAKE - efficient statistical
-- ❌ KeyBERT - requires more memory, slow on CPU
+- [GREAT] TF-IDF - very efficient
+- [GREAT] RAKE - fast rule-based
+- [GOOD] YAKE - efficient statistical
+- [BAD] KeyBERT - requires more memory, slow on CPU
 
 **Good resources (GPU, > 16GB RAM)**:
-- ✅ All methods work well
-- ⚡ KeyBERT benefits significantly from GPU
+- All methods work well
+- KeyBERT benefits significantly from GPU
 
 ### By Analysis Type
 

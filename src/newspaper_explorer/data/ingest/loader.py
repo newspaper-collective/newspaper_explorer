@@ -244,7 +244,7 @@ class DataIngester:
         if pattern is None:
             pattern = get_config().default_alto_pattern
 
-        logger.info(f"📂 Scanning for ALTO XML files in {directory}")
+        logger.info(f"Scanning for ALTO XML files in {directory}")
 
         # Find all ALTO XML files (only in fulltext directories)
         xml_files = natsorted(directory.glob(pattern))

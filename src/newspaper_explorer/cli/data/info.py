@@ -65,18 +65,18 @@ def register_info_commands(data_group):
                 xml_files = natsorted(raw_dir.glob(xml_pattern))
 
                 if len(xml_files) > 0:
-                    click.echo(f"Status: ✓ Data extracted and ready")
+                    click.echo(f"Status: [OK] Data extracted and ready")
                     click.echo(f"Location: {raw_dir}")
                     click.echo(f"XML files: {len(xml_files):,}")
                 else:
-                    click.echo(f"Status: ✗ Directory exists but no XML files found")
+                    click.echo(f"Status: [ERROR] Directory exists but no XML files found")
                     click.echo(f"Location: {raw_dir}")
-                    click.echo(f"\n⚠ Data may not be properly extracted. Run:")
+                    click.echo(f"\n[WARNING] Data may not be properly extracted. Run:")
                     click.echo(f"  newspaper-explorer data unpack --source {source}")
             else:
-                click.echo(f"Status: ✗ Not extracted")
+                click.echo(f"Status: [ERROR] Not extracted")
                 click.echo(f"Expected location: {raw_dir}")
-                click.echo(f"\n⚠ No data found. Run:")
+                click.echo(f"\n[WARNING] No data found. Run:")
                 click.echo(f"  newspaper-explorer data download --source {source}")
                 click.echo(f"  newspaper-explorer data unpack --source {source}")
 
@@ -96,7 +96,7 @@ def register_info_commands(data_group):
                 click.echo(f"XML files found: {len(xml_files):,}")
             else:
                 click.echo(f"XML files found: 0 (directory not found)")
-                click.echo(f"\n⚠ No XML files. Run:")
+                click.echo(f"\n[WARNING] No XML files. Run:")
                 click.echo(f"  newspaper-explorer data download --source {source}")
                 click.echo(f"  newspaper-explorer data unpack --source {source}")
 
@@ -113,7 +113,7 @@ def register_info_commands(data_group):
                 unique_files = df["filename"].n_unique()
                 total_lines = len(df)
 
-                click.echo(f"Status: ✓ Exists")
+                click.echo(f"Status: [OK] Exists")
                 click.echo(f"Total lines: {total_lines:,}")
                 click.echo(f"Files parsed: {unique_files:,}")
 
@@ -128,10 +128,10 @@ def register_info_commands(data_group):
 
                         if unique_files < len(xml_files):
                             remaining = len(xml_files) - unique_files
-                            click.echo(f"\n⚠ {remaining:,} XML files not yet parsed. Run:")
+                            click.echo(f"\n[WARNING] {remaining:,} XML files not yet parsed. Run:")
                             click.echo(f"  newspaper-explorer data parse --source {source}")
                         else:
-                            click.echo(f"\n✓ All XML files parsed!")
+                            click.echo(f"\n[OK] All XML files parsed!")
 
                 # Show date range
                 if "date" in df.columns and len(df) > 0:
@@ -143,8 +143,8 @@ def register_info_commands(data_group):
                 size_mb = output_file.stat().st_size / (1024 * 1024)
                 click.echo(f"File size: {size_mb:.1f} MB")
             else:
-                click.echo(f"Status: ✗ Not found")
-                click.echo(f"\n⚠ No parsed data. Run:")
+                click.echo(f"Status: [ERROR] Not found")
+                click.echo(f"\n[WARNING] No parsed data. Run:")
                 click.echo(f"  newspaper-explorer data parse --source {source}")
 
             # Aggregated Data Status
@@ -159,17 +159,17 @@ def register_info_commands(data_group):
 
             if textblocks_path.exists():
                 df = pl.read_parquet(textblocks_path)
-                click.echo(f"Status: ✓ Exists")
+                click.echo(f"Status: [OK] Exists")
                 click.echo(f"Text blocks: {len(df):,}")
 
                 size_mb = textblocks_path.stat().st_size / (1024 * 1024)
                 click.echo(f"File size: {size_mb:.1f} MB")
 
-                click.echo(f"\n✓ Ready for preprocessing!")
+                click.echo(f"\n[OK] Ready for preprocessing!")
             else:
-                click.echo(f"Status: ✗ Not found")
+                click.echo(f"Status: [ERROR] Not found")
                 if output_file.exists():
-                    click.echo(f"\n⚠ Parsed data exists but not aggregated. Run:")
+                    click.echo(f"\n[WARNING] Parsed data exists but not aggregated. Run:")
                     click.echo(f"  newspaper-explorer data aggregate --source {source}")
 
             # Image Download Status
@@ -189,7 +189,7 @@ def register_info_commands(data_group):
                     # Use image index
                     stats = indexer.get_stats()
                     click.echo(f"Location: {indexer.images_dir}")
-                    click.echo(f"Status: ✓ Indexed")
+                    click.echo(f"Status: [OK] Indexed")
                     click.echo(f"Images indexed: {stats['total_images']:,}")
                     click.echo(f"Total size: {stats['total_size_gb']:.2f} GB")
                     click.echo(f"Average file size: {stats['avg_file_size_mb']:.2f} MB")
@@ -212,14 +212,14 @@ def register_info_commands(data_group):
 
                         if coverage < 100:
                             missing = image_status["total_images_expected"] - stats["total_images"]
-                            click.echo(f"\n⚠ {missing:,} images missing. Run:")
+                            click.echo(f"\n[WARNING] {missing:,} images missing. Run:")
                             click.echo(
                                 f"  newspaper-explorer data download-images --source {source}"
                             )
                         else:
-                            click.echo(f"\n✓ All images downloaded!")
+                            click.echo(f"\n[OK] All images downloaded!")
                     else:
-                        click.echo(f"\n💡 Tip: Image index is available for fast queries")
+                        click.echo(f"\nTip: Image index is available for fast queries")
                 else:
                     # Fallback to original method
                     image_downloader = ImageDownloader(source_name=source)
@@ -228,7 +228,7 @@ def register_info_commands(data_group):
                     click.echo(f"Location: {image_status['images_dir']}")
 
                     if image_status["images_dir_exists"]:
-                        click.echo(f"Status: ✓ Directory exists")
+                        click.echo(f"Status: [OK] Directory exists")
                         click.echo(f"Images downloaded: {image_status['images_downloaded']:,}")
                         click.echo(
                             f"Images expected: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
@@ -243,31 +243,31 @@ def register_info_commands(data_group):
                                     image_status["total_images_expected"]
                                     - image_status["images_downloaded"]
                                 )
-                                click.echo(f"\n⚠ {missing:,} images not yet downloaded. Run:")
+                                click.echo(f"\n[WARNING] {missing:,} images not yet downloaded. Run:")
                                 click.echo(
                                     f"  newspaper-explorer data download-images --source {source}"
                                 )
                             else:
-                                click.echo(f"\n✓ All images downloaded!")
+                                click.echo(f"\n[OK] All images downloaded!")
 
                         # Suggest creating index
                         if image_status["images_downloaded"] > 0:
-                            click.echo(f"\n💡 Tip: Create an image index for faster queries:")
+                            click.echo(f"\nTip: Create an image index for faster queries:")
                             click.echo(
                                 f"  # (Future) newspaper-explorer data index-images --source {source}"
                             )
                     else:
-                        click.echo(f"Status: ✗ Not found")
+                        click.echo(f"Status: [ERROR] Not found")
                         if image_status["total_images_expected"] > 0:
                             click.echo(
                                 f"Expected images: {image_status['total_images_expected']:,} (from {image_status['mets_files']} METS files)"
                             )
-                            click.echo(f"\n⚠ No images downloaded. Run:")
+                            click.echo(f"\n[WARNING] No images downloaded. Run:")
                             click.echo(
                                 f"  newspaper-explorer data download-images --source {source}"
                             )
             except Exception as e:
-                click.echo(f"Status: ⚠ Could not determine image status")
+                click.echo(f"Status: [WARNING] Could not determine image status")
                 click.echo(f"Error: {e}")
 
             click.echo(f"\n{'=' * 80}\n")
@@ -436,11 +436,11 @@ def register_info_commands(data_group):
             total_missing = result["images_missing"] + result["alto_missing"]
             if total_missing > 0:
                 click.echo(
-                    f"\n⚠ Warning: {total_missing} files are missing!",
+                    f"\n[WARNING] Warning: {total_missing} files are missing!",
                     err=True,
                 )
             else:
-                click.echo("\n✓ All referenced files are present!")
+                click.echo("\n[OK] All referenced files are present!")
 
         except Exception as e:
             click.echo(f"\nError: {e}", err=True)
@@ -503,7 +503,7 @@ def register_info_commands(data_group):
             parquet_file = paths["output_file"]
 
             if not parquet_file.exists():
-                click.echo(f"\n✗ Parquet file not found: {parquet_file}", err=True)
+                click.echo(f"\n[ERROR] Parquet file not found: {parquet_file}", err=True)
                 click.echo(f"Run parsing first:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
@@ -513,7 +513,7 @@ def register_info_commands(data_group):
             df = DataLoader.load_parquet(parquet_file)
 
             if len(df) == 0:
-                click.echo("\n✗ Empty parquet file. Re-run parsing:", err=True)
+                click.echo("\n[ERROR] Empty parquet file. Re-run parsing:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
 
@@ -646,7 +646,7 @@ def register_info_commands(data_group):
             parquet_file = paths["output_file"]
 
             if not parquet_file.exists():
-                click.echo(f"\n✗ Parquet file not found: {parquet_file}", err=True)
+                click.echo(f"\n[ERROR] Parquet file not found: {parquet_file}", err=True)
                 click.echo(f"Run parsing first:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
@@ -656,7 +656,7 @@ def register_info_commands(data_group):
             df = DataIngester.load_parquet(parquet_file)
 
             if len(df) == 0:
-                click.echo("\n✗ Empty parquet file. Re-run parsing:", err=True)
+                click.echo("\n[ERROR] Empty parquet file. Re-run parsing:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
 
@@ -724,9 +724,9 @@ def register_info_commands(data_group):
             click.echo(f"  Expected speedup:       {stats['expected_speedup']:.1f}x")
 
             if stats["expected_speedup"] > 2.0:
-                click.echo("\n✓ Dynamic padding will provide significant speedup!")
+                click.echo("\n[OK] Dynamic padding will provide significant speedup!")
             elif stats["expected_speedup"] > 1.5:
-                click.echo("\n✓ Dynamic padding will provide moderate speedup.")
+                click.echo("\n[OK] Dynamic padding will provide moderate speedup.")
             else:
                 click.echo("\nℹ Dynamic padding may provide limited benefit.")
 
@@ -818,7 +818,7 @@ def register_info_commands(data_group):
             parquet_file = paths["output_file"]
 
             if not parquet_file.exists():
-                click.echo(f"\n✗ Parquet file not found: {parquet_file}", err=True)
+                click.echo(f"\n[ERROR] Parquet file not found: {parquet_file}", err=True)
                 click.echo(f"Run parsing first:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
@@ -828,7 +828,7 @@ def register_info_commands(data_group):
             df = DataIngester.load_parquet(parquet_file)
 
             if len(df) == 0:
-                click.echo("\n✗ Empty parquet file. Re-run parsing:", err=True)
+                click.echo("\n[ERROR] Empty parquet file. Re-run parsing:", err=True)
                 click.echo(f"  newspaper-explorer data parse --source {source}")
                 raise click.Abort()
 
@@ -881,10 +881,10 @@ def register_info_commands(data_group):
 
             if max(token_counts) >= 512:
                 click.echo(
-                    f"\n⚠ Warning: {sum(1 for t in token_counts if t >= 512)} texts will be truncated at 512 tokens"
+                    f"\n[WARNING] Warning: {sum(1 for t in token_counts if t >= 512)} texts will be truncated at 512 tokens"
                 )
             else:
-                click.echo(f"\n✓ All texts fit within 512 token limit")
+                click.echo(f"\n[OK] All texts fit within 512 token limit")
 
         except Exception as e:
             click.echo(f"\nError: {e}", err=True)

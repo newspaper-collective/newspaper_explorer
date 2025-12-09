@@ -28,17 +28,17 @@ The topic modeling module provides three methods for discovering themes and topi
 3. **FASTopic** - Fast, Adaptive, Stable, and Transferable topic modeling (NEW ⭐)
 
 **Key Features**:
-- ✅ **Three modeling approaches**: LDA (traditional), BERTopic (semantic with global topics), FASTopic (optimal transport)
-- ✅ **Global topics architecture**: Single fit on entire corpus for unified topic space
-- ✅ **Temporal analysis**: Track topics over time with consistent topic definitions
-- ✅ **4-phase optimized pipeline**: Parallel chunking + Multi-GPU embedding + Global clustering
-- ✅ **Flexible sampling**: Page filtering, year filtering, random sampling for massive datasets
-- ✅ **Flexible grouping**: Analyze topics at page, issue, date, or custom levels
-- ✅ **Sentence chunking**: BERTopic intelligently chunks text using spaCy
-- ✅ **Stopword removal**: German stopword filtering via spaCy
-- ✅ **Model caching**: Automatic model downloads and caching
-- ✅ **Resume functionality**: Skip already-processed documents
-- ✅ **Metadata tracking**: Full provenance with timing and parameters
+- **Three modeling approaches**: LDA (traditional), BERTopic (semantic with global topics), FASTopic (optimal transport)
+- **Global topics architecture**: Single fit on entire corpus for unified topic space
+- **Temporal analysis**: Track topics over time with consistent topic definitions
+- **4-phase optimized pipeline**: Parallel chunking + Multi-GPU embedding + Global clustering
+- **Flexible sampling**: Page filtering, year filtering, random sampling for massive datasets
+- **Flexible grouping**: Analyze topics at page, issue, date, or custom levels
+- **Sentence chunking**: BERTopic intelligently chunks text using spaCy
+- **Stopword removal**: German stopword filtering via spaCy
+- **Model caching**: Automatic model downloads and caching
+- **Resume functionality**: Skip already-processed documents
+- **Metadata tracking**: Full provenance with timing and parameters
 ---
 
 ## Sampling Strategies for Large Corpora
@@ -113,9 +113,9 @@ topics_df.group_by("date").agg([
 ```
 
 **Trade-offs**:
-- ❌ Less document-specific detail (but you can still see which topics dominate each doc)
-- ✅ Much better for corpus-wide analysis and temporal trends
-- ✅ Essential for multi-document comparisons
+- [BAD] Less document-specific detail (but you can still see which topics dominate each doc)
+- [GOOD] Much better for corpus-wide analysis and temporal trends
+- [GOOD] Essential for multi-document comparisons
 
 ---
 
@@ -212,15 +212,15 @@ extractor.save_results(results_df, output_name="lda_topics")
 **Purpose**: Modern semantic topic modeling using BERT embeddings and clustering with **global topics** approach.
 
 **Key Features**:
-- ✅ **Global topics discovery**: Single fit on entire corpus (not per-document)
-- ✅ **4-phase workflow**: Optimized pipeline with parallel processing
-- ✅ **Multiprocessing**: Parallel chunking across all CPU cores
-- ✅ **Multi-GPU support**: Batch embedding with automatic GPU utilization
-- ✅ **Semantic embeddings**: Via sentence transformers (multilingual support)
-- ✅ **Sentence-level chunking**: Intelligent text splitting with spaCy
-- ✅ **German stopword filtering**: Optional stopword removal
-- ✅ **Model caching**: Automatic model download and caching
-- ✅ **Temporal analysis**: Unified topic space for tracking topics over time
+- **Global topics discovery**: Single fit on entire corpus (not per-document)
+- **4-phase workflow**: Optimized pipeline with parallel processing
+- **Multiprocessing**: Parallel chunking across all CPU cores
+- **Multi-GPU support**: Batch embedding with automatic GPU utilization
+- **Semantic embeddings**: Via sentence transformers (multilingual support)
+- **Sentence-level chunking**: Intelligent text splitting with spaCy
+- **German stopword filtering**: Optional stopword removal
+- **Model caching**: Automatic model download and caching
+- **Temporal analysis**: Unified topic space for tracking topics over time
 
 **Architecture - Global Topics Approach**:
 
@@ -1410,7 +1410,7 @@ for i, row in enumerate(results_df.head(3).iter_rows(named=True)):
     print(f"   Probabilities: {[f'{p:.2f}' for p in row['topic_probs']]}")
     print(f"   Terms: {row['topic_terms'][:5]}")
 
-print("\n✓ Complete!")
+print("\n[OK] Complete!")
 ```
 
 **Run it**:
@@ -1458,7 +1458,7 @@ Example documents:
    Probabilities: ['0.82', '0.18']
    Terms: ['ſich', 'iſt', 'berliner', 'ſind', 'ſie']
 
-✓ Complete!
+[OK] Complete!
 ```
 
 ---
