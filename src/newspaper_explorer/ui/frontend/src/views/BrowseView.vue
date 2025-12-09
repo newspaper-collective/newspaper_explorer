@@ -33,6 +33,10 @@ const pageSize = ref(20)
 const totalPages = ref(1)
 const totalCount = ref(0)
 
+// Years pagination state
+const yearsCurrentPage = ref(1)
+const yearsPageSize = ref(9) // 3 columns × 3 rows
+
 const monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -47,6 +51,16 @@ const monthNamesShort = [
 const sourceTitle = computed(() => {
   return sourceStore.sourceInfo?.metadata?.newspaper_title || 'Collection'
 })
+
+const paginatedYears = computed(() => {
+  const start = (yearsCurrentPage.value - 1) * yearsPageSize.value
+  const end = start + yearsPageSize.value
+  return years.value.slice(start, end)
+})
+
+const yearsTotalPages = computed(() =>
+  Math.ceil(years.value.length / yearsPageSize.value)
+)
 
 const breadcrumbs = computed(() => {
   const crumbs = [{ label: sourceTitle.value, mode: 'year' as ViewMode }]
@@ -68,6 +82,12 @@ const breadcrumbs = computed(() => {
 const statsText = computed(() => {
   if (viewMode.value === 'year') {
     const totalLines = years.value.reduce((sum, y) => sum + (y.line_count || 0), 0)
+    if (yearsTotalPages.value > 1) {
+      return {
+        primary: `Page ${yearsCurrentPage.value} of ${yearsTotalPages.value}`,
+        secondary: `${years.value.length} years • ${totalLines.toLocaleString()} total lines`
+      }
+    }
     return {
       primary: `${years.value.length} years`,
       secondary: `${totalLines.toLocaleString()} total lines`
@@ -97,6 +117,9 @@ function updateUrl() {
   }
   if (currentPage.value > 1) {
     query.page = currentPage.value.toString()
+  }
+  if (yearsCurrentPage.value > 1) {
+    query.yearsPage = yearsCurrentPage.value.toString()
   }
   if (yearFrom.value !== null) {
     query.yearFrom = yearFrom.value.toString()
@@ -149,6 +172,7 @@ function resetFilters() {
   yearFrom.value = null
   yearTo.value = null
   sortOrder.value = 'asc'
+  yearsCurrentPage.value = 1
 
   if (selectedYear.value !== null) {
     navigateToYear(null)
@@ -247,6 +271,7 @@ async function loadIssues() {
 
 function applyFilters() {
   currentPage.value = 1
+  yearsCurrentPage.value = 1
   if (viewMode.value === 'year') {
     loadYears()
   } else if (viewMode.value === 'month') {
@@ -264,6 +289,11 @@ watch(currentPage, () => {
   } else if (viewMode.value === 'issue') {
     loadIssues()
   }
+  updateUrl()
+})
+
+// Watch for years pagination changes
+watch(yearsCurrentPage, () => {
   updateUrl()
 })
 
@@ -285,6 +315,7 @@ watch(() => sourceStore.currentSource, () => {
   selectedMonth.value = null
   viewMode.value = 'year'
   currentPage.value = 1
+  yearsCurrentPage.value = 1
   loadYears()
 })
 
@@ -297,6 +328,9 @@ watch(sortOrder, () => {
     } else if (viewMode.value === 'issue') {
       loadIssues()
     }
+  } else {
+    yearsCurrentPage.value = 1
+    loadYears()
   }
 })
 
@@ -306,6 +340,7 @@ onMounted(() => {
     const year = route.query.year ? parseInt(route.query.year as string, 10) : null
     const month = route.query.month ? parseInt(route.query.month as string, 10) : null
     const page = route.query.page ? parseInt(route.query.page as string, 10) : 1
+    const yearsPage = route.query.yearsPage ? parseInt(route.query.yearsPage as string, 10) : 1
     const yFrom = route.query.yearFrom ? parseInt(route.query.yearFrom as string, 10) : null
     const yTo = route.query.yearTo ? parseInt(route.query.yearTo as string, 10) : null
     const sort = route.query.sort as 'asc' | 'desc' || 'asc'
@@ -315,6 +350,7 @@ onMounted(() => {
     yearTo.value = yTo
     sortOrder.value = sort
     currentPage.value = page
+    yearsCurrentPage.value = yearsPage
 
     if (year !== null) {
       selectedYear.value = year
@@ -480,36 +516,46 @@ onMounted(() => {
         </div>
 
         <!-- Year View -->
-        <div v-else-if="viewMode === 'year'" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="year in years"
-            :key="year.year"
-            @click="navigateToMonth(year.year, null)"
-            class="rounded-lg border bg-card overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-          >
-            <div class="grid grid-cols-2 h-[200px]">
-              <!-- Left - Year Info -->
-              <div class="flex flex-col items-center justify-center p-4 text-center">
-                <div class="text-4xl font-semibold">{{ year.year }}</div>
-                <div class="w-3/5 h-px bg-border my-2"></div>
-                <div class="space-y-1">
-                  <p class="text-sm font-medium">{{ year.issue_count }} issues</p>
-                  <p class="text-xs text-muted-foreground">
-                    {{ year.line_count.toLocaleString() }} lines
-                  </p>
+        <div v-else-if="viewMode === 'year'" class="space-y-4">
+          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="year in paginatedYears"
+              :key="year.year"
+              @click="navigateToMonth(year.year, null)"
+              class="rounded-lg border bg-card overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+            >
+              <div class="grid grid-cols-2 h-[200px]">
+                <!-- Left - Year Info -->
+                <div class="flex flex-col items-center justify-center p-4 text-center">
+                  <div class="text-4xl font-semibold">{{ year.year }}</div>
+                  <div class="w-3/5 h-px bg-border my-2"></div>
+                  <div class="space-y-1">
+                    <p class="text-sm font-medium">{{ year.issue_count }} issues</p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ year.line_count.toLocaleString() }} lines
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <!-- Right - Image -->
-              <div class="bg-muted relative overflow-hidden">
-                <img
-                  v-if="year.image_path"
-                  :src="getImageUrl(year.image_path)"
-                  class="w-full h-full object-cover"
-                  alt="Year preview"
-                />
+                <!-- Right - Image -->
+                <div class="bg-muted relative overflow-hidden">
+                  <img
+                    v-if="year.image_path"
+                    :src="getImageUrl(year.image_path)"
+                    class="w-full h-full object-cover"
+                    alt="Year preview"
+                  />
+                </div>
               </div>
             </div>
           </div>
+
+          <!-- Years Pagination -->
+          <PaginationControls
+            :current-page="yearsCurrentPage"
+            :total-pages="yearsTotalPages"
+            :loading="loading"
+            @update:current-page="(page) => yearsCurrentPage = page"
+          />
         </div>
 
         <!-- Month View -->
