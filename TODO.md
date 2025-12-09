@@ -5,7 +5,6 @@
 
 + Bohnſtedt (Graudenz) des Danziger Inſ.⸗Regts. Nr. 128, -> wrong long s test
 
-- ◼
 
 - add source_name to aggregated blocks
 
