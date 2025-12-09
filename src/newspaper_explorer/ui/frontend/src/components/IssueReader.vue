@@ -63,9 +63,7 @@ const displayedTextLines = computed(() => {
 })
 
 const displayedLayoutRegions = computed(() => {
-  const regions = showLayoutOverlays.value ? layoutRegions.value : []
-  console.log('displayedLayoutRegions:', { showLayoutOverlays: showLayoutOverlays.value, count: regions.length })
-  return regions
+  return showLayoutOverlays.value ? layoutRegions.value : []
 })
 
 async function loadIssueMetadata() {
@@ -191,16 +189,13 @@ async function loadLayoutResults() {
       `/data/${sourceStore.currentSource}/page-analysis/${pageContent.value.page.page_id}`
     )
 
-    console.log('Layout analysis response:', response.data)
     const layoutData = response.data.layout || {}
     availableLayoutSets.value = Object.keys(layoutData)
-    console.log('Available layout sets:', availableLayoutSets.value)
 
     // Auto-select first available set or keep current selection
     if (availableLayoutSets.value.length > 0) {
       if (!selectedLayoutSet.value) {
         selectedLayoutSet.value = availableLayoutSets.value[0]
-        console.log('Auto-selected layout set:', selectedLayoutSet.value)
       }
       // Always update regions when page changes, even if selection didn't change
       updateLayoutRegions()
@@ -225,20 +220,14 @@ async function updateLayoutRegions() {
 
     const layoutData = response.data.layout || {}
     const regions = layoutData[selectedLayoutSet.value] || []
-    console.log(`Raw layout regions for ${selectedLayoutSet.value}:`, regions)
-    console.log('First region structure:', JSON.stringify(regions[0], null, 2))
 
     // Layout detection coordinates are already in image pixel space, no scaling needed
     const filteredRegions = regions.filter((region: any) => {
       // Check if bbox exists as an object with x1, or if coordinates are at top level
       const hasValidBbox = (region.bbox && typeof region.bbox === 'object' && 'x1' in region.bbox) ||
                           ('x1' in region && 'y1' in region && 'x2' in region && 'y2' in region)
-      if (!hasValidBbox) {
-        console.log('Filtered out region (missing bbox):', region)
-      }
       return hasValidBbox
     })
-    console.log(`Regions after filtering: ${filteredRegions.length} of ${regions.length}`)
 
     layoutRegions.value = filteredRegions.map((region: any) => {
       // Handle both nested bbox and top-level coordinates
@@ -263,7 +252,6 @@ async function updateLayoutRegions() {
         }
       }
     }).filter((r: any) => r !== null)
-    console.log('Layout regions ready:', layoutRegions.value)
   } catch (error) {
     console.error('Failed to update layout regions:', error)
     layoutRegions.value = []
@@ -280,7 +268,6 @@ function handleLineHover(lineId: string | null) {
 }
 
 function handleLineClick(lineId: string) {
-  console.log('Line clicked:', lineId)
   highlightedLineId.value = lineId
   // Scroll to the line in the text panel
   const lineElement = document.querySelector(`[data-line-id="${lineId}"]`) as HTMLElement

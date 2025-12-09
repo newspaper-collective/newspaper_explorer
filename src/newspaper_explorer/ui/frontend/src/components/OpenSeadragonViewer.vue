@@ -82,13 +82,11 @@ function addTextLineOverlays() {
 
   // If no text lines to show, just return after clearing
   if (!props.textLines || props.textLines.length === 0) {
-    console.log('No text lines to display, overlays cleared')
     return
   }
 
   const tiledImage = viewer.world.getItemAt(0)
   if (!tiledImage) {
-    console.warn('No tiled image loaded yet, skipping text line overlays')
     return
   }
 
@@ -97,15 +95,12 @@ function addTextLineOverlays() {
   const osdImageHeight = imageSize.y
 
   if (!osdImageWidth || !osdImageHeight) {
-    console.warn('Image dimensions not available, skipping text line overlays')
     return
   }
 
   // Use provided ALTO image dimensions if available, otherwise fall back to OSD dimensions
   const altoImageWidth = props.imageWidth || osdImageWidth
   const altoImageHeight = props.imageHeight || osdImageHeight
-
-  console.log(`Adding ${props.textLines.length} text line overlays (ALTO dims: ${altoImageWidth}x${altoImageHeight}, OSD dims: ${osdImageWidth}x${osdImageHeight})`)
 
   // Add each text line as an overlay
   props.textLines.forEach((line) => {
@@ -141,7 +136,6 @@ function addTextLineOverlays() {
 
     // Click to select line
     overlayDiv.addEventListener('click', (e) => {
-      console.log('Overlay clicked in OpenSeadragonViewer:', lineId)
       e.stopPropagation()
       emit('lineClick', lineId)
     })
@@ -174,14 +168,12 @@ function addDetectionOverlays() {
 
   // If no detections to show, just return after clearing
   if (!props.detections || props.detections.length === 0) {
-    console.log('No detections to display, overlays cleared')
     return
   }
 
   // Get image size from OpenSeadragon's world
   const tiledImage = viewer.world.getItemAt(0)
   if (!tiledImage) {
-    console.warn('No tiled image loaded yet, skipping overlay rendering')
     return
   }
 
@@ -191,12 +183,8 @@ function addDetectionOverlays() {
   const imageHeight = imageSize.y
 
   if (!imageWidth || !imageHeight) {
-    console.warn('Image dimensions not available from OpenSeadragon, skipping overlay rendering')
     return
   }
-
-  console.log(`Adding ${props.detections.length} detection overlays to OpenSeadragon image ${imageWidth}x${imageHeight}`)
-  console.log('First detection sample:', JSON.stringify(props.detections[0], null, 2))
 
   // Add each detection as an overlay
   props.detections.forEach((detection, index) => {
@@ -238,11 +226,6 @@ function addDetectionOverlays() {
     const width = (detection.bbox.x2 - detection.bbox.x1) / imageWidth
     const height = (detection.bbox.y2 - detection.bbox.y1) / imageWidth  // Note: normalize by width, not height!
 
-    if (index < 3) {  // Log first 3 detections in detail
-      console.log(`Detection ${detection.class_name}: pixel coords (${detection.bbox.x1.toFixed(0)}, ${detection.bbox.y1.toFixed(0)}, ${detection.bbox.x2.toFixed(0)}, ${detection.bbox.y2.toFixed(0)}) -> normalized (${x.toFixed(4)}, ${y.toFixed(4)}, ${width.toFixed(4)}, ${height.toFixed(4)})`)
-      console.log(`Image dimensions: ${imageWidth}x${imageHeight}, aspect ratio: ${(imageHeight/imageWidth).toFixed(4)}`)
-    }
-
     // Add overlay to viewer using normalized image coordinates
     if (viewer) {
       viewer.addOverlay({
@@ -283,18 +266,15 @@ onMounted(() => {
 
     // Add overlays when the image is fully loaded
     viewer.addHandler('open', () => {
-      console.log('OpenSeadragon: Image opened')
       // Wait for the tiled image to be fully loaded
       const tiledImage = viewer!.world.getItemAt(0)
       if (tiledImage) {
         tiledImage.addHandler('fully-loaded-change', () => {
-          console.log('OpenSeadragon: Image fully loaded, adding overlays')
           addDetectionOverlays()
           addTextLineOverlays()
         })
         // If already loaded, add immediately
         if (tiledImage.getFullyLoaded()) {
-          console.log('OpenSeadragon: Image already fully loaded, adding overlays')
           addDetectionOverlays()
           addTextLineOverlays()
         }
@@ -312,7 +292,6 @@ onUnmounted(() => {
 
 watch(() => props.imageUrl, (newUrl) => {
   if (viewer) {
-    console.log('Image URL changed, opening new image:', newUrl)
     viewer.open({
       type: 'image',
       url: newUrl,
@@ -321,12 +300,10 @@ watch(() => props.imageUrl, (newUrl) => {
 })
 
 watch(() => props.detections, () => {
-  console.log('Detections changed, re-adding overlays...')
   addDetectionOverlays()
 }, { deep: true })
 
 watch(() => props.textLines, () => {
-  console.log('Text lines changed, re-adding overlays...')
   addTextLineOverlays()
 }, { deep: true })
 

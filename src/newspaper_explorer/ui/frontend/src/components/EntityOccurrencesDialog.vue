@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { X, ChevronRight } from 'lucide-vue-next'
 import api from '@/lib/api'
 
 interface EntityOccurrence {
@@ -140,20 +141,7 @@ watch(() => props.open, (isOpen) => {
             @click="close"
             class="rounded-md p-2 hover:bg-accent transition-colors"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
+            <X :size="20" />
           </button>
         </div>
 
@@ -188,20 +176,7 @@ watch(() => props.open, (isOpen) => {
                   </div>
                 </div>
                 <div class="flex-shrink-0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="text-muted-foreground"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
+                  <ChevronRight :size="20" class="text-muted-foreground" />
                 </div>
               </div>
             </div>

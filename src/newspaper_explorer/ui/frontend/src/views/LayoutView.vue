@@ -13,7 +13,7 @@ import {
   DataZoomComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { X, BarChart3 } from 'lucide-vue-next'
+import { X, BarChart3, LayoutGrid } from 'lucide-vue-next'
 import api from '@/lib/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ResultsViewer from '@/components/ResultsViewer.vue'
@@ -211,14 +211,12 @@ async function loadClassNames() {
   if (!sourceStore.currentSource || !selectedRunId.value) return
 
   try {
-    console.log('🏷️  Loading class names for', selectedRunId.value)
     const response = await api.get(
       `/layout/${sourceStore.currentSource}/labels`,
       { params: { run_id: selectedRunId.value } }
     )
     classNames.value = response.data
     selectedClasses.value = [...response.data]
-    console.log('Loaded', response.data.length, 'classes:', response.data)
   } catch (error) {
     console.error('Failed to load class names:', error)
   }
@@ -228,8 +226,6 @@ async function loadStats() {
   if (!sourceStore.currentSource || !selectedRunId.value) return
 
   try {
-    console.log('Loading stats for', selectedRunId.value)
-
     // Load unfiltered stats for overview
     const unfilteredResponse = await api.get(
       `/layout/${sourceStore.currentSource}/stats`,
@@ -247,8 +243,6 @@ async function loadStats() {
     if (filteredResponse.data.counts) {
       pieChart.value = createPieChartFromCounts(filteredResponse.data.counts) as EChartsOption
     }
-
-    console.log('Stats loaded')
   } catch (error) {
     console.error('Failed to load stats:', error)
   }
@@ -262,7 +256,6 @@ async function loadTimeline() {
       `/layout/${sourceStore.currentSource}/timeline`,
       { params: { aggregation: 'day', run_id: selectedRunId.value } }
     )
-    console.log('Timeline data loaded')
 
     // Create timeline chart with all classes stacked
     timelineChart.value = createMultiClassTimelineChart(response.data)
@@ -409,7 +402,6 @@ const totalPages = ref(0)
 
 async function loadPages() {
   if (!sourceStore.currentSource || !selectedRunId.value) {
-    console.log('⚠️ loadPages called but missing source or runId')
     return
   }
 
@@ -472,7 +464,6 @@ const totalPagesCount = computed(() => {
 
 // Watch for filter changes
 watch([selectedClasses, minConfidence], () => {
-  console.log('Filter changed')
   if (selectedRunId.value && !isChangingRun.value) {
     applyFilters()
   }
@@ -480,7 +471,6 @@ watch([selectedClasses, minConfidence], () => {
 
 // Watch for run changes
 watch(selectedRunId, async (newId, oldId) => {
-  console.log('selectedRunId changed from', oldId, 'to', newId)
   if (!newId) {
     pages.value = []
     classNames.value = []
@@ -515,7 +505,7 @@ watch(selectedRunId, async (newId, oldId) => {
 }, { immediate: false })
 
 function onMetadataLoaded() {
-  console.log('📥 onMetadataLoaded called')
+  // Metadata loaded, ready for data loading
 }
 
 onMounted(() => {
@@ -684,9 +674,7 @@ watch(() => sourceStore.currentSource, () => {
               class="p-2 rounded-lg border border-border hover:bg-accent transition-colors"
               title="View all thumbnails"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-              </svg>
+              <LayoutGrid class="w-5 h-5" />
             </button>
             <div class="text-sm text-muted-foreground">
               Page {{ currentPage }} of {{ totalPagesCount }}

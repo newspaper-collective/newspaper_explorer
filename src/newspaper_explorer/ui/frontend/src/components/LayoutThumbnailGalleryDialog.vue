@@ -15,9 +15,7 @@
           class="p-2 rounded-lg hover:bg-accent transition-colors"
           title="Close"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X class="w-5 h-5" />
         </button>
       </div>
 
@@ -95,6 +93,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { X } from 'lucide-vue-next'
 import { drawAnnotations } from '@/lib/imageAnnotation'
 
 export interface PageData {

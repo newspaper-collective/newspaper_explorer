@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { Info } from 'lucide-vue-next'
 import api from '@/lib/api'
 
 interface AnalysisMetadata {
@@ -161,21 +162,7 @@ defineExpose({
         <!-- Info icon with hover tooltip -->
         <div v-if="metadata" class="relative group mb-2">
           <div class="flex items-center justify-center text-muted-foreground cursor-help">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 16v-4" />
-              <path d="M12 8h.01" />
-            </svg>
+            <Info :size="20" />
           </div>
 
           <!-- Hover tooltip -->
