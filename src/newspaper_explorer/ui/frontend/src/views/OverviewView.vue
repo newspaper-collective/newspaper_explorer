@@ -8,6 +8,8 @@ import {
   FolderOpen,
   BookOpen,
   CalendarDays,
+  Check,
+  Minus,
 } from 'lucide-vue-next'
 
 const sourceStore = useSourceStore()
@@ -179,7 +181,10 @@ const formatSource = (source: string) => {
           <ImageIcon class="h-6 w-6 text-muted-foreground shrink-0" />
           <div class="min-w-0">
             <p class="text-xs font-medium text-muted-foreground">Images</p>
-            <p class="text-xl font-bold">{{ info?.has_images ? '✓' : '—' }}</p>
+            <p class="text-xl font-bold flex items-center">
+              <Check v-if="info?.has_images" class="h-5 w-5 text-green-500" />
+              <Minus v-else class="h-5 w-5 text-muted-foreground" />
+            </p>
             <p v-if="info?.image_size" class="text-xs text-muted-foreground">
               {{ info.image_size }} ({{ formatNumber(info.image_count || 0) }} images)
             </p>

@@ -528,10 +528,10 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
               <span
                 v-for="(value, key) in step.args"
                 :key="key"
-                class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-flex items-center gap-0.5"
                 :title="`${key}: ${value}`"
               >
-                {{ key }}={{ typeof value === 'boolean' ? (value ? '✓' : '✗') : value }}
+                {{ key }}=<template v-if="typeof value === 'boolean'"><CheckCircle v-if="value" class="h-3 w-3 text-green-500" /><X v-else class="h-3 w-3 text-red-500" /></template><template v-else>{{ value }}</template>
               </span>
             </template>
 

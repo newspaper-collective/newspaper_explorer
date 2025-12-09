@@ -23,6 +23,7 @@ import {
   AlignLeft,
   Info,
   Wand2,
+  Newspaper,
 } from 'lucide-vue-next'
 import {
   SliderRoot,
@@ -125,7 +126,8 @@ const yearRange = computed({
     >
       <!-- Header -->
       <div class="flex h-14 items-center px-4 border-b shrink-0">
-        <span class="font-semibold text-lg">📰 Newspaper Explorer</span>
+        <Newspaper class="h-5 w-5 mr-2 text-primary" />
+        <span class="font-semibold text-lg">Newspaper Explorer</span>
       </div>
 
       <div class="flex-1 p-4 space-y-3">

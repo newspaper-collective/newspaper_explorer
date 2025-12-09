@@ -13,6 +13,7 @@ import {
   DataZoomComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
+import { BarChart3 } from 'lucide-vue-next'
 import api from '@/lib/api'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
@@ -715,8 +716,8 @@ onMounted(() => {
     <div class="px-4 pb-6 space-y-6">
       <!-- Statistics and Charts Section (Collapsible) -->
       <details v-if="pictures.length > 0" class="rounded-lg border bg-card" open>
-        <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none">
-          📊 Statistics & Charts
+        <summary class="cursor-pointer p-4 hover:bg-accent/50 transition-colors font-semibold select-none flex items-center gap-2">
+          <BarChart3 class="h-4 w-4" /> Statistics & Charts
         </summary>
         <div class="p-6 pt-2 space-y-6">
           <!-- Statistics Cards -->
