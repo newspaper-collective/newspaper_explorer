@@ -299,10 +299,13 @@ const totalRunCount = computed(() =>
     <!-- Header -->
     <div class="sticky top-0 z-10 bg-background px-4 pt-4 pb-6">
       <div class="flex items-center justify-between">
-        <AnalysisHeader
-          title="Data Overview"
-          description="View all source datasets, preprocessed data, and analysis results"
-        />
+        <div class="flex items-center gap-2 min-w-0">
+          <AnalysisHeader
+            title="Data"
+            description="View all source datasets, preprocessed data, and analysis results"
+            icon="data"
+          />
+        </div>
 
         <div class="flex items-center gap-3">
           <button

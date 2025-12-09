@@ -142,7 +142,7 @@ defineExpose({
           <label class="text-sm font-medium">Analysis Run</label>
           <select
             v-model="selectedRunId"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            class="w-full px-3 py-2 text-sm"
             :disabled="loading || availableRuns.length === 0"
           >
             <option v-if="availableRuns.length === 0" :value="null">

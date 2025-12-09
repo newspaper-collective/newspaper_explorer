@@ -411,7 +411,7 @@ onMounted(() => {
               v-else
               v-model.number="selectedYear"
               @change="navigateToMonth(selectedYear!, null)"
-              class="w-full px-3 py-2 text-sm rounded-md border bg-background"
+              class="w-full px-3 py-2 text-sm"
             >
               <option v-for="year in years" :key="year.year" :value="year.year">
                 {{ year.year }}
@@ -425,7 +425,7 @@ onMounted(() => {
             <select
               v-model.number="selectedMonth"
               @change="selectedMonth !== null ? navigateToMonth(selectedYear!, selectedMonth!) : navigateToMonth(selectedYear!, null)"
-              class="w-full px-3 py-2 text-sm rounded-md border bg-background"
+              class="w-full px-3 py-2 text-sm"
             >
               <option :value="null">All Months</option>
               <option v-for="month in months" :key="month.month" :value="month.month">
@@ -439,7 +439,7 @@ onMounted(() => {
             <label class="text-sm font-medium">Sort Order</label>
             <select
               v-model="sortOrder"
-              class="w-full px-3 py-2 text-sm rounded-md border bg-background"
+              class="w-full px-3 py-2 text-sm"
             >
               <option value="asc">Oldest First</option>
               <option value="desc">Newest First</option>

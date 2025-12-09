@@ -479,7 +479,7 @@ onMounted(() => {
         <div class="flex gap-3 mb-4">
           <select
             v-model="selectedKeyword"
-            class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            class="flex-1 px-3 py-2 text-sm"
           >
             <option value="">Select a keyword to explore...</option>
             <option

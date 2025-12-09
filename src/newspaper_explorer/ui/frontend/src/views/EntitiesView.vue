@@ -337,7 +337,7 @@ onMounted(() => {
             <!-- Type Filter -->
             <select
               v-model="selectedType"
-              class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+              class="w-full px-2 py-1 text-sm"
             >
               <option :value="null">All Types</option>
               <option v-for="type in entityTypes" :key="type" :value="type">

@@ -375,7 +375,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         <select
           v-model="selectedPreset"
           @change="selectedPreset && loadPreset(selectedPreset)"
-          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          class="h-9 px-3 py-1 text-sm"
         >
           <option :value="null">Load Preset...</option>
           <optgroup label="General">
@@ -861,7 +861,7 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
               v-else-if="param.type === 'select'"
               :value="configStep.args[param.name]"
               @change="updateStepArg(param.name, ($event.target as HTMLSelectElement).value)"
-              class="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              class="w-full h-9 px-3 py-1 text-sm"
             >
               <option v-for="opt in param.options" :key="opt" :value="opt">{{ opt }}</option>
             </select>

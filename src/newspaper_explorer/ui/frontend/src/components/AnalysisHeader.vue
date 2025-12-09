@@ -2,7 +2,7 @@
 interface Props {
   title: string
   description: string
-  icon?: 'entities' | 'emotions' | 'topics' | 'keywords' | 'concepts' | 'layout' | 'search' | 'preprocessing'
+  icon?: 'entities' | 'emotions' | 'topics' | 'keywords' | 'concepts' | 'layout' | 'search' | 'preprocessing' | 'data'
 }
 
 const props = defineProps<Props>()
@@ -16,6 +16,7 @@ const icons = {
   layout: `<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>`,
   search: `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
   preprocessing: `<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>`,
+  data: `<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>`,
 }
 </script>
 

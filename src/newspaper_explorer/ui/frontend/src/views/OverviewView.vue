@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useSourceStore } from '@/stores/source'
-import { 
-  Calendar, 
-  FileText, 
+import {
+  Calendar,
+  FileText,
   Image as ImageIcon,
   FolderOpen,
   BookOpen,
@@ -33,7 +33,7 @@ const loadingLines = ref(false)
 
 const fetchRandomLines = async () => {
   if (!sourceStore.currentSource) return
-  
+
   loadingLines.value = true
   try {
     const response = await fetch(`/api/data/${sourceStore.currentSource}/random-lines?count=5`)
@@ -53,7 +53,7 @@ const loadingImages = ref(false)
 
 const fetchRandomImages = async () => {
   if (!sourceStore.currentSource) return
-  
+
   loadingImages.value = true
   try {
     const response = await fetch(`/api/data/${sourceStore.currentSource}/random-images?count=5`)
@@ -95,7 +95,7 @@ const formatSource = (source: string) => {
         <select
           v-model="sourceStore.currentSource"
           @change="handleSourceChange"
-          class="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          class="flex-1 h-9 px-3 py-1 text-sm"
         >
           <option v-for="source in sourceStore.sources" :key="source" :value="source">
             {{ formatSource(source) }}
@@ -198,7 +198,7 @@ const formatSource = (source: string) => {
         <div class="p-4 border-b">
           <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold">Random Text Sample</h2>
-            <button 
+            <button
               @click="fetchRandomLines"
               :disabled="loadingLines"
               class="px-3 py-1 text-sm border rounded hover:bg-accent disabled:opacity-50"
@@ -207,11 +207,11 @@ const formatSource = (source: string) => {
             </button>
           </div>
         </div>
-        
+
         <div class="p-6">
           <div v-if="randomLines.length > 0" class="space-y-3">
-            <div 
-              v-for="(line, idx) in randomLines" 
+            <div
+              v-for="(line, idx) in randomLines"
               :key="line.line_id"
               class="p-3 rounded bg-muted/50 border"
             >
@@ -226,11 +226,11 @@ const formatSource = (source: string) => {
               </div>
             </div>
           </div>
-          
+
           <div v-else-if="loadingLines" class="text-center text-muted-foreground py-8">
             Loading random lines...
           </div>
-          
+
           <div v-else class="text-center text-muted-foreground py-8">
             No data available
           </div>
@@ -242,7 +242,7 @@ const formatSource = (source: string) => {
         <div class="p-4 border-b">
           <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold">Random Image Sample</h2>
-            <button 
+            <button
               @click="fetchRandomImages"
               :disabled="loadingImages"
               class="px-3 py-1 text-sm border rounded hover:bg-accent disabled:opacity-50"
@@ -251,19 +251,19 @@ const formatSource = (source: string) => {
             </button>
           </div>
         </div>
-        
+
         <div class="p-6">
           <div v-if="randomImages.length > 0" class="flex gap-3 overflow-x-auto pb-2">
-            <div 
-              v-for="(image, idx) in randomImages" 
+            <div
+              v-for="(image, idx) in randomImages"
               :key="image.url"
               class="flex-shrink-0 w-48"
             >
               <div class="p-2 rounded bg-muted/50 border h-full flex flex-col">
                 <div class="flex-1">
                   <span class="text-xs font-mono text-muted-foreground">{{ idx + 1 }}</span>
-                  <img 
-                    :src="image.url" 
+                  <img
+                    :src="image.url"
                     :alt="`Random image ${idx + 1}`"
                     class="w-full h-auto rounded border mt-1"
                     loading="lazy"
@@ -276,11 +276,11 @@ const formatSource = (source: string) => {
               </div>
             </div>
           </div>
-          
+
           <div v-else-if="loadingImages" class="text-center text-muted-foreground py-8">
             Loading random images...
           </div>
-          
+
           <div v-else class="text-center text-muted-foreground py-8">
             No images available
           </div>

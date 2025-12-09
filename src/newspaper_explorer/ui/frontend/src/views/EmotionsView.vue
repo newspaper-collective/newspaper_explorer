@@ -316,7 +316,7 @@ onMounted(() => {
               <span class="text-sm text-muted-foreground">Select Emotion:</span>
               <select
                 v-model="selectedPeakEmotion"
-                class="rounded-md border border-input bg-background px-3 py-1 text-sm"
+                class="px-3 py-1 text-sm"
               >
                 <option v-for="emo in EMOTIONS" :key="emo" :value="emo">
                   {{ emo.charAt(0).toUpperCase() + emo.slice(1) }}

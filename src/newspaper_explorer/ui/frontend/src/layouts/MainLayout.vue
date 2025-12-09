@@ -135,7 +135,7 @@ const yearRange = computed({
         <!-- Current Source Info -->
         <div v-if="sourceStore.sourceInfo" class="rounded-lg border bg-card text-card-foreground shadow-sm">
           <div class="flex flex-col space-y-1.5 p-4 pb-2">
-            <h3 class="text-sm font-medium text-muted-foreground">Current Source</h3>
+            <h3 class="text-sm font-medium text-muted-foreground">Selected Source</h3>
           </div>
           <div class="p-4 pt-0 space-y-2">
             <div class="font-bold text-base">{{ sourceStore.sourceInfo.metadata.newspaper_title }}</div>
@@ -210,9 +210,9 @@ const yearRange = computed({
               <label class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Year</label>
               <select
                 v-model="selectedYear"
-                class="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                class="h-8 w-full px-3 py-2 text-xs"
               >
-                <option value="">Custom Range</option>
+                <option value="">Select Year</option>
                 <option v-for="year in availableYears" :key="year" :value="year.toString()">
                   {{ year }}
                 </option>

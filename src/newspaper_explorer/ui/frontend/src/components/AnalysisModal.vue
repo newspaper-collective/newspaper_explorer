@@ -252,7 +252,7 @@ function close() {
                 <select
                   v-model="selectedEmotions"
                   @click.stop
-                  class="px-3 py-1 text-sm border rounded-lg bg-background w-56 truncate"
+                  class="px-3 py-1 text-sm w-56 truncate"
                 >
                   <option v-for="set in emotionSets" :key="set" :value="set" class="truncate">
                     {{ set }} ({{ getEmotionsCount(set) }})
@@ -337,7 +337,7 @@ function close() {
                 <select
                   v-model="selectedEntities"
                   @click.stop
-                  class="px-3 py-1 text-sm border rounded-lg bg-background w-56 truncate"
+                  class="px-3 py-1 text-sm w-56 truncate"
                 >
                   <option v-for="set in entitySets" :key="set" :value="set" class="truncate">
                     {{ set }} ({{ getEntitiesCount(set) }})
@@ -412,7 +412,7 @@ function close() {
                 <select
                   v-model="selectedKeywords"
                   @click.stop
-                  class="px-3 py-1 text-sm border rounded-lg bg-background w-56 truncate"
+                  class="px-3 py-1 text-sm w-56 truncate"
                 >
                   <option v-for="set in keywordSets" :key="set" :value="set" class="truncate">
                     {{ set }} ({{ getKeywordsCount(set) }})
@@ -450,7 +450,7 @@ function close() {
                 <select
                   v-model="selectedLayout"
                   @click.stop
-                  class="px-3 py-1 text-sm border rounded-lg bg-background w-56 truncate"
+                  class="px-3 py-1 text-sm w-56 truncate"
                 >
                   <option v-for="set in layoutSets" :key="set" :value="set" class="truncate">
                     {{ set }} ({{ getLayoutCount(set) }})

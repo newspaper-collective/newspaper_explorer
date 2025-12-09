@@ -280,68 +280,70 @@ onMounted(() => {
     </div>
 
     <!-- Preview Dialog -->
-    <div
-      v-if="previewOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-overlay-heavy"
-      @click="closePreview"
-    >
+    <Teleport to="body">
       <div
-        class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
-        @click.stop
+        v-if="previewOpen"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay-heavy"
+        @click="closePreview"
       >
-        <!-- Dialog Header -->
-        <div class="flex items-center justify-between p-4 border-b bg-muted/50">
-          <div v-if="previewPage" class="space-y-1">
-            <p class="font-semibold text-base">
-              Page {{ previewPage.page_number }} of {{ pages.length }}
-            </p>
-            <p class="text-xs text-muted-foreground">
-              {{ metadata?.date ? formatDate(metadata.date) : '' }}
-            </p>
+        <div
+          class="bg-card rounded-lg shadow-lg w-[70vw] max-w-[1000px] h-[95vh] overflow-hidden m-4 flex flex-col"
+          @click.stop
+        >
+          <!-- Dialog Header -->
+          <div class="flex items-center justify-between p-4 border-b bg-muted/50">
+            <div v-if="previewPage" class="space-y-1">
+              <p class="font-semibold text-base">
+                Page {{ previewPage.page_number }} of {{ pages.length }}
+              </p>
+              <p class="text-xs text-muted-foreground">
+                {{ metadata?.date ? formatDate(metadata.date) : '' }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <!-- Navigation Controls -->
+              <button
+                @click="previousPreviewPage"
+                :disabled="previewPageIndex === 0"
+                class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Previous page"
+              >
+                <ChevronLeft class="w-5 h-5" />
+              </button>
+              <span class="text-sm text-muted-foreground min-w-[60px] text-center">
+                {{ previewPageIndex + 1 }} / {{ pages.length }}
+              </span>
+              <button
+                @click="nextPreviewPage"
+                :disabled="previewPageIndex === pages.length - 1"
+                class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Next page"
+              >
+                <ChevronRight class="w-5 h-5" />
+              </button>
+              <div class="w-px h-6 bg-border mx-2" />
+              <button
+                @click="closePreview"
+                class="p-2 hover:bg-accent rounded-md transition-colors"
+                title="Close preview"
+              >
+                <X class="w-5 h-5" />
+              </button>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <!-- Navigation Controls -->
-            <button
-              @click="previousPreviewPage"
-              :disabled="previewPageIndex === 0"
-              class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Previous page"
-            >
-              <ChevronLeft class="w-5 h-5" />
-            </button>
-            <span class="text-sm text-muted-foreground min-w-[60px] text-center">
-              {{ previewPageIndex + 1 }} / {{ pages.length }}
-            </span>
-            <button
-              @click="nextPreviewPage"
-              :disabled="previewPageIndex === pages.length - 1"
-              class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Next page"
-            >
-              <ChevronRight class="w-5 h-5" />
-            </button>
-            <div class="w-px h-6 bg-border mx-2" />
-            <button
-              @click="closePreview"
-              class="p-2 hover:bg-accent rounded-md transition-colors"
-              title="Close preview"
-            >
-              <X class="w-5 h-5" />
-            </button>
+          <!-- OpenSeadragon Viewer -->
+          <div class="flex-1 relative">
+            <OpenSeadragonViewer
+              v-if="previewImageUrl"
+              :key="previewPageIndex"
+              :image-url="previewImageUrl"
+              :current-page="previewPageIndex + 1"
+              :total-pages="pages.length"
+              @change-page="(delta) => { if (delta < 0) previousPreviewPage(); else nextPreviewPage(); }"
+            />
           </div>
-        </div>
-        <!-- OpenSeadragon Viewer -->
-        <div class="flex-1 relative">
-          <OpenSeadragonViewer
-            v-if="previewImageUrl"
-            :key="previewPageIndex"
-            :image-url="previewImageUrl"
-            :current-page="previewPageIndex + 1"
-            :total-pages="pages.length"
-            @change-page="(delta) => { if (delta < 0) previousPreviewPage(); else nextPreviewPage(); }"
-          />
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>

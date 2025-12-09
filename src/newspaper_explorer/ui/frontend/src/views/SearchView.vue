@@ -322,7 +322,7 @@ function onMetadataLoaded() {
                   <label class="text-sm text-muted-foreground">Sort:</label>
                   <select
                     v-model="sortOrder"
-                    class="rounded-md border border-input bg-background px-2.5 py-1 text-sm"
+                    class="px-2.5 py-1 text-sm"
                   >
                     <option value="desc">Newest First</option>
                     <option value="asc">Oldest First</option>

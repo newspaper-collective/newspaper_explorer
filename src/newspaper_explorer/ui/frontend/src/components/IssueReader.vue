@@ -444,7 +444,7 @@ onMounted(() => {
           <select
             v-if="showLayoutOverlays"
             v-model="selectedLayoutSet"
-            class="px-2 py-2 text-xs border rounded-lg bg-background"
+            class="px-2 py-2 text-xs"
             title="Select layout result set"
           >
             <option v-for="set in availableLayoutSets" :key="set" :value="set">

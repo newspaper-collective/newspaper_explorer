@@ -71,8 +71,6 @@ Transkribus OCR -> Problem with alto-export
 
 - option to collapse analysis header
 
-- year picker in date range filter
-- slider in date range
 
 pagination for entiteies list
 
@@ -100,6 +98,5 @@ simple stats page? word count etc?
 
 drowpdon filters in browse month view
 
-date range filter custom range text of
 
 support external image urls -> include in index
