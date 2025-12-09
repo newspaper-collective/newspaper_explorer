@@ -10,12 +10,13 @@ import {
   Search,
   Wand2,
   Database,
+  Image,
 } from 'lucide-vue-next'
 
 interface Props {
   title: string
   description: string
-  icon?: 'entities' | 'emotions' | 'topics' | 'keywords' | 'concepts' | 'layout' | 'search' | 'preprocessing' | 'data'
+  icon?: 'entities' | 'emotions' | 'topics' | 'keywords' | 'concepts' | 'layout' | 'search' | 'preprocessing' | 'data' | 'pictures'
 }
 
 const props = defineProps<Props>()
@@ -30,6 +31,7 @@ const iconComponents = {
   search: Search,
   preprocessing: Wand2,
   data: Database,
+  pictures: Image,
 }
 
 const IconComponent = computed(() => props.icon ? iconComponents[props.icon] : null)

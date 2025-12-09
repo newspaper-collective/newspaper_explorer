@@ -686,7 +686,7 @@ onMounted(() => {
           <AnalysisHeader
             title="Picture Gallery"
             description="Browse and analyze newspaper picture detections."
-            icon="layout"
+            icon="pictures"
           />
         </div>
 
