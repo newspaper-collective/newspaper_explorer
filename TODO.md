@@ -1,6 +1,7 @@
 ## Current Priorities
 - update requirements.txt and requirements-dev.txt
-- unifiy output styling
+- CLI refactoring: output styling, input options, command patterns (#16)
+
 - textblock coords?
 
 + Bohnſtedt (Graudenz) des Danziger Inſ.⸗Regts. Nr. 128, -> wrong long s test
@@ -10,7 +11,6 @@
 
 - yolo, spacy, hf cache dir move to .env
 
-- unify sample/limit cmd
 
 - do bertopic year by year
 
