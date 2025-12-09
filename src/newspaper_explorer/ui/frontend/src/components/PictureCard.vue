@@ -49,7 +49,7 @@ const formattedDate = computed(() => {
 
 const metadataDisplay = computed(() => {
   if (!metadata.value) return props.picture.page_id
-  return `Issue ${metadata.value.issue} • Daily ${metadata.value.daily} • Page ${metadata.value.page}` 
+  return `Issue ${metadata.value.issue} • Daily ${metadata.value.daily} • Page ${metadata.value.page}`
 })
 
 const pictureSize = computed(() => {
