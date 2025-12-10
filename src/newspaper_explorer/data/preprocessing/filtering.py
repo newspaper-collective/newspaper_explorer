@@ -131,11 +131,13 @@ def filter_number_only_lines(
 
     These are typically page numbers, dates, or OCR artifacts:
     - "123" (page numbers)
+    - "(123)" or "[123]" (parenthesized/bracketed numbers)
     - "1.234" (numbers with periods)
     - "12-34-56" (dates or reference numbers)
     - "1,000" (formatted numbers)
     - "3⁴" (superscripts)
     - "½" or "3 ½" (fractions)
+    - "-123-" or "(45)" (wrapped numbers)
 
     Uses Unicode \\p{N} pattern to match all numeric characters including
     superscripts (⁴, ³, ²), subscripts (₁, ₂), and fractions (½, ¼, ¾).
@@ -143,7 +145,7 @@ def filter_number_only_lines(
     Args:
         df: Input DataFrame
         input_column: Column to check (default: "text")
-        allow_separators: If True, allows common separators (., -, /, :, ,, space) with numbers
+        allow_separators: If True, allows common separators (., -, /, :, ,, space, parentheses, brackets) with numbers
                          If False, only pure numeric strings are filtered
 
     Returns:
@@ -151,7 +153,7 @@ def filter_number_only_lines(
 
     Example:
         >>> # These get REMOVED:
-        >>> # "123", "45.67", "1-2-3", "1,000", "3⁴", "½", "3¾", "3 ½"
+        >>> # "123", "(123)", "[45]", "45.67", "1-2-3", "1,000", "3⁴", "½", "3¾", "3 ½"
         >>>
         >>> # These are KEPT:
         >>> # "Seite 123" (has text)
@@ -168,9 +170,10 @@ def filter_number_only_lines(
 
     original_count = len(df)
 
-    # Pattern: Unicode numbers (\p{N}) and common separators (incl. space), or strict numbers only
+    # Pattern: Unicode numbers (\p{N}) and common separators (incl. space, parentheses, brackets)
     # \p{N} matches all Unicode number categories: digits, superscripts, subscripts, fractions
-    pattern = r"^[\p{N}.,\-/: ]+$" if allow_separators else r"^\p{N}+$"
+    # Added: (), [], {} for wrapped numbers commonly found in references/footnotes
+    pattern = r"^[\p{N}.,\-/: ()\[\]{}]+$" if allow_separators else r"^\p{N}+$"
 
     # Use native Polars regex for efficiency
     # Filter: keep rows that do NOT match number-only pattern
@@ -182,9 +185,11 @@ def filter_number_only_lines(
     )
 
     filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
+    if original_count > 0:
+        percentage = filtered_count / original_count * 100
+        logger.info(f"Filtered out {filtered_count:,} rows ({percentage:.1f}%)")
+    else:
+        logger.info("No rows to filter (empty DataFrame)")
     logger.info(f"Remaining: {len(df):,} rows")
 
     return df
