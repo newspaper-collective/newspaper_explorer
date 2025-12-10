@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import api from '@/lib/api'
 import OpenSeadragonViewer from '@/components/OpenSeadragonViewer.vue'
 import { ImageOff, Home, Eye, X, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   issueId: string
@@ -181,29 +182,32 @@ onMounted(() => {
     <!-- Breadcrumb Navigation (matching BrowseView) -->
     <div class="mt-4">
       <div class="flex items-center gap-2 flex-wrap">
-        <button
+        <Button
           v-if="showBackButton"
         @click="goToBrowse"
-        class="flex items-center gap-2 text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+        variant="link"
+        class="flex items-center gap-2 text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
       >
         <Home class="h-5 w-5" />
         {{ sourceTitle }}
-      </button>
+      </Button>
       <template v-if="metadata">
         <span class="text-muted-foreground text-lg">›</span>
-        <button
+        <Button
           @click="goToYear"
-          class="text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          variant="link"
+          class="text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
         >
           {{ metadata.year }}
-        </button>
+        </Button>
         <span class="text-muted-foreground text-lg">›</span>
-        <button
+        <Button
           @click="goToMonth"
-          class="text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          variant="link"
+          class="text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
         >
           {{ monthName }}
-        </button>
+        </Button>
         <span class="text-muted-foreground text-lg">›</span>
         <span class="text-lg font-medium text-foreground">
           {{ formatDate(metadata.date) }}
@@ -260,14 +264,16 @@ onMounted(() => {
 
           <!-- Page Number Label with Preview Icon -->
           <div class="p-3 flex items-center justify-center gap-2">
-            <button
+            <Button
               v-if="page.has_image"
               @click="openPreview(index, $event)"
-              class="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+              variant="ghost"
+              size="icon"
+              class="h-6 w-6"
               title="Preview page"
             >
               <Eye class="h-4 w-4" />
-            </button>
+            </Button>
             <p class="text-sm font-medium">Page {{ page.page_number }}</p>
           </div>
         </button>
@@ -302,33 +308,36 @@ onMounted(() => {
             </div>
             <div class="flex items-center gap-2">
               <!-- Navigation Controls -->
-              <button
+              <Button
                 @click="previousPreviewPage"
                 :disabled="previewPageIndex === 0"
-                class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="ghost"
+                size="icon"
                 title="Previous page"
               >
                 <ChevronLeft class="w-5 h-5" />
-              </button>
+              </Button>
               <span class="text-sm text-muted-foreground min-w-[60px] text-center">
                 {{ previewPageIndex + 1 }} / {{ pages.length }}
               </span>
-              <button
+              <Button
                 @click="nextPreviewPage"
                 :disabled="previewPageIndex === pages.length - 1"
-                class="p-2 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="ghost"
+                size="icon"
                 title="Next page"
               >
                 <ChevronRight class="w-5 h-5" />
-              </button>
+              </Button>
               <div class="w-px h-6 bg-border mx-2" />
-              <button
+              <Button
                 @click="closePreview"
-                class="p-2 hover:bg-accent rounded-md transition-colors"
+                variant="ghost"
+                size="icon"
                 title="Close preview"
               >
                 <X class="w-5 h-5" />
-              </button>
+              </Button>
             </div>
           </div>
           <!-- OpenSeadragon Viewer -->

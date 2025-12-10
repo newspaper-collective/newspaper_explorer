@@ -27,6 +27,23 @@ import {
   Minus,
   FileText,
 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import type { PreprocessingStepInfo, PipelineStep } from '@/types/preprocessing'
 import { CATEGORY_INFO } from '@/types/preprocessing'
 
@@ -44,10 +61,16 @@ const dragOverIndex = ref<number | null>(null)
 const showInputSelector = ref(false)
 const preprocessedDatasets = ref<Array<{name: string, path: string, created: string, steps: number, source: string}>>([])
 
-// Section collapse state
-const pipelineCollapsed = ref(false)
-const previewCollapsed = ref(false)
-const runSectionCollapsed = ref(false)
+// Section open state (true = expanded, false = collapsed)
+const pipelineOpen = ref(true)
+const previewOpen = ref(true)
+const runSectionOpen = ref(true)
+
+// Computed for store-based collapsed state (inverts for Collapsible's open prop)
+const stepPaletteOpen = computed({
+  get: () => !preprocessingStore.stepPaletteCollapsed,
+  set: (val: boolean) => { preprocessingStore.stepPaletteCollapsed = !val },
+})
 
 // Input selection state - can be either a source or a preprocessed dataset
 const inputType = ref<'source' | 'dataset'>('source')
@@ -362,41 +385,43 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
 
         <div class="flex items-center gap-3">
         <!-- Input Selector Button -->
-        <button
+        <Button
           @click="showInputSelector = true"
-          class="h-9 px-3 rounded-md border border-input bg-background text-sm shadow-sm hover:bg-accent flex items-center gap-2"
+          variant="outline"
         >
-          <Database class="h-4 w-4 text-muted-foreground" />
+          <Database class="h-4 w-4 mr-2 text-muted-foreground" />
           <span class="max-w-[200px] truncate">{{ currentInputDisplay }}</span>
-          <ChevronDown class="h-4 w-4 text-muted-foreground" />
-        </button>
+          <ChevronDown class="h-4 w-4 ml-2 text-muted-foreground" />
+        </Button>
 
         <!-- Preset Selector -->
-        <select
-          v-model="selectedPreset"
-          @change="selectedPreset && loadPreset(selectedPreset)"
-          class="h-9 px-3 py-1 text-sm"
-        >
-          <option :value="null">Load Preset...</option>
-          <optgroup label="General">
-            <option v-for="preset in preprocessingStore.generalPresets" :key="preset.name" :value="preset.name">
-              {{ preset.name }} - {{ preset.description }}
-            </option>
-          </optgroup>
-          <optgroup label="Analysis-Specific">
-            <option v-for="preset in preprocessingStore.analysisPresets" :key="preset.name" :value="preset.name">
-              {{ preset.name }} - {{ preset.description }}
-            </option>
-          </optgroup>
-        </select>
+        <Select v-model="selectedPreset" @update:model-value="selectedPreset && loadPreset(selectedPreset)">
+          <SelectTrigger class="w-[250px]">
+            <SelectValue placeholder="Load Preset..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>General</SelectLabel>
+              <SelectItem v-for="preset in preprocessingStore.generalPresets" :key="preset.name" :value="preset.name">
+                {{ preset.name }} - {{ preset.description }}
+              </SelectItem>
+            </SelectGroup>
+            <SelectGroup>
+              <SelectLabel>Analysis-Specific</SelectLabel>
+              <SelectItem v-for="preset in preprocessingStore.analysisPresets" :key="preset.name" :value="preset.name">
+                {{ preset.name }} - {{ preset.description }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
 
-        <button
+        <Button
           @click="preprocessingStore.clearPipeline()"
-          class="h-9 px-3 rounded-md border border-input bg-background text-sm hover:bg-accent"
+          variant="outline"
           :disabled="preprocessingStore.pipelineIsEmpty"
         >
           Clear
-        </button>
+        </Button>
         </div>
       </div>
     </div>
@@ -404,21 +429,18 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
     <!-- Content area -->
     <div class="px-4 pb-6 space-y-6">
     <!-- Available Steps Palette (collapsible) -->
-    <div class="rounded-lg border bg-card">
-      <button
-        @click="preprocessingStore.stepPaletteCollapsed = !preprocessingStore.stepPaletteCollapsed"
-        class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-      >
+    <Collapsible v-model:open="stepPaletteOpen" class="rounded-lg border bg-card">
+      <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
         <h2 class="text-sm font-medium text-muted-foreground">Available Steps</h2>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted-foreground">
             {{ preprocessingStore.availableSteps.length }} steps
           </span>
-          <component :is="preprocessingStore.stepPaletteCollapsed ? ChevronRight : ChevronDown" class="h-4 w-4 text-muted-foreground" />
+          <component :is="stepPaletteOpen ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground transition-transform" />
         </div>
-      </button>
+      </CollapsibleTrigger>
 
-      <div v-if="!preprocessingStore.stepPaletteCollapsed" class="px-4 pb-4">
+      <CollapsibleContent class="px-4 pb-4 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
         <div v-if="preprocessingStore.isLoadingSteps" class="flex items-center justify-center py-8">
           <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -476,25 +498,21 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
 
     <!-- Active Pipeline -->
-    <div class="rounded-lg border bg-card">
-      <button
-        @click="pipelineCollapsed = !pipelineCollapsed"
-        class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-      >
+    <Collapsible v-model:open="pipelineOpen" class="rounded-lg border bg-card">
+      <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
         <h2 class="text-sm font-medium text-muted-foreground">Active Pipeline</h2>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted-foreground">{{ preprocessingStore.pipeline.length }} steps</span>
-          <component :is="pipelineCollapsed ? ChevronRight : ChevronDown" class="h-4 w-4 text-muted-foreground" />
+          <component :is="pipelineOpen ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground transition-transform" />
         </div>
-      </button>
+      </CollapsibleTrigger>
 
-      <div
-        v-if="!pipelineCollapsed"
-        class="px-4 pb-4"
+      <CollapsibleContent
+        class="px-4 pb-4 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up"
         @dragover.prevent="dragOverIndex = preprocessingStore.pipeline.length"
         @dragleave="dragOverIndex = null"
         @drop="onDropAtEnd"
@@ -535,22 +553,26 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
               </span>
             </template>
 
-            <button
+            <Button
               v-if="(getStepInfo(step.name)?.parameters.length ?? 0) > 0"
               @click="openStepConfig(step)"
-              class="p-1 hover:bg-accent rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              variant="ghost"
+              size="icon"
+              class="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Configure"
             >
               <Settings class="h-3 w-3" />
-            </button>
+            </Button>
 
-            <button
+            <Button
               @click="preprocessingStore.removeStep(step.id)"
-              class="p-1 hover:bg-destructive hover:text-destructive-foreground rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              variant="ghost"
+              size="icon"
+              class="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
               title="Remove"
             >
               <X class="h-3 w-3" />
-            </button>
+            </Button>
           </div>
 
           <ArrowRight v-if="index < preprocessingStore.pipeline.length - 1" class="h-4 w-4 text-muted-foreground" />
@@ -570,39 +592,38 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             Contains slow steps
           </span>
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
 
     <!-- Preview Section -->
-    <div class="rounded-lg border bg-card">
-      <button
-        @click="previewCollapsed = !previewCollapsed"
-        class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-      >
+    <Collapsible v-model:open="previewOpen" class="rounded-lg border bg-card">
+      <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
         <h2 class="text-sm font-medium text-muted-foreground">Preview</h2>
         <div class="flex items-center gap-2">
           <span v-if="preprocessingStore.batchPreviewResult" class="text-xs text-muted-foreground">
             {{ preprocessingStore.batchPreviewResult.total_remaining }} samples
           </span>
-          <component :is="previewCollapsed ? ChevronRight : ChevronDown" class="h-4 w-4 text-muted-foreground" />
+          <component :is="previewOpen ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground transition-transform" />
         </div>
-      </button>
+      </CollapsibleTrigger>
 
-      <div v-if="!previewCollapsed" class="p-4 pt-0">
+      <CollapsibleContent class="p-4 pt-0 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
         <div class="grid grid-cols-2 gap-4">
       <!-- Original Samples -->
       <div class="rounded-lg border bg-card">
         <div class="px-4 border-b h-14 flex items-center">
           <div class="flex items-center justify-between w-full">
             <h2 class="text-sm font-medium">Original Samples</h2>
-            <button
+            <Button
               @click="loadSamplesForCurrentPipeline()"
-              class="px-2 py-1 text-xs border rounded hover:bg-accent flex items-center gap-1"
+              variant="outline"
+              size="sm"
+              class="h-7 text-xs"
               :disabled="!sourceStore.currentSource"
             >
-              <RefreshCw class="h-3 w-3" />
+              <RefreshCw class="h-3 w-3 mr-1" />
               Refresh
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -700,20 +721,17 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         </div>
       </div>
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
 
     <!-- Step-by-Step Diff (collapsible) -->
-    <div v-if="preprocessingStore.previewResult?.intermediate_steps.length" class="rounded-lg border bg-card">
-      <button
-        @click="showIntermediateSteps = !showIntermediateSteps"
-        class="w-full flex items-center justify-between p-4 text-left"
-      >
+    <Collapsible v-if="preprocessingStore.previewResult?.intermediate_steps.length" v-model:open="showIntermediateSteps" class="rounded-lg border bg-card">
+      <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left">
         <h2 class="text-sm font-medium">Step-by-Step Results</h2>
-        <component :is="showIntermediateSteps ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground" />
-      </button>
+        <component :is="showIntermediateSteps ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground transition-transform" />
+      </CollapsibleTrigger>
 
-      <div v-if="showIntermediateSteps" class="px-4 pb-4 space-y-3">
+      <CollapsibleContent class="px-4 pb-4 space-y-3 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
         <div
           v-for="(result, index) in preprocessingStore.previewResult.intermediate_steps"
           :key="index"
@@ -729,20 +747,17 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             {{ result.output }}
           </div>
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
 
     <!-- Export / Run Section -->
-    <div class="rounded-lg border bg-card">
-      <button
-        @click="runSectionCollapsed = !runSectionCollapsed"
-        class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-      >
+    <Collapsible v-model:open="runSectionOpen" class="rounded-lg border bg-card">
+      <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
         <h2 class="text-sm font-medium text-muted-foreground">Run on Full Dataset</h2>
-        <component :is="runSectionCollapsed ? ChevronRight : ChevronDown" class="h-4 w-4 text-muted-foreground" />
-      </button>
+        <component :is="runSectionOpen ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground transition-transform" />
+      </CollapsibleTrigger>
 
-      <div v-if="!runSectionCollapsed" class="px-4 pb-4">
+      <CollapsibleContent class="px-4 pb-4 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
         <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
           <div class="text-sm">
@@ -751,34 +766,35 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             <span v-if="inputType === 'dataset'" class="ml-2 text-xs px-1.5 py-0.5 rounded bg-info/20 text-info">preprocessed</span>
           </div>
 
-          <button
+          <Button
             @click="showCLIExport = !showCLIExport"
-            class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+            variant="ghost"
+            size="sm"
+            class="text-muted-foreground"
           >
-            <Terminal class="h-4 w-4" />
+            <Terminal class="h-4 w-4 mr-1" />
             CLI Command
-          </button>
+          </Button>
         </div>
 
-        <button
+        <Button
           @click="runPipeline"
           :disabled="preprocessingStore.pipelineIsEmpty || !sourceStore.currentSource || !!preprocessingStore.runningJob"
-          class="flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Loader2 v-if="preprocessingStore.runningJob" class="h-4 w-4 animate-spin" />
-          <Play v-else class="h-4 w-4" />
+          <Loader2 v-if="preprocessingStore.runningJob" class="h-4 w-4 mr-2 animate-spin" />
+          <Play v-else class="h-4 w-4 mr-2" />
           Run Pipeline
-        </button>
+        </Button>
       </div>
 
       <!-- CLI Export -->
       <div v-if="showCLIExport" class="mt-4 p-3 rounded-md bg-muted">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs text-muted-foreground">CLI Command</span>
-          <button @click="copyCLICommand" class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-            <Copy class="h-3 w-3" />
+          <Button @click="copyCLICommand" variant="ghost" size="sm" class="h-6 text-xs text-muted-foreground">
+            <Copy class="h-3 w-3 mr-1" />
             Copy
-          </button>
+          </Button>
         </div>
         <code class="text-xs font-mono break-all">{{ cliCommand }}</code>
       </div>
@@ -817,8 +833,8 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           Output: {{ preprocessingStore.runningJob.output_path }}
         </div>
         </div>
-      </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
     </div>
 
     <!-- Step Configuration Modal -->
@@ -833,9 +849,9 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
           <h3 class="text-lg font-semibold">
             Configure: {{ getStepInfo(configStep.name)?.display_name }}
           </h3>
-          <button @click="closeStepConfig" class="p-1 hover:bg-accent rounded">
+          <Button @click="closeStepConfig" variant="ghost" size="icon">
             <X class="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <div class="space-y-4">
@@ -848,54 +864,53 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
             <p class="text-xs text-muted-foreground">{{ param.description }}</p>
 
             <!-- Boolean -->
-            <input
+            <Checkbox
               v-if="param.type === 'bool'"
-              type="checkbox"
               :checked="configStep.args[param.name]"
-              @change="updateStepArg(param.name, ($event.target as HTMLInputElement).checked)"
-              class="h-4 w-4 rounded border-input"
+              @update:checked="updateStepArg(param.name, $event)"
             />
 
             <!-- Select -->
-            <select
+            <Select
               v-else-if="param.type === 'select'"
-              :value="configStep.args[param.name]"
-              @change="updateStepArg(param.name, ($event.target as HTMLSelectElement).value)"
-              class="w-full h-9 px-3 py-1 text-sm"
+              :model-value="configStep.args[param.name]"
+              @update:model-value="updateStepArg(param.name, $event)"
             >
-              <option v-for="opt in param.options" :key="opt" :value="opt">{{ opt }}</option>
-            </select>
+              <SelectTrigger class="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="opt in param.options" :key="opt" :value="opt">{{ opt }}</SelectItem>
+              </SelectContent>
+            </Select>
 
             <!-- Number -->
-            <input
+            <Input
               v-else-if="param.type === 'int' || param.type === 'float'"
               type="number"
-              :value="configStep.args[param.name]"
+              :model-value="configStep.args[param.name]"
               :min="param.min_value"
               :max="param.max_value"
               :step="param.type === 'float' ? 0.1 : 1"
-              @input="updateStepArg(param.name, param.type === 'int' ? parseInt(($event.target as HTMLInputElement).value) : parseFloat(($event.target as HTMLInputElement).value))"
-              class="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              @update:model-value="updateStepArg(param.name, param.type === 'int' ? parseInt(String($event)) : parseFloat(String($event)))"
             />
 
             <!-- String -->
-            <input
+            <Input
               v-else
               type="text"
-              :value="configStep.args[param.name]"
-              @input="updateStepArg(param.name, ($event.target as HTMLInputElement).value)"
-              class="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              :model-value="configStep.args[param.name]"
+              @update:model-value="updateStepArg(param.name, $event)"
             />
           </div>
         </div>
 
         <div class="flex justify-end mt-6">
-          <button
+          <Button
             @click="closeStepConfig"
-            class="h-9 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
           >
             Done
-          </button>
+          </Button>
         </div>
         </div>
       </div>
@@ -911,9 +926,9 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         <div class="bg-card rounded-lg border shadow-lg w-full max-w-lg p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold">Select Input</h3>
-          <button @click="showInputSelector = false" class="p-1 hover:bg-accent rounded">
+          <Button @click="showInputSelector = false" variant="ghost" size="icon">
             <X class="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <!-- Raw Sources Section -->
@@ -965,12 +980,12 @@ function getStepInfo(stepName: string): PreprocessingStepInfo | undefined {
         </div>
 
         <div class="flex justify-end mt-6">
-          <button
+          <Button
             @click="showInputSelector = false"
-            class="h-9 px-4 rounded-md border border-input bg-background hover:bg-accent"
+            variant="outline"
           >
             Cancel
-          </button>
+          </Button>
         </div>
         </div>
       </div>

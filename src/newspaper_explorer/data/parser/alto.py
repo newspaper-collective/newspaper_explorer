@@ -143,9 +143,7 @@ class ALTOParser:
 
             # Generate hierarchical IDs
             issue_id_str = generate_issue_id(source_name, date, issue_number, edition)
-            page_id_str = generate_page_id(
-                source_name, date, issue_number, edition, page_number
-            )
+            page_id_str = generate_page_id(source_name, date, issue_number, edition, page_number)
 
             # Find all TextBlocks
             for text_block in root.findall(".//alto:TextBlock", ns):
@@ -168,14 +166,45 @@ class ALTOParser:
                     width = text_line_elem.get("WIDTH")
                     height = text_line_elem.get("HEIGHT")
 
-                    # Extract text from String elements
+                    # Extract text from String and HYP elements
+                    # Use CONTENT (raw/fragmented) as primary, SUBS_CONTENT for dehyphenation
                     words = []
-                    for string_elem in text_line_elem.findall(".//alto:String", ns):
-                        content = string_elem.get("CONTENT", "")
-                        subs_content = string_elem.get("SUBS_CONTENT", "")
-                        word = subs_content if subs_content else content
-                        if word:
-                            words.append(word)
+                    dehyphenated_words = []
+
+                    # Process all child elements in order (String and HYP)
+                    for child_elem in text_line_elem:
+                        # Skip namespace prefix if present
+                        tag = (
+                            child_elem.tag.split("}")[-1]
+                            if "}" in child_elem.tag
+                            else child_elem.tag
+                        )
+
+                        if tag == "String":
+                            content = child_elem.get("CONTENT", "")
+                            subs_content = child_elem.get("SUBS_CONTENT", "")
+                            subs_type = child_elem.get("SUBS_TYPE", "")
+
+                            # Primary text uses CONTENT (as printed)
+                            if content:
+                                words.append(content)
+
+                            # Handle dehyphenated version based on SUBS_TYPE
+                            if subs_content:
+                                # HypPart1: first part of hyphenated word
+                                # HypPart2: second part of hyphenated word
+                                # Only add SUBS_CONTENT to dehyphenated for HypPart1
+                                if subs_type == "HypPart1":
+                                    dehyphenated_words.append(subs_content)
+                                # For HypPart2, skip adding (word already in previous line)
+                            elif content:
+                                dehyphenated_words.append(content)
+
+                        elif tag == "HYP":
+                            # Add hyphen character to primary text (as printed)
+                            hyp_content = child_elem.get("CONTENT", "-")
+                            if words:  # Append to last word
+                                words[-1] = words[-1] + hyp_content
 
                     if not words:
                         continue
@@ -184,6 +213,14 @@ class ALTOParser:
                     text = re.sub(r"\s+", " ", " ".join(words)).strip()
                     if not text:
                         continue
+
+                    # Build dehyphenated version if we collected any SUBS_CONTENT
+                    # (dehyphenated_words will differ from words when SUBS_CONTENT was present)
+                    text_dehyphenated_ocr = None
+                    if dehyphenated_words != words:  # Only set if different
+                        text_dehyphenated_ocr = re.sub(
+                            r"\s+", " ", " ".join(dehyphenated_words)
+                        ).strip()
 
                     # Generate unique line_id using unified system
                     unique_line_id = generate_line_id(unique_text_block_id, alto_line_id)
@@ -204,6 +241,7 @@ class ALTOParser:
                             line_id=unique_line_id,
                             # Data
                             text=text,
+                            text_dehyphenated_ocr=text_dehyphenated_ocr,
                             # Foreign keys
                             source_id=source_id_str,
                             issue_id=issue_id_str,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { X, ChevronLeft, ChevronRight, Image } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import OpenSeadragonViewer from './OpenSeadragonViewer.vue'
 
 export interface Picture {
@@ -140,29 +142,35 @@ const captionCount = computed(() => {
         </div>
         <h2 v-else class="text-sm font-semibold">Picture Details</h2>
         <div class="flex items-center gap-1">
-          <button
+          <Button
             @click="emit('previous')"
             :disabled="!hasPrevious"
-            class="p-1.5 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8"
             title="Previous picture (Left Arrow)"
           >
             <ChevronLeft class="w-4 h-4" />
-          </button>
-          <button
+          </Button>
+          <Button
             @click="emit('next')"
             :disabled="!hasNext"
-            class="p-1.5 hover:bg-accent rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8"
             title="Next picture (Right Arrow)"
           >
             <ChevronRight class="w-4 h-4" />
-          </button>
+          </Button>
           <div class="w-px h-4 bg-border mx-2"></div>
-          <button
+          <Button
             @click="emit('close')"
-            class="p-1.5 hover:bg-accent rounded-md transition-colors"
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8"
           >
             <X class="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -176,10 +184,10 @@ const captionCount = computed(() => {
               <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                 Overview
               </h3>
-              <label class="flex items-center gap-2 text-xs cursor-pointer">
-                <input v-model="showAllDetections" type="checkbox" class="rounded border-input" />
-                <span>Show all</span>
-              </label>
+              <div class="flex items-center gap-2 text-xs">
+                <Checkbox v-model:checked="showAllDetections" id="show-all-detections" />
+                <label for="show-all-detections" class="cursor-pointer">Show all</label>
+              </div>
             </div>
 
             <!-- Page thumbnail -->

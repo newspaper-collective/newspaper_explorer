@@ -25,12 +25,16 @@ import {
   Wand2,
   Newspaper,
 } from 'lucide-vue-next'
+import { Slider } from '@/components/ui/slider'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
-  SliderRoot,
-  SliderTrack,
-  SliderRange,
-  SliderThumb,
-} from 'radix-vue'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 type NavigationItem =
   | { name: string; to: string; icon: any; separator?: never }
@@ -210,36 +214,27 @@ const yearRange = computed({
             <!-- Year Selection -->
             <div class="space-y-2">
               <label class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Year</label>
-              <select
-                v-model="selectedYear"
-                class="h-8 w-full px-3 py-2 text-xs"
-              >
-                <option value="">Select Year</option>
-                <option v-for="year in availableYears" :key="year" :value="year.toString()">
-                  {{ year }}
-                </option>
-              </select>
+              <Select v-model="selectedYear">
+                <SelectTrigger class="h-8 text-xs">
+                  <SelectValue placeholder="Select Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Select Year</SelectItem>
+                  <SelectItem v-for="year in availableYears" :key="year" :value="year.toString()">
+                    {{ year }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <!-- Range Slider -->
             <div class="space-y-4 pt-2">
-              <SliderRoot
+              <Slider
                 v-model="yearRange"
                 :min="minYear"
                 :max="maxYear"
                 :step="1"
-                class="relative flex w-full touch-none select-none items-center"
-              >
-                <SliderTrack class="relative h-1.5 w-full grow overflow-hidden rounded-full bg-secondary">
-                  <SliderRange class="absolute h-full bg-primary" />
-                </SliderTrack>
-                <SliderThumb
-                  class="block h-4 w-4 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                />
-                <SliderThumb
-                  class="block h-4 w-4 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                />
-              </SliderRoot>
+              />
               <div class="flex justify-between text-xs text-muted-foreground">
                 <span>{{ minYear }}</span>
                 <span>{{ maxYear }}</span>
@@ -249,20 +244,20 @@ const yearRange = computed({
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <label for="start-date" class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 w-12 flex-shrink-0">From</label>
-                <input
+                <Input
                   id="start-date"
                   type="date"
                   v-model="sourceStore.startDate"
-                  class="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  class="h-8 flex-1 text-xs"
                 />
               </div>
               <div class="flex items-center gap-2">
                 <label for="end-date" class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 w-12 flex-shrink-0">To</label>
-                <input
+                <Input
                   id="end-date"
                   type="date"
                   v-model="sourceStore.endDate"
-                  class="flex h-8 flex-1 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  class="h-8 flex-1 text-xs"
                 />
               </div>
             </div>
@@ -334,9 +329,10 @@ const yearRange = computed({
     >
       <!-- Top bar -->
       <header class="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-card px-4">
-        <button
+        <Button
           @click="toggleSidebar"
-          class="rounded-md p-2 hover:bg-accent"
+          variant="ghost"
+          size="icon"
         >
           <ChevronLeft
             :class="[
@@ -344,7 +340,7 @@ const yearRange = computed({
               !sidebarOpen && 'rotate-180'
             ]"
           />
-        </button>
+        </Button>
 
         <h2 class="text-lg font-semibold">
           {{ sourceStore.sourceInfo?.metadata?.newspaper_title || 'Historical Newspapers' }}

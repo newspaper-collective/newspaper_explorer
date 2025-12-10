@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface Props {
   currentPage: number
@@ -66,7 +68,7 @@ const pageList = computed(() => {
   const pages: (number | string)[] = []
   const total = props.totalPages
   const current = props.currentPage
-  
+
   if (total <= 10) {
     // Show all pages if 10 or fewer
     for (let i = 1; i <= total; i++) {
@@ -75,27 +77,27 @@ const pageList = computed(() => {
   } else {
     // Always show first page
     pages.push(1)
-    
+
     // Show pages around current page
     const start = Math.max(2, current - 2)
     const end = Math.min(total - 1, current + 2)
-    
+
     if (start > 2) {
       pages.push('...')
     }
-    
+
     for (let i = start; i <= end; i++) {
       pages.push(i)
     }
-    
+
     if (end < total - 1) {
       pages.push('...')
     }
-    
+
     // Always show last page
     pages.push(total)
   }
-  
+
   return pages
 })
 
@@ -118,36 +120,39 @@ watch(menuOpen, (isOpen) => {
 <template>
   <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 pt-4">
     <!-- First page -->
-    <button
+    <Button
       @click="firstPage"
       :disabled="currentPage === 1 || loading"
-      class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      variant="ghost"
+      size="icon"
       title="First page"
     >
       <ChevronsLeft class="h-5 w-5" />
-    </button>
-    
+    </Button>
+
     <!-- Previous page -->
-    <button
+    <Button
       @click="previousPage"
       :disabled="currentPage === 1 || loading"
-      class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      variant="ghost"
+      size="icon"
       title="Previous page"
     >
       <ChevronLeft class="h-5 w-5" />
-    </button>
-    
+    </Button>
+
     <!-- Page selector with dropdown -->
     <div class="relative" ref="menuRef">
-      <button
+      <Button
         @click="toggleMenu"
         :disabled="loading"
-        class="text-sm font-medium min-w-[80px] px-3 py-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        variant="ghost"
+        class="text-sm font-medium min-w-[80px]"
         title="Select page"
       >
         {{ currentPage }} / {{ totalPages }}
-      </button>
-      
+      </Button>
+
       <!-- Dropdown menu -->
       <div
         v-if="menuOpen"
@@ -157,68 +162,67 @@ watch(menuOpen, (isOpen) => {
         <div class="mb-3">
           <label class="text-xs text-muted-foreground block mb-1">Go to page:</label>
           <form @submit.prevent="handleInputSubmit" class="flex">
-            <input
+            <Input
               v-model="inputValue"
               type="number"
               :min="1"
               :max="totalPages"
-              class="flex-1 px-3 py-1.5 text-sm border border-r-0 rounded-l-md bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:z-10"
+              class="flex-1 rounded-r-none border-r-0 focus:z-10"
               placeholder="Page #"
               @click.stop
             />
-            <button
+            <Button
               type="submit"
-              class="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-r-md hover:bg-primary/90 transition-colors border border-primary"
+              class="rounded-l-none"
             >
               Go
-            </button>
+            </Button>
           </form>
         </div>
-        
+
         <!-- Page list -->
         <div class="border-t pt-2">
           <div class="text-xs text-muted-foreground mb-1">Select page:</div>
           <div class="max-h-[200px] overflow-y-auto space-y-1">
-            <button
+            <Button
               v-for="page in pageList"
               :key="page"
               @click="typeof page === 'number' ? goToPage(page) : undefined"
               :disabled="page === '...'"
+              variant="ghost"
+              size="sm"
               :class="[
-                'w-full text-left px-2 py-1 text-sm rounded transition-colors',
-                page === currentPage
-                  ? 'bg-accent font-semibold'
-                  : page === '...'
-                  ? 'cursor-default text-muted-foreground'
-                  : 'hover:bg-accent'
+                'w-full justify-start',
+                page === currentPage && 'bg-accent font-semibold'
               ]"
             >
               {{ page }}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
     </div>
-    
+
     <!-- Next page -->
-    <button
+    <Button
       @click="nextPage"
       :disabled="currentPage === totalPages || loading"
-      class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      variant="ghost"
+      size="icon"
       title="Next page"
     >
       <ChevronRight class="h-5 w-5" />
-    </button>
-    
+    </Button>
+
     <!-- Last page -->
-    <button
+    <Button
       @click="lastPage"
       :disabled="currentPage === totalPages || loading"
-      class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      variant="ghost"
+      size="icon"
       title="Last page"
     >
       <ChevronsRight class="h-5 w-5" />
-    </button>
+    </Button>
   </div>
 </template>
-

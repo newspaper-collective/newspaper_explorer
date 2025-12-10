@@ -11,6 +11,14 @@ import {
   Check,
   Minus,
 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const sourceStore = useSourceStore()
 
@@ -74,9 +82,8 @@ onMounted(() => {
   fetchRandomImages()
 })
 
-const handleSourceChange = (event: Event) => {
-  const target = event.target as HTMLSelectElement
-  sourceStore.selectSource(target.value)
+const handleSourceChange = (value: string) => {
+  sourceStore.selectSource(value)
 }
 
 const formatSource = (source: string) => {
@@ -94,15 +101,19 @@ const formatSource = (source: string) => {
     <div class="max-w-xl mx-auto mt-8">
       <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-4 flex items-center gap-4">
         <h3 class="text-sm font-medium text-muted-foreground shrink-0">Collection</h3>
-        <select
-          v-model="sourceStore.currentSource"
-          @change="handleSourceChange"
-          class="flex-1 h-9 px-3 py-1 text-sm"
+        <Select
+          :model-value="sourceStore.currentSource"
+          @update:model-value="handleSourceChange"
         >
-          <option v-for="source in sourceStore.sources" :key="source" :value="source">
-            {{ formatSource(source) }}
-          </option>
-        </select>
+          <SelectTrigger class="flex-1">
+            <SelectValue placeholder="Select a source" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="source in sourceStore.sources" :key="source" :value="source">
+              {{ formatSource(source) }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
         <span class="text-xs text-muted-foreground shrink-0">{{ sourceStore.sources.length }} available</span>
       </div>
     </div>
@@ -203,13 +214,14 @@ const formatSource = (source: string) => {
         <div class="p-4 border-b">
           <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold">Random Text Sample</h2>
-            <button
+            <Button
               @click="fetchRandomLines"
               :disabled="loadingLines"
-              class="px-3 py-1 text-sm border rounded hover:bg-accent disabled:opacity-50"
+              variant="outline"
+              size="sm"
             >
               {{ loadingLines ? 'Loading...' : 'Refresh' }}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -225,7 +237,7 @@ const formatSource = (source: string) => {
                 <div class="flex-1 min-w-0">
                   <p class="text-sm">{{ line.text }}</p>
                   <p class="text-xs text-muted-foreground mt-1">
-                    {{ new Date(line.date).toLocaleDateString() }} • Page {{ line.page_number }}
+                    {{ new Date(line.date).toLocaleDateString() }} - Page {{ line.page_number }}
                   </p>
                 </div>
               </div>
@@ -247,13 +259,14 @@ const formatSource = (source: string) => {
         <div class="p-4 border-b">
           <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold">Random Image Sample</h2>
-            <button
+            <Button
               @click="fetchRandomImages"
               :disabled="loadingImages"
-              class="px-3 py-1 text-sm border rounded hover:bg-accent disabled:opacity-50"
+              variant="outline"
+              size="sm"
             >
               {{ loadingImages ? 'Loading...' : 'Refresh' }}
-            </button>
+            </Button>
           </div>
         </div>
 

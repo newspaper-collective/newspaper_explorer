@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import OpenSeadragon from 'openseadragon'
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2 } from 'lucide-vue-next'
+import { ZoomIn, ZoomOut, Home, Maximize2, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { getDetectionColor } from '@/lib/imageAnnotation'
 import {
   getHighlightColor,
@@ -39,6 +39,7 @@ interface Props {
   totalPages: number
   detections?: Detection[]
   textLines?: TextLine[]
+  allTextLines?: TextLine[]  // Full list for finding highlighted line when overlays are off
   highlightedLineId?: string | null
   imageWidth?: number
   imageHeight?: number
@@ -52,6 +53,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   detections: () => [],
   textLines: () => [],
+  allTextLines: () => [],
   highlightedLineId: null,
   showZoomControls: true,
   showNavigator: true,
@@ -70,6 +72,9 @@ const viewerContainer = ref<HTMLElement | null>(null)
 let viewer: OpenSeadragon.Viewer | null = null
 const textLineOverlays = new Map<string, HTMLElement>()
 const detectionOverlays = new Map<string, HTMLElement>()
+let highlightedLineOverlay: HTMLElement | null = null  // Single overlay for highlighted line when overlays are off
+let spotlightOverlay: HTMLElement | null = null  // Dark overlay with cutout for spotlight effect
+let hoverTimeout: ReturnType<typeof setTimeout> | null = null  // Delay for hover transitions
 
 function addTextLineOverlays() {
   if (!viewer) return
@@ -117,21 +122,31 @@ function addTextLineOverlays() {
     overlayDiv.style.cursor = 'pointer'
     overlayDiv.style.boxSizing = 'border-box'
     overlayDiv.style.transition = 'all 0.2s'
+    overlayDiv.style.borderRadius = '4px'
     overlayDiv.dataset.lineId = lineId
 
     // Add hover effect
     overlayDiv.addEventListener('mouseenter', () => {
+      // Cancel any pending hover timeout
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout)
+        hoverTimeout = null
+      }
       overlayDiv.style.backgroundColor = getSelectionMediumColor()
       overlayDiv.style.border = `4px solid ${getHighlightBorderColor()}`
       emit('lineHover', lineId)
     })
 
     overlayDiv.addEventListener('mouseleave', () => {
-      if (lineId !== props.highlightedLineId) {
-        overlayDiv.style.backgroundColor = getSelectionLightColor()
-        overlayDiv.style.border = `2px solid ${getSelectionBorderColor()}`
-      }
-      emit('lineHover', null)
+      // Delay clearing the hover to prevent flash when moving between lines
+      hoverTimeout = setTimeout(() => {
+        if (lineId !== props.highlightedLineId) {
+          overlayDiv.style.backgroundColor = getSelectionLightColor()
+          overlayDiv.style.border = `2px solid ${getSelectionBorderColor()}`
+        }
+        emit('lineHover', null)
+        hoverTimeout = null
+      }, 50)  // 50ms delay is enough to bridge the gap between lines
     })
 
     // Click to select line
@@ -308,7 +323,7 @@ watch(() => props.textLines, () => {
 }, { deep: true })
 
 watch(() => props.highlightedLineId, (newId, oldId) => {
-  // Update highlighted line styling
+  // Update highlighted line styling when overlays are visible
   if (oldId) {
     const oldOverlay = textLineOverlays.get(oldId)
     if (oldOverlay) {
@@ -324,7 +339,113 @@ watch(() => props.highlightedLineId, (newId, oldId) => {
       newOverlay.style.border = `4px solid ${getHighlightBorderColor()}`
     }
   }
+
+  // Handle single highlighted line overlay when text overlays are off
+  updateHighlightedLineOverlay()
 })
+
+function updateHighlightedLineOverlay() {
+  if (!viewer) return
+
+  // Only show spotlight if textLines is empty but we have a highlighted line
+  const shouldShow = (!props.textLines || props.textLines.length === 0)
+    && props.highlightedLineId
+    && props.allTextLines
+    && props.allTextLines.length > 0
+
+  // If we shouldn't show, clean up and return
+  if (!shouldShow) {
+    if (highlightedLineOverlay) {
+      viewer.removeOverlay(highlightedLineOverlay)
+      highlightedLineOverlay = null
+    }
+    if (spotlightOverlay) {
+      spotlightOverlay.remove()
+      spotlightOverlay = null
+    }
+    return
+  }
+
+  // Find the highlighted line in allTextLines
+  const line = props.allTextLines.find(l => {
+    const lineId = l.line_id || l.text_block_id || `${l.x}_${l.y}`
+    return lineId === props.highlightedLineId
+  })
+  if (!line) return
+
+  const tiledImage = viewer.world.getItemAt(0)
+  if (!tiledImage) return
+
+  const imageSize = tiledImage.getContentSize()
+  const osdImageWidth = imageSize.x
+  if (!osdImageWidth) return
+
+  const altoImageWidth = props.imageWidth || osdImageWidth
+  const container = viewerContainer.value
+  if (!container) return
+
+  // Calculate normalized coordinates
+  const x = line.x / altoImageWidth
+  const y = line.y / altoImageWidth
+  const width = line.width / altoImageWidth
+  const height = line.height / altoImageWidth
+
+  // Helper to calculate clip-path
+  const calcClipPath = () => {
+    if (!viewer) return ''
+    const rect = viewer.viewport.viewportToViewerElementRectangle(
+      new OpenSeadragon.Rect(x, y, width, height)
+    )
+    const padding = 4
+    const radius = 4  // Border radius for rounded corners
+    const l = Math.max(0, rect.x - padding)
+    const t = Math.max(0, rect.y - padding)
+    const r = Math.min(container.clientWidth, rect.x + rect.width + padding)
+    const b = Math.min(container.clientHeight, rect.y + rect.height + padding)
+
+    // Create a rounded rectangle cutout using multiple points
+    // The cutout needs to trace around a rounded rectangle
+    return `polygon(
+      evenodd,
+      0% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 0%,
+      ${l + radius}px ${t}px,
+      ${r - radius}px ${t}px,
+      ${r}px ${t + radius}px,
+      ${r}px ${b - radius}px,
+      ${r - radius}px ${b}px,
+      ${l + radius}px ${b}px,
+      ${l}px ${b - radius}px,
+      ${l}px ${t + radius}px,
+      ${l + radius}px ${t}px
+    )`
+  }
+
+  // Create or update spotlight overlay
+  if (!spotlightOverlay) {
+    spotlightOverlay = document.createElement('div')
+    spotlightOverlay.className = 'spotlight-overlay'
+    spotlightOverlay.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      z-index: 5;
+    `
+    container.appendChild(spotlightOverlay)
+
+    // Update clip-path on viewport changes
+    const updateClipPath = () => {
+      if (spotlightOverlay) {
+        spotlightOverlay.style.clipPath = calcClipPath()
+      }
+    }
+    viewer.addHandler('animation', updateClipPath)
+    viewer.addHandler('animation-finish', updateClipPath)
+  }
+
+  // Update clip-path immediately
+  spotlightOverlay.style.clipPath = calcClipPath()
+}
 
 function zoomIn() {
   if (viewer) {
@@ -345,6 +466,12 @@ function resetZoom() {
     viewer.viewport.goHome()
   }
 }
+
+function toggleFullscreen() {
+  if (viewer) {
+    viewer.setFullScreen(!viewer.isFullPage())
+  }
+}
 </script>
 
 <template>
@@ -352,28 +479,35 @@ function resetZoom() {
     <!-- OpenSeadragon Container -->
     <div ref="viewerContainer" class="w-full h-full bg-black"></div>
 
-    <!-- Custom Zoom Controls (horizontal, left side, autohide) -->
-    <div v-if="showZoomControls" class="absolute top-4 left-20 flex flex-row gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+    <!-- Custom Zoom Controls (horizontal, top right, autohide) -->
+    <div v-if="showZoomControls" class="absolute top-4 right-4 flex flex-row gap-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
       <button
         @click="zoomIn"
-        class="p-2 rounded-lg bg-background/90 hover:bg-background shadow-lg transition-colors"
+        class="icon-mask"
         title="Zoom In"
       >
-        <ZoomIn class="h-5 w-5" />
+        <ZoomIn class="h-6 w-6 stroke-[2.5]" />
       </button>
       <button
         @click="zoomOut"
-        class="p-2 rounded-lg bg-background/90 hover:bg-background shadow-lg transition-colors"
+        class="icon-mask"
         title="Zoom Out"
       >
-        <ZoomOut class="h-5 w-5" />
+        <ZoomOut class="h-6 w-6 stroke-[2.5]" />
       </button>
       <button
         @click="resetZoom"
-        class="p-2 rounded-lg bg-background/90 hover:bg-background shadow-lg transition-colors"
+        class="icon-mask"
         title="Reset Zoom"
       >
-        <Maximize2 class="h-5 w-5" />
+        <Home class="h-6 w-6 stroke-[2.5]" />
+      </button>
+      <button
+        @click="toggleFullscreen"
+        class="icon-mask"
+        title="Fullscreen"
+      >
+        <Maximize2 class="h-6 w-6 stroke-[2.5]" />
       </button>
     </div>
 
@@ -381,22 +515,20 @@ function resetZoom() {
     <button
       v-if="currentPage > 1"
       @click="emit('changePage', -1)"
-      class="absolute left-0 top-0 h-full w-16 flex items-center justify-start pl-2 opacity-0 group-hover:opacity-100 hover:bg-overlay-subtle transition-all z-10"
+      class="icon-mask absolute left-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all z-10 p-1"
+      title="Previous page"
     >
-      <div class="p-2 rounded-full bg-background/90 shadow-lg">
-        <ChevronLeft class="h-6 w-6" />
-      </div>
+      <ChevronLeft class="h-14 w-14 stroke-[2.5]" />
     </button>
 
     <!-- Right Navigation Overlay -->
     <button
       v-if="currentPage < totalPages"
       @click="emit('changePage', 1)"
-      class="absolute right-0 top-0 h-full w-16 flex items-center justify-end pr-2 opacity-0 group-hover:opacity-100 hover:bg-overlay-subtle transition-all z-10"
+      class="icon-mask absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all z-10 p-1"
+      title="Next page"
     >
-      <div class="p-2 rounded-full bg-background/90 shadow-lg">
-        <ChevronRight class="h-6 w-6" />
-      </div>
+      <ChevronRight class="h-14 w-14 stroke-[2.5]" />
     </button>
   </div>
 </template>
@@ -411,5 +543,14 @@ function resetZoom() {
 /* Make the navigator (minimap) display box white */
 :deep(.displayregion) {
   border: 2px solid white !important;
+}
+
+/* Icon with soft drop shadow for visibility on any background */
+.icon-mask svg {
+  color: white;
+  filter:
+    drop-shadow(0 0 2px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 5px rgba(0, 0, 0, 0.4))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 </style>

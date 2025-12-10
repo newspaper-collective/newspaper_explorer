@@ -37,7 +37,10 @@ class TextLine(BaseModel):
 
     # Primary key and data
     line_id: str  # PRIMARY: {source}_{date}_{issue}_{daily}_{page}_{block}_{line}
-    text: str  # OCR text content
+    text: str  # OCR text content (raw, as printed with hyphens)
+    text_dehyphenated_ocr: Optional[str] = (
+        None  # SUBS_CONTENT from ALTO (OCR's dehyphenation suggestion, None if not present)
+    )
 
     # Foreign keys (for linking and querying)
     source_id: str  # FK: Source identifier (e.g., "der_tag")

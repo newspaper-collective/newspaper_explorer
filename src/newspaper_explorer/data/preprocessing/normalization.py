@@ -839,12 +839,28 @@ def _dehyphenate_lines(
     y_col: str = "y",
     output_col: Optional[str] = None,
     conjunctions: Optional[set[str]] = None,
+    use_ocr_suggestions: bool = True,
 ) -> pl.DataFrame:
     """
     Remove line-break hyphens while preserving line-level structure.
 
+    Uses OCR-provided dehyphenation suggestions when available (text_dehyphenated_ocr field),
+    falling back to pattern-based dehyphenation for lines without OCR suggestions.
+
     Internal implementation for line-level OCR data.
     Use dehyphenate() as the public entry point.
+
+    Args:
+        df: DataFrame with line-level text data
+        text_col: Name of text column to process
+        block_col: Name of text block ID column for grouping
+        y_col: Name of Y coordinate column for sorting
+        output_col: Name of output column (default: same as text_col)
+        conjunctions: Set of conjunctions to preserve hyphenation for
+        use_ocr_suggestions: Whether to use OCR dehyphenation suggestions when available
+
+    Returns:
+        DataFrame with dehyphenated text
     """
     if output_col is None:
         output_col = text_col
@@ -854,7 +870,17 @@ def _dehyphenate_lines(
 
     conj_list = list(conjunctions)
 
-    logger.info(f"Dehyphenating lines: {text_col} → {output_col}")
+    # Check if OCR field is available
+    has_ocr_field = use_ocr_suggestions and "text_dehyphenated_ocr" in df.columns
+
+    if has_ocr_field:
+        ocr_count = df.filter(pl.col("text_dehyphenated_ocr").is_not_null()).height
+        logger.info(
+            f"Dehyphenating lines: {text_col} → {output_col} "
+            f"({ocr_count:,} lines with OCR suggestions, {len(df) - ocr_count:,} using pattern matching)"
+        )
+    else:
+        logger.info(f"Dehyphenating lines: {text_col} → {output_col} (pattern matching only)")
 
     # Validate required columns
     required_cols = [text_col, block_col, y_col]
@@ -868,60 +894,105 @@ def _dehyphenate_lines(
     # Punctuation that can follow a word at end of line
     trailing_punct = r"[,;.!?:»«\"\')]?"
 
-    result = (
-        df.with_columns(
+    # Strategy: Use OCR suggestions when available, fall back to pattern matching
+    if has_ocr_field:
+        result = df.with_columns(
+            # Get next line's info
             pl.col(text_col).shift(-1).over(block_col, order_by=y_col).alias("_next"),
+            pl.col("text_dehyphenated_ocr")
+            .shift(-1)
+            .over(block_col, order_by=y_col)
+            .alias("_next_ocr"),
+        ).with_columns(
+            # Determine join strategy:
+            # 1. If current line has OCR suggestion (HypPart1) → use it directly
+            # 2. If next line has OCR and this line ends with hyphen → join with next
+            # 3. Otherwise use pattern matching
+            pl.when(pl.col("text_dehyphenated_ocr").is_not_null())
+            # HypPart1: OCR already has complete word
+            .then(pl.lit("use_ocr"))
+            .when(
+                pl.col("_next_ocr").is_not_null()
+                & pl.col(text_col).str.strip_chars_end().str.contains(rf"{word_char}-$")
+            )
+            # Next line is HypPart2: should skip first word
+            .then(pl.lit("skip_next"))
+            .otherwise(pl.lit("pattern"))
+            .alias("_strategy")
         )
-        .with_columns(
-            # Ends with single hyphen (not -- or —), preceded by word char
-            pl.col(text_col)
-            .str.strip_chars_end()
-            .str.contains(rf"{word_char}-$")
-            .fill_null(value=False)
+
+        # Apply pattern matching for lines without OCR
+        result = result.with_columns(
+            # Pattern matching columns (only for non-OCR lines)
+            pl.when(pl.col("_strategy") == "pattern")
+            .then(
+                pl.col(text_col)
+                .str.strip_chars_end()
+                .str.contains(rf"{word_char}-$")
+                .fill_null(value=False)
+            )
+            .otherwise(pl.lit(False))
             .alias("_ends_hyphen"),
-            # Extract first word or hyphenated compound WITH trailing punctuation
-            # e.g., "Süd-Bahn." from "Süd-Bahn. Der" or "papier," from "papier, sagte"
-            pl.col("_next")
-            .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+{trailing_punct})")
+            pl.when(pl.col("_strategy") == "pattern")
+            .then(
+                pl.col("_next").str.extract(
+                    rf"^\s*((?:{word_char}+-)*{word_char}+{trailing_punct})"
+                )
+            )
+            .otherwise(pl.lit(None))
             .alias("_next_word_full"),
-            # Also extract just the word part (without punctuation) for conjunction check
-            pl.col("_next")
-            .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+)")
+            pl.when(pl.col("_strategy") == "pattern")
+            .then(pl.col("_next").str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+)"))
+            .otherwise(pl.lit(None))
             .alias("_next_word"),
         )
-        .with_columns(
-            pl.when(~pl.col("_ends_hyphen"))
+
+        # Determine join type for pattern matching
+        result = result.with_columns(
+            pl.when(pl.col("_strategy") != "pattern")
+            .then(pl.lit("none"))
+            .when(~pl.col("_ends_hyphen"))
             .then(pl.lit("none"))
             .when(pl.col("_next_word").is_null() | (pl.col("_next_word").str.len_chars() == 0))
             .then(pl.lit("none"))
-            # Skip conjunctions (case-insensitive, strip trailing punct)
             .when(
                 pl.col("_next_word").str.replace(r"[,;.:]$", "").str.to_lowercase().is_in(conj_list)
             )
             .then(pl.lit("skip"))
-            # Next word starts with digit → keep hyphen (ranges: 20-30, compounds: Artikel-123)
             .when(pl.col("_next_word").str.contains(r"^\d"))
             .then(pl.lit("keep_hyphen"))
-            # Both parts capitalized → keep hyphen (Nord-Süd)
             .when(pl.col("_next_word").str.contains(r"^[A-ZÄÖÜ]"))
             .then(pl.lit("keep_hyphen"))
             .otherwise(pl.lit("join"))
             .alias("_join_type"),
         )
-        .with_columns(
+
+        result = result.with_columns(
             pl.col("_join_type")
             .shift(1)
             .over(block_col, order_by=y_col)
             .fill_null("none")
             .alias("_prev_join_type"),
+            pl.col("_strategy").shift(1).over(block_col, order_by=y_col).alias("_prev_strategy"),
         )
-        .with_columns(
-            pl.when(pl.col("_join_type") == "join")
+
+        # Apply dehyphenation
+        result = result.with_columns(
+            pl.when(pl.col("_strategy") == "use_ocr")
+            # Use OCR suggestion directly
+            .then(pl.col("text_dehyphenated_ocr"))
+            .when(pl.col("_prev_strategy") == "skip_next")
+            # Remove first word (was in previous line's OCR suggestion)
+            .then(
+                pl.col(text_col).str.replace(
+                    rf"^\s*(?:{word_char}+-)*{word_char}+{trailing_punct}\s*", ""
+                )
+            )
+            .when(pl.col("_join_type") == "join")
             .then(pl.col(text_col).str.replace(r"-\s*$", "") + pl.col("_next_word_full"))
             .when(pl.col("_join_type") == "keep_hyphen")
             .then(pl.col(text_col).str.replace(r"-\s*$", "-") + pl.col("_next_word_full"))
             .when(pl.col("_prev_join_type").is_in(["join", "keep_hyphen"]))
-            # Remove first word/compound WITH trailing punctuation and following whitespace
             .then(
                 pl.col(text_col).str.replace(
                     rf"^\s*(?:{word_char}+-)*{word_char}+{trailing_punct}\s*", ""
@@ -930,15 +1001,94 @@ def _dehyphenate_lines(
             .otherwise(pl.col(text_col))
             .alias(output_col)
         )
-        .drop(
+
+        result = result.drop(
             "_next",
+            "_next_ocr",
+            "_strategy",
+            "_prev_strategy",
             "_ends_hyphen",
             "_next_word",
             "_next_word_full",
             "_join_type",
             "_prev_join_type",
         )
-    )
+    else:
+        # Original pattern matching logic (no OCR fields)
+        result = (
+            df.with_columns(
+                pl.col(text_col).shift(-1).over(block_col, order_by=y_col).alias("_next"),
+            )
+            .with_columns(
+                # Ends with single hyphen (not -- or —), preceded by word char
+                pl.col(text_col)
+                .str.strip_chars_end()
+                .str.contains(rf"{word_char}-$")
+                .fill_null(value=False)
+                .alias("_ends_hyphen"),
+                # Extract first word or hyphenated compound WITH trailing punctuation
+                # e.g., "Süd-Bahn." from "Süd-Bahn. Der" or "papier," from "papier, sagte"
+                pl.col("_next")
+                .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+{trailing_punct})")
+                .alias("_next_word_full"),
+                # Also extract just the word part (without punctuation) for conjunction check
+                pl.col("_next")
+                .str.extract(rf"^\s*((?:{word_char}+-)*{word_char}+)")
+                .alias("_next_word"),
+            )
+            .with_columns(
+                pl.when(~pl.col("_ends_hyphen"))
+                .then(pl.lit("none"))
+                .when(pl.col("_next_word").is_null() | (pl.col("_next_word").str.len_chars() == 0))
+                .then(pl.lit("none"))
+                # Skip conjunctions (case-insensitive, strip trailing punct)
+                .when(
+                    pl.col("_next_word")
+                    .str.replace(r"[,;.:]$", "")
+                    .str.to_lowercase()
+                    .is_in(conj_list)
+                )
+                .then(pl.lit("skip"))
+                # Next word starts with digit → keep hyphen (ranges: 20-30, compounds: Artikel-123)
+                .when(pl.col("_next_word").str.contains(r"^\d"))
+                .then(pl.lit("keep_hyphen"))
+                # Both parts capitalized → keep hyphen (Nord-Süd)
+                .when(pl.col("_next_word").str.contains(r"^[A-ZÄÖÜ]"))
+                .then(pl.lit("keep_hyphen"))
+                .otherwise(pl.lit("join"))
+                .alias("_join_type"),
+            )
+            .with_columns(
+                pl.col("_join_type")
+                .shift(1)
+                .over(block_col, order_by=y_col)
+                .fill_null("none")
+                .alias("_prev_join_type"),
+            )
+            .with_columns(
+                pl.when(pl.col("_join_type") == "join")
+                .then(pl.col(text_col).str.replace(r"-\s*$", "") + pl.col("_next_word_full"))
+                .when(pl.col("_join_type") == "keep_hyphen")
+                .then(pl.col(text_col).str.replace(r"-\s*$", "-") + pl.col("_next_word_full"))
+                .when(pl.col("_prev_join_type").is_in(["join", "keep_hyphen"]))
+                # Remove first word/compound WITH trailing punctuation and following whitespace
+                .then(
+                    pl.col(text_col).str.replace(
+                        rf"^\s*(?:{word_char}+-)*{word_char}+{trailing_punct}\s*", ""
+                    )
+                )
+                .otherwise(pl.col(text_col))
+                .alias(output_col)
+            )
+            .drop(
+                "_next",
+                "_ends_hyphen",
+                "_next_word",
+                "_next_word_full",
+                "_join_type",
+                "_prev_join_type",
+            )
+        )
 
     logger.info(f"Dehyphenated {len(df):,} lines")
     return result

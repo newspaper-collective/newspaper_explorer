@@ -14,6 +14,16 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import api from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import StatisticsCards from '@/components/StatisticsCards.vue'
@@ -68,6 +78,20 @@ const searchQuery = ref('')
 const minScore = ref(0)
 const topKeywordsCount = ref(20)
 const wordcloudKeywordCount = ref(100)
+
+// Slider array adapters (Slider component uses arrays)
+const minScoreSlider = computed({
+  get: () => [minScore.value],
+  set: (val: number[]) => { minScore.value = val[0] }
+})
+const topKeywordsCountSlider = computed({
+  get: () => [topKeywordsCount.value],
+  set: (val: number[]) => { topKeywordsCount.value = val[0] }
+})
+const wordcloudKeywordCountSlider = computed({
+  get: () => [wordcloudKeywordCount.value],
+  set: (val: number[]) => { wordcloudKeywordCount.value = val[0] }
+})
 
 // Pagination
 const {
@@ -375,11 +399,11 @@ onMounted(() => {
         <div class="rounded-lg border bg-card p-3 flex items-center self-stretch">
           <div class="flex flex-col gap-2 w-full">
             <!-- Search -->
-            <input
+            <Input
               v-model="searchQuery"
               type="text"
               placeholder="Search keywords..."
-              class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+              class="h-8 text-sm"
             />
 
             <!-- Score and Count Row -->
@@ -389,12 +413,11 @@ onMounted(() => {
                 <label class="text-xs text-muted-foreground whitespace-nowrap">
                   Score: {{ minScore }}%
                 </label>
-                <input
-                  v-model.number="minScore"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
+                <Slider
+                  v-model="minScoreSlider"
+                  :min="0"
+                  :max="100"
+                  :step="5"
                   class="flex-1"
                 />
               </div>
@@ -437,12 +460,11 @@ onMounted(() => {
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
             <label class="text-sm text-muted-foreground">Top N: {{ topKeywordsCount }}</label>
-            <input
-              v-model.number="topKeywordsCount"
-              type="range"
-              min="10"
-              max="50"
-              step="5"
+            <Slider
+              v-model="topKeywordsCountSlider"
+              :min="10"
+              :max="50"
+              :step="5"
               class="w-32"
             />
           </div>
@@ -455,12 +477,11 @@ onMounted(() => {
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
             <label class="text-sm text-muted-foreground">Words: {{ wordcloudKeywordCount }}</label>
-            <input
-              v-model.number="wordcloudKeywordCount"
-              type="range"
-              min="20"
-              max="200"
-              step="10"
+            <Slider
+              v-model="wordcloudKeywordCountSlider"
+              :min="20"
+              :max="200"
+              :step="10"
               class="w-32"
             />
           </div>
@@ -477,26 +498,27 @@ onMounted(() => {
 
         <!-- Search Input -->
         <div class="flex gap-3 mb-4">
-          <select
-            v-model="selectedKeyword"
-            class="flex-1 px-3 py-2 text-sm"
-          >
-            <option value="">Select a keyword to explore...</option>
-            <option
-              v-for="kw in (backendStats?.top_keywords || []).slice(0, 100)"
-              :key="kw.keyword"
-              :value="kw.keyword"
-            >
-              {{ kw.keyword }} ({{ kw.frequency }})
-            </option>
-          </select>
-          <button
+          <Select v-model="selectedKeyword">
+            <SelectTrigger class="flex-1">
+              <SelectValue placeholder="Select a keyword to explore..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Select a keyword to explore...</SelectItem>
+              <SelectItem
+                v-for="kw in (backendStats?.top_keywords || []).slice(0, 100)"
+                :key="kw.keyword"
+                :value="kw.keyword"
+              >
+                {{ kw.keyword }} ({{ kw.frequency }})
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
             @click="exploreKeyword"
             :disabled="!selectedKeyword || explorerLoading"
-            class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {{ explorerLoading ? 'Loading...' : 'Explore' }}
-          </button>
+          </Button>
         </div>
 
         <!-- Results Grid -->

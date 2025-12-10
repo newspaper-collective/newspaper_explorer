@@ -14,6 +14,13 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import api from '@/lib/api'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import { getEmotionColor, getChartAxisPointerColor, EMOTIONS as EMOTION_LIST } from '@/lib/colors'
@@ -314,14 +321,16 @@ onMounted(() => {
             <h3 class="text-lg font-semibold">Notable Emotion Peaks</h3>
             <div class="flex items-center gap-2">
               <span class="text-sm text-muted-foreground">Select Emotion:</span>
-              <select
-                v-model="selectedPeakEmotion"
-                class="px-3 py-1 text-sm"
-              >
-                <option v-for="emo in EMOTIONS" :key="emo" :value="emo">
-                  {{ emo.charAt(0).toUpperCase() + emo.slice(1) }}
-                </option>
-              </select>
+              <Select v-model="selectedPeakEmotion">
+                <SelectTrigger class="w-[140px] text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="emo in EMOTIONS" :key="emo" :value="emo">
+                    {{ emo.charAt(0).toUpperCase() + emo.slice(1) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

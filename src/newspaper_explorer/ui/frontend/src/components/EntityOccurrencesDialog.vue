@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { X, ChevronRight } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 
 interface EntityOccurrence {
@@ -137,12 +138,13 @@ watch(() => props.open, (isOpen) => {
               {{ entityType }} • {{ occurrences.length }} occurrence{{ occurrences.length !== 1 ? 's' : '' }}
             </p>
           </div>
-          <button
+          <Button
             @click="close"
-            class="rounded-md p-2 hover:bg-accent transition-colors"
+            variant="ghost"
+            size="icon"
           >
             <X :size="20" />
-          </button>
+          </Button>
         </div>
 
         <!-- Content -->
@@ -194,20 +196,20 @@ watch(() => props.open, (isOpen) => {
             {{ occurrences.length }}
           </p>
           <div class="flex gap-2">
-            <button
+            <Button
               @click="prevPage"
               :disabled="currentPage === 1"
-              class="px-3 py-2 rounded-md border bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
               @click="nextPage"
               :disabled="currentPage === totalPages"
-              class="px-3 py-2 rounded-md border bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </div>

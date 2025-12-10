@@ -10,13 +10,14 @@
             {{ totalItems.toLocaleString() }} pictures total • Page {{ currentPage }} of {{ totalPages }}
           </p>
         </div>
-        <button
+        <Button
           @click="$emit('close')"
-          class="p-2 rounded-lg hover:bg-accent transition-colors"
+          variant="ghost"
+          size="icon"
           title="Close"
         >
           <X class="w-5 h-5" />
-        </button>
+        </Button>
       </div>
 
       <!-- Scrollable Grid -->
@@ -74,23 +75,23 @@
 
       <!-- Footer with Pagination -->
       <div v-if="totalPages > 1" class="flex items-center justify-center gap-4 p-4 border-t">
-        <button
+        <Button
           @click="$emit('page-change', currentPage - 1)"
           :disabled="currentPage === 1"
-          class="px-4 py-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          variant="outline"
         >
           ← Previous
-        </button>
+        </Button>
         <span class="text-sm font-medium min-w-[100px] text-center">
           Page {{ currentPage }} of {{ totalPages }}
         </span>
-        <button
+        <Button
           @click="$emit('page-change', currentPage + 1)"
           :disabled="currentPage >= totalPages"
-          class="px-4 py-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          variant="outline"
         >
           Next →
-        </button>
+        </Button>
       </div>
     </div>
   </div>
@@ -100,6 +101,7 @@
 <script setup lang="ts">
 import { onMounted, onUpdated, ref } from 'vue'
 import { X } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/composables/useImageUtils'
 
 export interface Picture {

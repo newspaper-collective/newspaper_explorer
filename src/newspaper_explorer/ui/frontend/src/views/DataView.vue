@@ -11,7 +11,6 @@ import {
   XCircle,
   RefreshCw,
   ChevronDown,
-  ChevronRight,
   Loader2,
   FolderOpen,
   Archive,
@@ -28,6 +27,8 @@ import {
   FileCode,
   FileArchive,
 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 const sourceStore = useSourceStore()
 
@@ -84,12 +85,10 @@ const allSources = ref<SourceOverview[]>([])
 const allPreprocessedDatasets = ref<PreprocessedDataset[]>([])
 const allAnalysisResults = ref<AnalysisResult[]>([])
 
-// Section collapse state
-const expandedSections = ref<Record<string, boolean>>({
-  sources: true,
-  preprocessed: true,
-  results: true,
-})
+// Accordion state (array of open section values)
+const sourcesOpen = ref(true)
+const preprocessedOpen = ref(true)
+const resultsOpen = ref(true)
 
 // Analysis type icons
 const analysisIcons: Record<string, any> = {
@@ -223,11 +222,6 @@ onMounted(async () => {
   await fetchAllData()
 })
 
-// Toggle section expansion
-function toggleSection(section: string) {
-  expandedSections.value[section] = !expandedSections.value[section]
-}
-
 // Format number with locale
 function formatNumber(num: number): string {
   return new Intl.NumberFormat().format(num)
@@ -308,14 +302,14 @@ const totalRunCount = computed(() =>
         </div>
 
         <div class="flex items-center gap-3">
-          <button
+          <Button
             @click="fetchAllData"
-            class="h-9 px-3 rounded-md border border-input bg-background text-sm shadow-sm hover:bg-accent flex items-center gap-2"
+            variant="outline"
             :disabled="loading"
           >
-            <RefreshCw :class="['h-4 w-4', loading && 'animate-spin']" />
+            <RefreshCw :class="['h-4 w-4 mr-2', loading && 'animate-spin']" />
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -402,11 +396,8 @@ const totalRunCount = computed(() =>
         </div>
 
         <!-- Source Datasets Section -->
-        <div class="rounded-lg border bg-card">
-          <button
-            @click="toggleSection('sources')"
-            class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-          >
+        <Collapsible v-model:open="sourcesOpen" class="rounded-lg border bg-card">
+          <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
             <div class="flex items-center gap-3">
               <Database class="h-5 w-5 text-muted-foreground" />
               <div>
@@ -416,11 +407,11 @@ const totalRunCount = computed(() =>
             </div>
             <div class="flex items-center gap-3">
               <span class="text-sm text-muted-foreground">{{ allSources.length }} sources</span>
-              <component :is="expandedSections.sources ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground" />
+              <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="{ '-rotate-90': !sourcesOpen }" />
             </div>
-          </button>
+          </CollapsibleTrigger>
 
-          <div v-if="expandedSections.sources" class="border-t">
+          <CollapsibleContent class="border-t">
             <div class="overflow-x-auto">
               <table class="w-full">
                 <thead class="bg-muted/50">
@@ -493,15 +484,12 @@ const totalRunCount = computed(() =>
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <!-- Preprocessed Datasets Section -->
-        <div class="rounded-lg border bg-card">
-          <button
-            @click="toggleSection('preprocessed')"
-            class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-          >
+        <Collapsible v-model:open="preprocessedOpen" class="rounded-lg border bg-card">
+          <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
             <div class="flex items-center gap-3">
               <Play class="h-5 w-5 text-muted-foreground" />
               <div>
@@ -511,11 +499,11 @@ const totalRunCount = computed(() =>
             </div>
             <div class="flex items-center gap-3">
               <span class="text-sm text-muted-foreground">{{ allPreprocessedDatasets.length }} datasets</span>
-              <component :is="expandedSections.preprocessed ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground" />
+              <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="{ '-rotate-90': !preprocessedOpen }" />
             </div>
-          </button>
+          </CollapsibleTrigger>
 
-          <div v-if="expandedSections.preprocessed" class="border-t">
+          <CollapsibleContent class="border-t">
             <div v-if="allPreprocessedDatasets.length === 0" class="p-8 text-center text-muted-foreground">
               <Play class="h-10 w-10 mx-auto mb-3 opacity-50" />
               <p class="text-sm">No preprocessed datasets yet</p>
@@ -559,15 +547,12 @@ const totalRunCount = computed(() =>
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <!-- Analysis Results Section -->
-        <div class="rounded-lg border bg-card">
-          <button
-            @click="toggleSection('results')"
-            class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors"
-          >
+        <Collapsible v-model:open="resultsOpen" class="rounded-lg border bg-card">
+          <CollapsibleTrigger class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/50 transition-colors">
             <div class="flex items-center gap-3">
               <Archive class="h-5 w-5 text-muted-foreground" />
               <div>
@@ -577,11 +562,11 @@ const totalRunCount = computed(() =>
             </div>
             <div class="flex items-center gap-3">
               <span class="text-sm text-muted-foreground">{{ totalRunCount }} runs</span>
-              <component :is="expandedSections.results ? ChevronDown : ChevronRight" class="h-4 w-4 text-muted-foreground" />
+              <ChevronDown class="h-4 w-4 text-muted-foreground transition-transform duration-200" :class="{ '-rotate-90': !resultsOpen }" />
             </div>
-          </button>
+          </CollapsibleTrigger>
 
-          <div v-if="expandedSections.results" class="border-t">
+          <CollapsibleContent class="border-t">
             <div v-if="allAnalysisResults.length === 0" class="p-8 text-center text-muted-foreground">
               <Archive class="h-10 w-10 mx-auto mb-3 opacity-50" />
               <p class="text-sm">No analysis results yet</p>
@@ -635,8 +620,8 @@ const totalRunCount = computed(() =>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       </template>
     </div>
   </div>

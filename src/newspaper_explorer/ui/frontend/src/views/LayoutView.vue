@@ -14,6 +14,9 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { X, BarChart3, LayoutGrid } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Slider } from '@/components/ui/slider'
 import api from '@/lib/api'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import ResultsViewer from '@/components/ResultsViewer.vue'
@@ -90,6 +93,22 @@ const pageSize = ref(4) // 4 images per page for thumbnail view
 // Filters
 const selectedClasses = ref<string[]>([])
 const minConfidence = ref(0)
+
+// Slider array adapter (Slider component uses arrays)
+const minConfidenceSlider = computed({
+  get: () => [minConfidence.value],
+  set: (val: number[]) => { minConfidence.value = val[0] }
+})
+
+// Toggle class selection for filter checkboxes
+function toggleClass(className: string) {
+  const index = selectedClasses.value.indexOf(className)
+  if (index === -1) {
+    selectedClasses.value.push(className)
+  } else {
+    selectedClasses.value.splice(index, 1)
+  }
+}
 
 // Dialog for detection details
 const detailsDialog = ref(false)
@@ -549,24 +568,23 @@ watch(() => sourceStore.currentSource, () => {
           <div class="flex flex-col gap-2 w-full min-w-[250px] max-w-[600px]">
             <!-- Class Filter Checkboxes -->
             <div v-if="classNames.length > 0" class="flex flex-wrap gap-1.5 max-w-full">
-              <label
+              <div
                 v-for="className in classNames"
                 :key="className"
                 class="inline-flex items-center gap-1.5 px-2 py-1 border rounded-md cursor-pointer hover:bg-accent transition-colors text-xs whitespace-nowrap"
                 :class="{ 'bg-accent': selectedClasses.includes(className) }"
+                @click="toggleClass(className)"
               >
-                <input
-                  type="checkbox"
-                  :value="className"
-                  v-model="selectedClasses"
-                  class="rounded w-3 h-3"
+                <Checkbox
+                  :checked="selectedClasses.includes(className)"
+                  class="w-3 h-3"
                 />
                 <span
                   class="w-2.5 h-2.5 rounded-sm border border-black"
                   :style="{ backgroundColor: getDetectionColor(className) }"
                 />
                 <span>{{ className }}</span>
-              </label>
+              </div>
             </div>
 
             <!-- Confidence and Count Row -->
@@ -575,12 +593,11 @@ watch(() => sourceStore.currentSource, () => {
                 <label class="text-xs text-muted-foreground whitespace-nowrap">
                   Conf: {{ minConfidence }}%
                 </label>
-                <input
-                  v-model.number="minConfidence"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
+                <Slider
+                  v-model="minConfidenceSlider"
+                  :min="0"
+                  :max="100"
+                  :step="5"
                   class="flex-1"
                 />
               </div>
@@ -669,13 +686,14 @@ watch(() => sourceStore.currentSource, () => {
             Page Gallery ({{ totalPages.toLocaleString() }} pages)
           </h3>
           <div class="flex items-center gap-4">
-            <button
+            <Button
               @click="openThumbnailGallery"
-              class="p-2 rounded-lg border border-border hover:bg-accent transition-colors"
+              variant="outline"
+              size="icon"
               title="View all thumbnails"
             >
               <LayoutGrid class="w-5 h-5" />
-            </button>
+            </Button>
             <div class="text-sm text-muted-foreground">
               Page {{ currentPage }} of {{ totalPagesCount }}
             </div>
@@ -754,12 +772,13 @@ watch(() => sourceStore.currentSource, () => {
         >
         <div class="flex items-center justify-between p-6 border-b">
           <h2 class="text-lg font-semibold">Detection Details</h2>
-          <button
+          <Button
             @click="detailsDialog = false"
-            class="p-2 hover:bg-accent rounded-md transition-colors"
+            variant="ghost"
+            size="icon"
           >
             <X class="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         <div class="p-6 overflow-y-auto max-h-[60vh]">
@@ -781,12 +800,12 @@ watch(() => sourceStore.currentSource, () => {
         </div>
 
         <div class="p-4 border-t flex justify-end">
-          <button
+          <Button
             @click="detailsDialog = false"
-            class="px-4 py-2 border rounded-md hover:bg-accent transition-colors"
+            variant="outline"
           >
             Close
-          </button>
+          </Button>
         </div>
         </div>
       </div>
@@ -813,12 +832,13 @@ watch(() => sourceStore.currentSource, () => {
             </p>
           </div>
           <h2 v-else class="text-lg font-semibold">Image Viewer</h2>
-          <button
+          <Button
             @click="imageViewerDialog = false"
-            class="p-2 hover:bg-accent rounded-md transition-colors"
+            variant="ghost"
+            size="icon"
           >
             <X class="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         <div class="flex-1 relative">

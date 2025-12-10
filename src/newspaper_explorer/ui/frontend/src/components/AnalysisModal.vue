@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { X, Tag, ChevronDown, ChevronRight, Frown, HeartHandshake, Smile, Skull, Flame, Zap, Users, MessageSquare, Network, LayoutDashboard, User, Building2, MapPin, Calendar } from 'lucide-vue-next'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import api from '@/lib/api'
 import { getEntityColor, getEmotionColor, getLayoutColor } from '@/lib/colors'
 
@@ -239,27 +251,28 @@ function close() {
 
       <div v-else-if="analysisData" class="space-y-0">
             <!-- Emotions -->
-            <div v-if="emotionSets.length > 0">
-              <div
-                @click="emotionsExpanded = !emotionsExpanded"
-                class="flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors"
-              >
+            <Collapsible v-if="emotionSets.length > 0" v-model:open="emotionsExpanded">
+              <CollapsibleTrigger class="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors">
                 <div class="flex items-center gap-2">
-                  <component :is="emotionsExpanded ? ChevronDown : ChevronRight" class="h-4 w-4" />
+                  <component :is="emotionsExpanded ? ChevronDown : ChevronRight" class="h-4 w-4 transition-transform" />
                   <Smile class="h-5 w-5" />
                   <h3 class="text-lg font-semibold">Emotions</h3>
                 </div>
-                <select
+                <Select
                   v-model="selectedEmotions"
                   @click.stop
-                  class="px-3 py-1 text-sm w-56 truncate"
                 >
-                  <option v-for="set in emotionSets" :key="set" :value="set" class="truncate">
-                    {{ set }} ({{ getEmotionsCount(set) }})
-                  </option>
-                </select>
-              </div>
-              <div v-if="emotionsExpanded" class="px-4 pb-4 pt-2 space-y-3">
+                  <SelectTrigger class="w-56 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="set in emotionSets" :key="set" :value="set">
+                      {{ set }} ({{ getEmotionsCount(set) }})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </CollapsibleTrigger>
+              <CollapsibleContent class="px-4 pb-4 pt-2 space-y-3 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                 <div class="border-t mb-3"></div>
                 <p v-if="selectedEmotions" class="text-xs text-muted-foreground">{{ selectedEmotions }} ({{ getEmotionsCount(selectedEmotions) }} detections)</p>
                 <!-- Aggregated Stats -->
@@ -284,15 +297,12 @@ function close() {
                 </div>
 
                 <!-- Detailed Listing (nested collapsible) -->
-                <div class="border-t pt-3">
-                  <button
-                    @click="emotionDetailsExpanded = !emotionDetailsExpanded"
-                    class="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    <component :is="emotionDetailsExpanded ? ChevronDown : ChevronRight" class="h-3 w-3" />
+                <Collapsible v-model:open="emotionDetailsExpanded" class="border-t pt-3">
+                  <CollapsibleTrigger class="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors">
+                    <component :is="emotionDetailsExpanded ? ChevronDown : ChevronRight" class="h-3 w-3 transition-transform" />
                     Detailed Text Lines ({{ Object.keys(emotionsByLine).length }} lines)
-                  </button>
-                  <div v-if="emotionDetailsExpanded" class="mt-3 space-y-2">
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="mt-3 space-y-2 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                     <div
                       v-for="(emotions, lineId) in emotionsByLine"
                       :key="lineId"
@@ -317,34 +327,35 @@ function close() {
                       </div>
                       <p v-if="emotions[0]?.text" class="text-sm text-muted-foreground">{{ emotions[0].text }}</p>
                     </div>
-                  </div>
-                </div>
-              </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CollapsibleContent>
               <div class="border-t my-3"></div>
-            </div>
+            </Collapsible>
 
             <!-- Entities -->
-            <div v-if="entitySets.length > 0">
-              <div
-                @click="entitiesExpanded = !entitiesExpanded"
-                class="flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors"
-              >
+            <Collapsible v-if="entitySets.length > 0" v-model:open="entitiesExpanded">
+              <CollapsibleTrigger class="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors">
                 <div class="flex items-center gap-2">
-                  <component :is="entitiesExpanded ? ChevronDown : ChevronRight" class="h-4 w-4" />
+                  <component :is="entitiesExpanded ? ChevronDown : ChevronRight" class="h-4 w-4 transition-transform" />
                   <Users class="h-5 w-5" />
                   <h3 class="text-lg font-semibold">Entities</h3>
                 </div>
-                <select
+                <Select
                   v-model="selectedEntities"
                   @click.stop
-                  class="px-3 py-1 text-sm w-56 truncate"
                 >
-                  <option v-for="set in entitySets" :key="set" :value="set" class="truncate">
-                    {{ set }} ({{ getEntitiesCount(set) }})
-                  </option>
-                </select>
-              </div>
-              <div v-if="entitiesExpanded" class="p-4 pt-0 space-y-3">
+                  <SelectTrigger class="w-56 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="set in entitySets" :key="set" :value="set">
+                      {{ set }} ({{ getEntitiesCount(set) }})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </CollapsibleTrigger>
+              <CollapsibleContent class="p-4 pt-0 space-y-3 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                 <div class="border-t mb-3"></div>
                 <p v-if="selectedEntities" class="text-xs text-muted-foreground">{{ selectedEntities }} ({{ getEntitiesCount(selectedEntities) }} entities)</p>
 
@@ -394,32 +405,33 @@ function close() {
                   </p>
                 </div>
                 </div>
-              </div>
+              </CollapsibleContent>
               <div class="border-t my-3"></div>
-            </div>
+            </Collapsible>
 
             <!-- Keywords -->
-            <div v-if="keywordSets.length > 0">
-              <div
-                @click="keywordsExpanded = !keywordsExpanded"
-                class="flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors"
-              >
+            <Collapsible v-if="keywordSets.length > 0" v-model:open="keywordsExpanded">
+              <CollapsibleTrigger class="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors">
                 <div class="flex items-center gap-2">
-                  <component :is="keywordsExpanded ? ChevronDown : ChevronRight" class="h-4 w-4" />
+                  <component :is="keywordsExpanded ? ChevronDown : ChevronRight" class="h-4 w-4 transition-transform" />
                   <Tag class="h-5 w-5" />
                   <h3 class="text-lg font-semibold">Keywords</h3>
                 </div>
-                <select
+                <Select
                   v-model="selectedKeywords"
                   @click.stop
-                  class="px-3 py-1 text-sm w-56 truncate"
                 >
-                  <option v-for="set in keywordSets" :key="set" :value="set" class="truncate">
-                    {{ set }} ({{ getKeywordsCount(set) }})
-                  </option>
-                </select>
-              </div>
-              <div v-if="keywordsExpanded" class="px-4 pb-4 pt-2">
+                  <SelectTrigger class="w-56 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="set in keywordSets" :key="set" :value="set">
+                      {{ set }} ({{ getKeywordsCount(set) }})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </CollapsibleTrigger>
+              <CollapsibleContent class="px-4 pb-4 pt-2 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                 <div class="border-t mb-3"></div>
                 <p v-if="selectedKeywords" class="text-xs text-muted-foreground mb-3">{{ selectedKeywords }} ({{ getKeywordsCount(selectedKeywords) }} keywords)</p>
                 <div class="flex flex-wrap gap-2">
@@ -432,32 +444,33 @@ function close() {
                     <span v-if="kw.score" class="text-xs opacity-70">({{ kw.score.toFixed(2) }})</span>
                   </span>
                 </div>
-              </div>
+              </CollapsibleContent>
               <div class="border-t my-3"></div>
-            </div>
+            </Collapsible>
 
             <!-- Layout Regions -->
-            <div v-if="layoutSets.length > 0">
-              <div
-                @click="layoutExpanded = !layoutExpanded"
-                class="flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors"
-              >
+            <Collapsible v-if="layoutSets.length > 0" v-model:open="layoutExpanded">
+              <CollapsibleTrigger class="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-accent transition-colors">
                 <div class="flex items-center gap-2">
-                  <component :is="layoutExpanded ? ChevronDown : ChevronRight" class="h-4 w-4" />
+                  <component :is="layoutExpanded ? ChevronDown : ChevronRight" class="h-4 w-4 transition-transform" />
                   <LayoutDashboard class="h-5 w-5" />
                   <h3 class="text-lg font-semibold">Layout Regions</h3>
                 </div>
-                <select
+                <Select
                   v-model="selectedLayout"
                   @click.stop
-                  class="px-3 py-1 text-sm w-56 truncate"
                 >
-                  <option v-for="set in layoutSets" :key="set" :value="set" class="truncate">
-                    {{ set }} ({{ getLayoutCount(set) }})
-                  </option>
-                </select>
-              </div>
-              <div v-if="layoutExpanded" class="px-4 pb-4 pt-2 space-y-3">
+                  <SelectTrigger class="w-56 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="set in layoutSets" :key="set" :value="set">
+                      {{ set }} ({{ getLayoutCount(set) }})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </CollapsibleTrigger>
+              <CollapsibleContent class="px-4 pb-4 pt-2 space-y-3 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                 <div class="border-t mb-3"></div>
                 <p v-if="selectedLayout" class="text-xs text-muted-foreground">{{ selectedLayout }} ({{ getLayoutCount(selectedLayout) }} regions)</p>
                 <!-- Aggregated Stats -->
@@ -477,15 +490,12 @@ function close() {
                 </div>
 
                 <!-- Detailed Listing (nested collapsible) -->
-                <div class="border-t pt-3">
-                  <button
-                    @click="layoutDetailsExpanded = !layoutDetailsExpanded"
-                    class="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    <component :is="layoutDetailsExpanded ? ChevronDown : ChevronRight" class="h-3 w-3" />
+                <Collapsible v-model:open="layoutDetailsExpanded" class="border-t pt-3">
+                  <CollapsibleTrigger class="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors">
+                    <component :is="layoutDetailsExpanded ? ChevronDown : ChevronRight" class="h-3 w-3 transition-transform" />
                     Detailed Regions
-                  </button>
-                  <div v-if="layoutDetailsExpanded" class="mt-3 grid grid-cols-3 gap-2">
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="mt-3 grid grid-cols-3 gap-2 data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
                     <div
                       v-for="(region, idx) in displayedLayout"
                       :key="idx"
@@ -507,11 +517,11 @@ function close() {
                         </p>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </CollapsibleContent>
               <div class="border-t my-3"></div>
-            </div>
+            </Collapsible>
 
             <!-- No results -->
             <div v-if="keywordSets.length === 0 && emotionSets.length === 0 && layoutSets.length === 0 && entitySets.length === 0">

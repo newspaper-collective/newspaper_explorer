@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { formatDate, parsePageMetadata, type PageMetadata } from '@/lib/composables/useImageUtils'
+import { Button } from '@/components/ui/button'
 
 export interface SearchResult {
   text_block_id: string
@@ -36,7 +37,7 @@ const formattedDate = computed(() => {
 
 const metadataDisplay = computed(() => {
   if (!metadata.value) return props.result.page_id
-  return `Issue ${metadata.value.issue} • Daily ${metadata.value.daily} • Page ${metadata.value.page}` 
+  return `Issue ${metadata.value.issue} - Daily ${metadata.value.daily} - Page ${metadata.value.page}`
 })
 
 // Highlight text logic
@@ -57,18 +58,19 @@ const highlightedText = computed(() => {
         <div class="font-medium text-lg">{{ formattedDate }}</div>
         <div class="text-sm text-muted-foreground">{{ metadataDisplay }}</div>
       </div>
-      <button
+      <Button
         @click="emit('view-page', result)"
-        class="px-3 py-1 text-xs border border-input rounded hover:bg-accent transition-colors"
+        variant="outline"
+        size="sm"
       >
         View Page
-      </button>
+      </Button>
     </div>
-    
+
     <div class="mt-3 text-sm leading-relaxed font-serif bg-muted/30 p-3 rounded border border-border/50">
       <div v-html="highlightedText"></div>
     </div>
-    
+
     <div class="mt-2 flex items-center gap-2">
       <span class="text-xs text-muted-foreground font-mono">{{ result.text_block_id }}</span>
     </div>

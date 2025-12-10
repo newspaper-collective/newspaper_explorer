@@ -5,6 +5,15 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/lib/api.ts'
 import { Home } from 'lucide-vue-next'
 import PaginationControls from '@/components/PaginationControls.vue'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const sourceStore = useSourceStore()
 const router = useRouter()
@@ -377,23 +386,24 @@ onMounted(() => {
         <Home class="h-5 w-5 mt-1 flex-shrink-0" />
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <button
+            <Button
               v-for="(crumb, index) in breadcrumbs"
               :key="index"
               @click="() => {
                 if (index === 0) navigateToYear(null)
                 else if (index === 1 && selectedYear !== null) navigateToMonth(selectedYear, null)
               }"
+              variant="link"
               :class="[
-                'flex items-center gap-2 text-lg font-medium transition-colors',
+                'flex items-center gap-2 text-lg font-medium p-0 h-auto',
                 index === breadcrumbs.length - 1
-                  ? 'text-foreground cursor-default'
-                  : 'text-muted-foreground hover:text-foreground cursor-pointer'
+                  ? 'text-foreground cursor-default no-underline'
+                  : 'text-muted-foreground hover:text-foreground'
               ]"
             >
               {{ crumb.label }}
-              <span v-if="index < breadcrumbs.length - 1" class="text-muted-foreground">›</span>
-            </button>
+              <span v-if="index < breadcrumbs.length - 1" class="text-muted-foreground">></span>
+            </Button>
           </div>
           <p class="text-sm text-muted-foreground mt-1">
             Navigate through years, months, and individual newspaper issues
@@ -424,80 +434,89 @@ onMounted(() => {
             <div v-if="selectedYear === null" class="grid grid-cols-2 gap-2">
               <div>
                 <label class="text-xs text-muted-foreground">From</label>
-                <input
+                <Input
                   v-model.number="yearFrom"
                   type="number"
-                  class="w-full px-3 py-2 text-sm rounded-md border bg-background"
                   placeholder="Year"
                 />
               </div>
               <div>
                 <label class="text-xs text-muted-foreground">To</label>
-                <input
+                <Input
                   v-model.number="yearTo"
                   type="number"
-                  class="w-full px-3 py-2 text-sm rounded-md border bg-background"
                   placeholder="Year"
                 />
               </div>
             </div>
 
             <!-- Year dropdown (when drilling down) -->
-            <select
+            <Select
               v-else
-              v-model.number="selectedYear"
-              @change="navigateToMonth(selectedYear!, null)"
-              class="w-full px-3 py-2 text-sm"
+              :model-value="selectedYear?.toString()"
+              @update:model-value="(val) => navigateToMonth(Number(val), null)"
             >
-              <option v-for="year in years" :key="year.year" :value="year.year">
-                {{ year.year }}
-              </option>
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder="Select year" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="year in years" :key="year.year" :value="year.year.toString()">
+                  {{ year.year }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <!-- Month Filter (when year is selected) -->
           <div v-if="selectedYear !== null" class="space-y-2">
             <label class="text-sm font-medium">Month</label>
-            <select
-              v-model.number="selectedMonth"
-              @change="selectedMonth !== null ? navigateToMonth(selectedYear!, selectedMonth!) : navigateToMonth(selectedYear!, null)"
-              class="w-full px-3 py-2 text-sm"
+            <Select
+              :model-value="selectedMonth?.toString() || 'all'"
+              @update:model-value="(val) => val === 'all' ? navigateToMonth(selectedYear!, null) : navigateToMonth(selectedYear!, Number(val))"
             >
-              <option :value="null">All Months</option>
-              <option v-for="month in months" :key="month.month" :value="month.month">
-                {{ monthNames[month.month - 1] }} ({{ month.issue_count }} issues)
-              </option>
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Months</SelectItem>
+                <SelectItem v-for="month in months" :key="month.month" :value="month.month.toString()">
+                  {{ monthNames[month.month - 1] }} ({{ month.issue_count }} issues)
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <!-- Sort Order -->
           <div class="space-y-2">
             <label class="text-sm font-medium">Sort Order</label>
-            <select
-              v-model="sortOrder"
-              class="w-full px-3 py-2 text-sm"
-            >
-              <option value="asc">Oldest First</option>
-              <option value="desc">Newest First</option>
-            </select>
+            <Select v-model="sortOrder">
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Oldest First</SelectItem>
+                <SelectItem value="desc">Newest First</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <!-- Apply Button (only at year level) -->
-          <button
+          <Button
             v-if="selectedYear === null"
             @click="applyFilters"
-            class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            class="w-full"
           >
             Apply Filters
-          </button>
+          </Button>
 
           <!-- Reset Button -->
-          <button
+          <Button
             @click="resetFilters"
-            class="w-full px-4 py-2 border rounded-md hover:bg-accent transition-colors text-sm"
+            variant="outline"
+            class="w-full"
           >
             Reset Filters
-          </button>
+          </Button>
         </div>
 
         <!-- Statistics -->

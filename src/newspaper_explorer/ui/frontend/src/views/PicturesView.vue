@@ -14,6 +14,7 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { BarChart3, AlertTriangle, LayoutGrid, Image } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
@@ -777,13 +778,14 @@ onMounted(() => {
             Picture Gallery ({{ pictures.length.toLocaleString() }} pictures)
           </h3>
           <div class="flex items-center gap-4">
-            <button
+            <Button
               @click="openThumbnailGallery"
-              class="p-2 rounded-lg border border-border hover:bg-accent transition-colors"
+              variant="outline"
+              size="icon"
               title="View all thumbnails"
             >
               <LayoutGrid class="w-5 h-5" />
-            </button>
+            </Button>
             <div class="text-sm text-muted-foreground">
               Page {{ currentPage }} of {{ totalPages }}
             </div>

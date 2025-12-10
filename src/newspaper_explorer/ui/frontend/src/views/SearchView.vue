@@ -13,6 +13,15 @@ import PaginationControls from '@/components/PaginationControls.vue'
 import { usePagination } from '@/lib/composables/usePagination'
 import { getFullImageUrl, parsePageMetadata, formatDate } from '@/lib/composables/useImageUtils'
 import { X, ExternalLink, Grid3x3, List } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const sourceStore = useSourceStore()
 const router = useRouter()
@@ -292,20 +301,20 @@ function onMetadataLoaded() {
 
             <!-- Search Input and Button -->
             <div class="flex">
-              <input
+              <Input
                 v-model="filterOptions.query"
                 @keydown.enter="currentPage = 1; search()"
                 type="text"
                 placeholder="Search text content..."
-                class="flex-1 rounded-l-md border border-r-0 border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:z-10"
+                class="flex-1 rounded-r-none focus:z-10"
               />
-              <button
+              <Button
                 @click="currentPage = 1; search()"
                 :disabled="loading || !filterOptions.query"
-                class="px-4 py-1.5 bg-primary text-primary-foreground rounded-r-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap border border-primary"
+                class="rounded-l-none"
               >
                 Search
-              </button>
+              </Button>
             </div>
 
             <!-- Results Count and Sort Options -->
@@ -320,37 +329,37 @@ function onMetadataLoaded() {
                 <!-- Sort Selector -->
                 <div class="flex items-center gap-2">
                   <label class="text-sm text-muted-foreground">Sort:</label>
-                  <select
-                    v-model="sortOrder"
-                    class="px-2.5 py-1 text-sm"
-                  >
-                    <option value="desc">Newest First</option>
-                    <option value="asc">Oldest First</option>
-                  </select>
+                  <Select v-model="sortOrder">
+                    <SelectTrigger class="w-[140px] h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="desc">Newest First</SelectItem>
+                      <SelectItem value="asc">Oldest First</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <!-- View Mode Toggle -->
                 <div class="flex items-center gap-0.5 border rounded-md p-0.5">
-                  <button
+                  <Button
                     @click="viewMode = 'list'"
-                    :class="[
-                      'p-1 rounded transition-colors',
-                      viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-                    ]"
+                    :variant="viewMode === 'list' ? 'default' : 'ghost'"
+                    size="icon"
+                    class="h-6 w-6"
                     title="List view"
                   >
                     <List class="h-3.5 w-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     @click="viewMode = 'grid'"
-                    :class="[
-                      'p-1 rounded transition-colors',
-                      viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
-                    ]"
+                    :variant="viewMode === 'grid' ? 'default' : 'ghost'"
+                    size="icon"
+                    class="h-6 w-6"
                     title="Grid view"
                   >
                     <Grid3x3 class="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -409,12 +418,14 @@ function onMetadataLoaded() {
                 >
                   <div class="flex justify-between items-start mb-2">
                     <div class="text-xs text-muted-foreground font-mono truncate flex-1 mr-2">{{ result.text_block_id }}</div>
-                    <button
+                    <Button
                       @click="viewPage(result)"
-                      class="px-2.5 py-1 text-xs border border-input rounded hover:bg-accent transition-colors whitespace-nowrap flex-shrink-0"
+                      variant="outline"
+                      size="sm"
+                      class="h-6 text-xs flex-shrink-0"
                     >
                       View Page
-                    </button>
+                    </Button>
                   </div>
 
                   <div
@@ -466,12 +477,14 @@ function onMetadataLoaded() {
               >
                 <div class="flex justify-between items-start mb-1.5 gap-2">
                   <div class="text-xs text-muted-foreground font-mono truncate flex-1">{{ result.text_block_id }}</div>
-                  <button
+                  <Button
                     @click="viewPage(result)"
-                    class="px-2 py-0.5 text-xs border border-input rounded hover:bg-accent transition-colors whitespace-nowrap flex-shrink-0"
+                    variant="outline"
+                    size="sm"
+                    class="h-5 px-2 text-xs flex-shrink-0"
                   >
                     View
-                  </button>
+                  </Button>
                 </div>
 
                 <div class="text-xs leading-relaxed font-serif bg-muted/30 p-2 rounded border border-border/50 line-clamp-4">
@@ -529,20 +542,22 @@ function onMetadataLoaded() {
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <button
+            <Button
               v-if="currentIssueId"
               @click="openInIssueReader"
-              class="inline-flex items-center gap-2 px-3 py-1.5 text-xs border rounded hover:bg-accent transition-colors"
+              variant="outline"
+              size="sm"
             >
-              <ExternalLink class="h-3 w-3" />
+              <ExternalLink class="h-3 w-3 mr-2" />
               Open in Issue Reader
-            </button>
-            <button
+            </Button>
+            <Button
               @click="closeViewer"
-              class="p-2 hover:bg-accent rounded-md transition-colors"
+              variant="ghost"
+              size="icon"
             >
               <X class="w-5 h-5" />
-            </button>
+            </Button>
           </div>
         </div>
         <div class="flex-1 relative">

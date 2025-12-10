@@ -14,6 +14,15 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import api from '@/lib/api'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import ResultsViewer from '@/components/ResultsViewer.vue'
 import AnalysisHeader from '@/components/AnalysisHeader.vue'
 import EntityOccurrencesDialog from '@/components/EntityOccurrencesDialog.vue'
@@ -57,6 +66,16 @@ const resultsViewer = ref<InstanceType<typeof ResultsViewer>>()
 const searchQuery = ref('')
 const minConfidence = ref(0)
 const wordcloudEntityCount = ref(100)
+
+// Slider array adapters (Slider component uses arrays)
+const minConfidenceSlider = computed({
+  get: () => [minConfidence.value],
+  set: (val: number[]) => { minConfidence.value = val[0] }
+})
+const wordcloudEntityCountSlider = computed({
+  get: () => [wordcloudEntityCount.value],
+  set: (val: number[]) => { wordcloudEntityCount.value = val[0] }
+})
 
 // Chart options
 const topEntitiesChart = ref<EChartsOption>({})
@@ -327,23 +346,25 @@ onMounted(() => {
         <div class="rounded-lg border bg-card p-3 flex items-center self-stretch">
           <div class="flex flex-col gap-2 w-full">
             <!-- Search -->
-            <input
+            <Input
               v-model="searchQuery"
               type="text"
               placeholder="Search..."
-              class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+              class="h-8 text-sm"
             />
 
             <!-- Type Filter -->
-            <select
-              v-model="selectedType"
-              class="w-full px-2 py-1 text-sm"
-            >
-              <option :value="null">All Types</option>
-              <option v-for="type in entityTypes" :key="type" :value="type">
-                {{ capitalizeEntityType(type) }}
-              </option>
-            </select>
+            <Select v-model="selectedType">
+              <SelectTrigger class="w-full text-sm">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="null">All Types</SelectItem>
+                <SelectItem v-for="type in entityTypes" :key="type" :value="type">
+                  {{ capitalizeEntityType(type) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
 
             <!-- Confidence and Count Row -->
             <div class="flex items-center justify-between gap-3">
@@ -352,12 +373,11 @@ onMounted(() => {
                 <label class="text-xs text-muted-foreground whitespace-nowrap">
                   Conf: {{ minConfidence }}%
                 </label>
-                <input
-                  v-model.number="minConfidence"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
+                <Slider
+                  v-model="minConfidenceSlider"
+                  :min="0"
+                  :max="100"
+                  :step="5"
                   class="flex-1"
                 />
               </div>
@@ -397,12 +417,11 @@ onMounted(() => {
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
             <label class="text-xs text-muted-foreground">Size: {{ wordcloudEntityCount }}</label>
-            <input
-              v-model.number="wordcloudEntityCount"
-              type="range"
-              min="20"
-              max="200"
-              step="10"
+            <Slider
+              v-model="wordcloudEntityCountSlider"
+              :min="20"
+              :max="200"
+              :step="10"
               class="w-32"
             />
           </div>

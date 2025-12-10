@@ -3,6 +3,7 @@ import { ref, onMounted, watch, nextTick } from 'vue'
 import { Info } from 'lucide-vue-next'
 import { drawAnnotations, type Detection } from '@/lib/imageAnnotation'
 import { useSourceStore } from '@/stores/source'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   pageId: string
@@ -118,8 +119,8 @@ const dateInfo = props.metadata?.date ? formatDate(props.metadata.date) : null
     </div>
 
     <!-- Image Display -->
-    <div 
-      class="relative bg-black cursor-pointer hover:opacity-90 transition-opacity" 
+    <div
+      class="relative bg-black cursor-pointer hover:opacity-90 transition-opacity"
       :style="{ height: '384px' }"
       @click="emit('viewImage')"
       title="Click to view full size"
@@ -141,13 +142,14 @@ const dateInfo = props.metadata?.date ? formatDate(props.metadata.date) : null
 
     <!-- Footer -->
     <div class="p-3 border-t flex justify-end">
-      <button
+      <Button
         @click="emit('viewDetails')"
-        class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md hover:bg-accent"
+        variant="ghost"
+        size="sm"
       >
         <Info class="w-4 h-4" />
         View Details
-      </button>
+      </Button>
     </div>
   </div>
 </template>

@@ -1,6 +1,5 @@
 ## Current Priorities
 - update requirements.txt and requirements-dev.txt
-- CLI refactoring: output styling, input options, command patterns (#16)
 
 - textblock coords?
 
@@ -75,8 +74,6 @@ pagination for entiteies list
 
 refactor captions cli
 
-remove title from charts or improve/unify?
-
 picture detail dialog should link to page.
 
 thumbnail gallery lazy loading broken
@@ -99,3 +96,14 @@ drowpdon filters in browse month view
 
 
 support external image urls -> include in index
+
+
+Issue reader:
+    1901
+    >
+    January
+    >
+    8.1.1901
+    >
+    Page 3
+        -> Textline sorting broken, data or ui issue?

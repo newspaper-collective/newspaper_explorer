@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Slider } from '@/components/ui/slider'
+
 export interface FilterOptions {
   searchQuery: string
   minConfidence: number
@@ -39,41 +43,39 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
   <div class="rounded-lg border bg-card p-3 flex items-center self-stretch">
     <div class="flex flex-col gap-2 w-full">
       <!-- Search -->
-      <input
-        :value="modelValue.searchQuery"
-        @input="updateFilter('searchQuery', ($event.target as HTMLInputElement).value)"
+      <Input
+        :model-value="modelValue.searchQuery"
+        @update:model-value="updateFilter('searchQuery', $event)"
         type="text"
         placeholder="Search by page ID, caption text..."
-        class="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+        class="h-8 text-sm"
       />
 
       <!-- Filter checkboxes -->
       <div class="flex flex-wrap gap-4">
-        <label
+        <div
           v-if="showCaptionFilter"
-          class="flex items-center gap-2 text-xs cursor-pointer"
+          class="flex items-center gap-2 text-xs"
         >
-          <input
+          <Checkbox
             :checked="modelValue.onlyWithCaptions"
-            @change="updateFilter('onlyWithCaptions', ($event.target as HTMLInputElement).checked)"
-            type="checkbox"
-            class="rounded border-input"
+            @update:checked="updateFilter('onlyWithCaptions', $event)"
+            id="captions-filter"
           />
-          <span class="text-muted-foreground">Only with captions</span>
-        </label>
+          <label for="captions-filter" class="text-muted-foreground cursor-pointer">Only with captions</label>
+        </div>
 
-        <label
+        <div
           v-if="showHeaderFooterFilter"
-          class="flex items-center gap-2 text-xs cursor-pointer"
+          class="flex items-center gap-2 text-xs"
         >
-          <input
+          <Checkbox
             :checked="modelValue.excludeHeadersFooters"
-            @change="updateFilter('excludeHeadersFooters', ($event.target as HTMLInputElement).checked)"
-            type="checkbox"
-            class="rounded border-input"
+            @update:checked="updateFilter('excludeHeadersFooters', $event)"
+            id="header-footer-filter"
           />
-          <span class="text-muted-foreground">Exclude headers/footers</span>
-        </label>
+          <label for="header-footer-filter" class="text-muted-foreground cursor-pointer">Exclude headers/footers</label>
+        </div>
       </div>
 
       <!-- Height Filter and Header/Footer Threshold Row -->
@@ -83,13 +85,12 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
           <label class="text-xs text-muted-foreground whitespace-nowrap">
             Min Height: {{ modelValue.minHeight }}px
           </label>
-          <input
-            :value="modelValue.minHeight"
-            @input="updateFilter('minHeight', parseInt(($event.target as HTMLInputElement).value))"
-            type="range"
-            min="0"
-            max="1000"
-            step="50"
+          <Slider
+            :model-value="[modelValue.minHeight]"
+            @update:model-value="updateFilter('minHeight', $event[0])"
+            :min="0"
+            :max="1000"
+            :step="50"
             class="flex-1"
           />
         </div>
@@ -102,13 +103,12 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
           <label class="text-xs text-muted-foreground whitespace-nowrap">
             H/F: {{ modelValue.headerFooterThreshold }}%
           </label>
-          <input
-            :value="modelValue.headerFooterThreshold"
-            @input="updateFilter('headerFooterThreshold', parseInt(($event.target as HTMLInputElement).value))"
-            type="range"
-            min="0"
-            max="30"
-            step="1"
+          <Slider
+            :model-value="[modelValue.headerFooterThreshold]"
+            @update:model-value="updateFilter('headerFooterThreshold', $event[0])"
+            :min="0"
+            :max="30"
+            :step="1"
             class="flex-1"
           />
         </div>
@@ -119,13 +119,12 @@ function updateFilter<K extends keyof FilterOptions>(key: K, value: FilterOption
         <label class="text-xs text-muted-foreground whitespace-nowrap">
           Conf: {{ modelValue.minConfidence }}%
         </label>
-        <input
-          :value="modelValue.minConfidence"
-          @input="updateFilter('minConfidence', parseInt(($event.target as HTMLInputElement).value))"
-          type="range"
-          min="0"
-          max="100"
-          step="5"
+        <Slider
+          :model-value="[modelValue.minConfidence]"
+          @update:model-value="updateFilter('minConfidence', $event[0])"
+          :min="0"
+          :max="100"
+          :step="5"
           class="flex-1"
         />
 

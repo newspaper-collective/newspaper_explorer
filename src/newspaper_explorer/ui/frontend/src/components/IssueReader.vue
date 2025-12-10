@@ -6,6 +6,14 @@ import api from '@/lib/api'
 import { Home, Eye, EyeOff, BarChart3 } from 'lucide-vue-next'
 import OpenSeadragonViewer from './OpenSeadragonViewer.vue'
 import AnalysisModal from './AnalysisModal.vue'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface Props {
   issueId: string
@@ -32,6 +40,7 @@ const showOverlays = ref(false)
 const showLayoutOverlays = ref(false)
 const highlightedLineId = ref<string | null>(null)
 const showAnalysisSidebar = ref(false)
+let hoverTimeout: ReturnType<typeof setTimeout> | null = null  // Delay for hover transitions
 
 // Issue metadata
 const metadata = ref<any>(null)
@@ -264,7 +273,21 @@ watch(selectedLayoutSet, () => {
 })
 
 function handleLineHover(lineId: string | null) {
-  highlightedLineId.value = lineId
+  // Cancel any pending hover timeout
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout)
+    hoverTimeout = null
+  }
+
+  if (lineId === null) {
+    // Delay clearing the hover to prevent flash when moving between lines
+    hoverTimeout = setTimeout(() => {
+      highlightedLineId.value = null
+      hoverTimeout = null
+    }, 50)  // 50ms delay is enough to bridge the gap between lines
+  } else {
+    highlightedLineId.value = lineId
+  }
 }
 
 function handleLineClick(lineId: string) {
@@ -374,41 +397,45 @@ onMounted(() => {
     <!-- Breadcrumb Navigation (matching BrowseView) -->
     <div class="mt-4">
       <div class="flex items-center gap-2 flex-wrap">
-        <button
+        <Button
           v-if="showBackButton"
-        @click="goToBrowse"
-        class="flex items-center gap-2 text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-      >
-        <Home class="h-5 w-5" />
-        {{ sourceTitle }}
-      </button>
-      <template v-if="metadata">
-        <span class="text-muted-foreground text-lg">›</span>
-        <button
-          @click="goToYear"
-          class="text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          @click="goToBrowse"
+          variant="link"
+          class="flex items-center gap-2 text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
         >
-          {{ metadata.year }}
-        </button>
-        <span class="text-muted-foreground text-lg">›</span>
-        <button
-          @click="goBackToMonth"
-          class="text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-        >
-          {{ monthName }}
-        </button>
-        <span class="text-muted-foreground text-lg">›</span>
-        <button
-          @click="goBackToGallery"
-          class="text-lg font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-        >
-          {{ formatDate(metadata.date) }}
-        </button>
-        <span class="text-muted-foreground text-lg">›</span>
-        <span class="text-lg font-medium text-foreground">
-          Page {{ currentPage }}
-        </span>
-      </template>
+          <Home class="h-5 w-5" />
+          {{ sourceTitle }}
+        </Button>
+        <template v-if="metadata">
+          <span class="text-muted-foreground text-lg">></span>
+          <Button
+            @click="goToYear"
+            variant="link"
+            class="text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
+          >
+            {{ metadata.year }}
+          </Button>
+          <span class="text-muted-foreground text-lg">></span>
+          <Button
+            @click="goBackToMonth"
+            variant="link"
+            class="text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
+          >
+            {{ monthName }}
+          </Button>
+          <span class="text-muted-foreground text-lg">></span>
+          <Button
+            @click="goBackToGallery"
+            variant="link"
+            class="text-lg font-medium text-muted-foreground hover:text-foreground p-0 h-auto"
+          >
+            {{ formatDate(metadata.date) }}
+          </Button>
+          <span class="text-muted-foreground text-lg">></span>
+          <span class="text-lg font-medium text-foreground">
+            Page {{ currentPage }}
+          </span>
+        </template>
       </div>
     </div>
 
@@ -428,71 +455,79 @@ onMounted(() => {
       <div class="flex items-center gap-4">
         <!-- Layout Overlay Toggle with Dropdown (hidden when no detections) -->
         <div v-if="availableLayoutSets.length > 0" class="flex items-center gap-2">
-          <select
+          <Select
             v-if="showLayoutOverlays"
             v-model="selectedLayoutSet"
-            class="px-2 py-2 text-xs"
-            title="Select layout result set"
           >
-            <option v-for="set in availableLayoutSets" :key="set" :value="set">
-              {{ set.split('_').slice(0, 2).join(' ') }}
-            </option>
-          </select>
+            <SelectTrigger class="w-[180px] h-8 text-xs">
+              <SelectValue placeholder="Select layout set" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="set in availableLayoutSets" :key="set" :value="set">
+                {{ set.split('_').slice(0, 2).join(' ') }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
 
-          <button
+          <Button
             @click="showLayoutOverlays = !showLayoutOverlays"
-            class="flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
+            variant="ghost"
+            size="sm"
             :class="{ 'bg-accent': showLayoutOverlays }"
             title="Toggle layout overlays on image"
           >
             <component :is="showLayoutOverlays ? Eye : EyeOff" class="h-4 w-4" />
             <span>Layout</span>
-          </button>
+          </Button>
         </div>
 
         <!-- Text Overlay Toggle -->
-        <button
+        <Button
           @click="showOverlays = !showOverlays"
-          class="flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
+          variant="ghost"
+          size="sm"
           :class="{ 'bg-accent': showOverlays }"
           title="Toggle text overlays on image"
         >
           <component :is="showOverlays ? Eye : EyeOff" class="h-4 w-4" />
           <span>Text</span>
-        </button>
+        </Button>
 
         <!-- Analysis Sidebar Toggle -->
-        <button
+        <Button
           @click="showAnalysisSidebar = !showAnalysisSidebar"
-          class="flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
+          variant="ghost"
+          size="sm"
           :class="{ 'bg-accent': showAnalysisSidebar }"
           title="Toggle analysis sidebar"
         >
           <BarChart3 class="h-4 w-4" />
           <span>Analysis</span>
-        </button>
+        </Button>
 
         <!-- Page Navigation -->
         <div class="flex items-center gap-2">
-          <button
+          <Button
             @click="changePage(-1)"
             :disabled="currentPage === 1"
-            class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="ghost"
+            size="icon"
             title="Previous page"
           >
-            ←
-          </button>
+            <span class="text-lg">&#8592;</span>
+          </Button>
           <span class="text-sm font-medium min-w-[60px] text-center">
             {{ currentPage }} / {{ pages.length }}
           </span>
-          <button
+          <Button
             @click="changePage(1)"
             :disabled="currentPage === pages.length"
-            class="p-2 rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="ghost"
+            size="icon"
             title="Next page"
           >
-            →
-          </button>
+            <span class="text-lg">&#8594;</span>
+          </Button>
         </div>
       </div>
     </div>
@@ -511,6 +546,7 @@ onMounted(() => {
           :current-page="currentPage"
           :total-pages="pages.length"
           :text-lines="displayedTextLines"
+          :all-text-lines="textLines"
           :detections="displayedLayoutRegions"
           :highlighted-line-id="highlightedLineId"
           @change-page="changePage"
@@ -532,7 +568,7 @@ onMounted(() => {
             :data-line-id="line.line_id"
             class="px-2 py-1 rounded transition-colors cursor-pointer"
             :class="{
-              'bg-highlight text-highlight-foreground font-medium': highlightedLineId === line.line_id,
+              'bg-muted font-medium': highlightedLineId === line.line_id,
               'hover:bg-accent': highlightedLineId !== line.line_id,
             }"
             @mouseenter="handleLineHover(line.line_id)"

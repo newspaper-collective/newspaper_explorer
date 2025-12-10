@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { Info } from 'lucide-vue-next'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import api from '@/lib/api'
 
 interface AnalysisMetadata {
@@ -141,22 +148,23 @@ defineExpose({
       <div class="flex items-end justify-between gap-4">
         <div class="flex-1 space-y-2">
           <label class="text-sm font-medium">Analysis Run</label>
-          <select
+          <Select
             v-model="selectedRunId"
-            class="w-full px-3 py-2 text-sm"
             :disabled="loading || availableRuns.length === 0"
           >
-            <option v-if="availableRuns.length === 0" :value="null">
-              No analysis runs available
-            </option>
-            <option
-              v-for="run in availableRuns"
-              :key="run.run_id"
-              :value="run.run_id"
-            >
-              {{ run.display_name }}
-            </option>
-          </select>
+            <SelectTrigger class="w-full">
+              <SelectValue :placeholder="availableRuns.length === 0 ? 'No analysis runs available' : 'Select a run'" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="run in availableRuns"
+                :key="run.run_id"
+                :value="run.run_id"
+              >
+                {{ run.display_name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <!-- Info icon with hover tooltip -->
