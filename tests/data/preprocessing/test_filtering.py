@@ -122,9 +122,9 @@ class TestFilterNumberOnlyLines:
         ]
 
         for pattern in removed_patterns:
-            assert (
-                pattern not in result["text"].to_list()
-            ), f"'{pattern}' should be filtered out but wasn't"
+            assert pattern not in result["text"].to_list(), (
+                f"'{pattern}' should be filtered out but wasn't"
+            )
 
         # Lines that should be KEPT
         kept_patterns = [
@@ -142,9 +142,9 @@ class TestFilterNumberOnlyLines:
         ]
 
         for pattern in kept_patterns:
-            assert (
-                pattern in result["text"].to_list()
-            ), f"'{pattern}' should be kept but was filtered"
+            assert pattern in result["text"].to_list(), (
+                f"'{pattern}' should be kept but was filtered"
+            )
 
     def test_filter_without_separators(self, sample_df):
         """Test filtering with allow_separators=False (strict mode)."""
@@ -154,9 +154,9 @@ class TestFilterNumberOnlyLines:
         removed_patterns = ["123", "45", "789", "1"]
 
         for pattern in removed_patterns:
-            assert (
-                pattern not in result["text"].to_list()
-            ), f"'{pattern}' should be filtered out in strict mode"
+            assert pattern not in result["text"].to_list(), (
+                f"'{pattern}' should be filtered out in strict mode"
+            )
 
         # Everything with separators should be kept in strict mode
         kept_with_separators = [
@@ -168,9 +168,7 @@ class TestFilterNumberOnlyLines:
         ]
 
         for pattern in kept_with_separators:
-            assert (
-                pattern in result["text"].to_list()
-            ), f"'{pattern}' should be kept in strict mode"
+            assert pattern in result["text"].to_list(), f"'{pattern}' should be kept in strict mode"
 
     def test_parentheses_numbers_issue_22(self, sample_df):
         """Specific test for Issue #22: parenthesized numbers."""
