@@ -14,9 +14,9 @@ import requests
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.files import find_mets_files
 from newspaper_explorer.data.utils.sources import load_source_config
 from newspaper_explorer.data.utils.validation import validate_image_file
-from newspaper_explorer.data.utils.xml import find_mets_files
 from newspaper_explorer.models.data.images import ImageReference
 
 logger = logging.getLogger(__name__)

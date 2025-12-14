@@ -10,41 +10,35 @@ from typing import Optional
 
 import click
 
-from newspaper_explorer.config.base import get_config
+from newspaper_explorer.analyze.emotions.bert import EmotionPredictor
+from newspaper_explorer.analyze.emotions.utils import get_model_status
+from newspaper_explorer.cli.utils import errors, output
+from newspaper_explorer.cli.utils.options import (
+    batch_size_option,
+    input_file_option,
+    limit_option,
+    model_dir_option,
+    output_name_option,
+    source_option,
+    text_column_option,
+)
+from newspaper_explorer.models.analysis.emotions import EMOTIONS
 
 
 @click.group(name="emotions")
-def emotions_group():
+def emotions_group() -> None:
     """Predict emotions using pre-trained BERT models."""
     pass
 
 
 @emotions_group.command(name="predict")
-@click.option(
-    "--source",
-    type=str,
-    required=True,
-    help="Source name (e.g., 'der_tag')",
-)
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks or lines)",
-)
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
-@click.option(
-    "--batch-size",
-    type=int,
-    default=64,
-    help="Batch size for inference (increase for GPUs with more memory)",
-    show_default=True,
-)
+@source_option()
+@input_file_option(help_text="Custom input parquet file (default: textblocks or lines)")
+@text_column_option()
+@batch_size_option(default=64)
+@limit_option()
+@model_dir_option(default="models/emotions")
+@output_name_option(default="emotion_predictions")
 @click.option(
     "--chunk-size",
     type=int,
@@ -53,55 +47,34 @@ def emotions_group():
     show_default=True,
 )
 @click.option(
-    "--model-dir",
-    type=click.Path(exists=True),
-    default="models/emotions",
-    help="Directory containing emotion model files",
-    show_default=True,
-)
-@click.option(
     "--fp16",
     is_flag=True,
     help="Use FP16 mixed precision (~30% faster, recommended for modern GPUs)",
 )
 @click.option(
-    "--compile",
-    "use_compile",
-    is_flag=True,
+    "--compile/--no-compile",
     default=True,
     help="Use torch.compile for ~20-30% additional speedup (default: enabled)",
-)
-@click.option(
-    "--no-compile",
-    "no_compile",
-    is_flag=True,
-    help="Disable torch.compile (use if you have PyTorch < 2.0)",
 )
 @click.option(
     "--single-gpu",
     is_flag=True,
     help="Force single GPU mode (default: use all GPUs in parallel)",
 )
-@click.option(
-    "--output-name",
-    type=str,
-    default="emotion_predictions",
-    help="Base name for output file",
-    show_default=True,
-)
 def predict(
     source: str,
     input_file: Optional[str],
     text_column: str,
     batch_size: int,
-    chunk_size: int,
+    limit: Optional[int],
     model_dir: str,
-    fp16: bool,
-    use_compile: bool,
-    no_compile: bool,
-    single_gpu: bool,
     output_name: str,
-):
+    chunk_size: int,
+    *,
+    fp16: bool,
+    compile: bool,
+    single_gpu: bool,
+) -> None:
     """
     Predict emotions for newspaper texts using pre-trained BERT models.
 
@@ -149,7 +122,6 @@ def predict(
             - {Emotion}_prob: Confidence score (0.0-1.0)
         Example: Sadness, Sadness_prob, Love, Love_prob, Joy, Joy_prob, etc.
     """
-    from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
 
     # Setup logging
     logging.basicConfig(
@@ -157,23 +129,20 @@ def predict(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    click.echo(f"\n{'='*80}")
-    click.echo(f"Emotion Prediction")
-    click.echo(f"{'='*80}\n")
+    output.header("Emotion Prediction")
 
-    # Handle compile flags
-    compile_enabled = use_compile and not no_compile
-
-    click.echo(f"Source: {source}")
+    output.key_value("Source", source)
     if input_file:
-        click.echo(f"Input file: {input_file}")
-    click.echo(f"Text column: {text_column}")
-    click.echo(f"Batch size: {batch_size}")
-    click.echo(f"Chunk size: {chunk_size:,}")
-    click.echo(f"Model directory: {model_dir}")
-    click.echo(f"FP16: {'enabled' if fp16 else 'disabled'}")
-    click.echo(f"Model compilation: {'enabled' if compile_enabled else 'disabled'}")
-    click.echo(f"Multi-GPU parallel: {'disabled' if single_gpu else 'enabled'}")
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Batch size", batch_size)
+    if limit:
+        output.key_value("Limit", f"{limit:,} rows")
+    output.key_value("Chunk size", f"{chunk_size:,}")
+    output.key_value("Model directory", model_dir)
+    output.key_value("FP16", fp16)
+    output.key_value("Model compilation", compile)
+    output.key_value("Multi-GPU parallel", not single_gpu)
     click.echo()
 
     try:
@@ -184,7 +153,7 @@ def predict(
             batch_size=batch_size,
             chunk_size=chunk_size,
             use_fp16=fp16,
-            use_compile=compile_enabled,
+            use_compile=compile,
             multi_gpu=not single_gpu,
         )
 
@@ -194,52 +163,53 @@ def predict(
                 input_file=Path(input_file),
                 text_column=text_column,
                 output_name=output_name,
+                limit=limit,
             )
         else:
             output_file = predictor.predict_from_source(
                 text_column=text_column,
                 output_name=output_name,
+                limit=limit,
             )
 
-        click.echo(f"\n{'='*80}")
-        click.echo(f"[OK] Emotion prediction complete!")
-        click.echo(f"{'='*80}\n")
-        click.echo(f"Results saved to: {output_file}")
-        click.echo(f"\nTo analyze results:")
-        click.echo(f"  import polars as pl")
-        click.echo(f"  df = pl.read_parquet('{output_file}')")
-        click.echo(f"  # Binary counts")
-        click.echo(f"  print(df[['Sadness', 'Love', 'Joy', 'Fear', 'Anger', 'Agitation']].sum())")
-        click.echo(f"  # Average confidence scores")
-        click.echo(
-            f"  print(df[['Sadness_prob', 'Love_prob', 'Joy_prob', 'Fear_prob', 'Anger_prob', 'Agitation_prob']].mean())"
+        click.echo()
+        output.success("Emotion prediction complete!")
+        output.info(f"Results saved to: {output_file}")
+
+        # Build column lists from centralized constants
+        prob_cols = [f"{e}_prob" for e in EMOTIONS]
+
+        click.echo("\nTo analyze results:")
+        output.code_block(
+            [
+                "import polars as pl",
+                f"df = pl.read_parquet('{output_file}')",
+                "# Binary counts",
+                f"print(df[{EMOTIONS}].sum())",
+                "# Average confidence scores",
+                f"print(df[{prob_cols}].mean())",
+            ]
         )
         click.echo()
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo("\nPossible solutions:", err=True)
-        click.echo(
-            f"  1. Run parsing first: newspaper-explorer data parse --source {source}", err=True
+        click.echo()
+        errors.handle_validation_error(
+            f"File not found: {e}",
+            issues=[
+                f"Run parsing first: newspaper-explorer data parse --source {source}",
+                f"Download emotion models to: {model_dir}",
+                "Specify custom input: --input-file path/to/file.parquet",
+            ],
         )
-        click.echo(f"  2. Download emotion models to: {model_dir}", err=True)
-        click.echo(f"  3. Specify custom input: --input-file path/to/file.parquet", err=True)
-        return
-    except Exception as e:
-        click.echo(f"\nError during emotion prediction: {e}", err=True)
-        logging.exception("Full error details:")
-        return
+    except (RuntimeError, ValueError, OSError) as e:
+        click.echo()
+        errors.handle_error(e, show_traceback=True)
 
 
 @emotions_group.command(name="models")
-@click.option(
-    "--model-dir",
-    type=click.Path(),
-    default="models/emotions",
-    help="Directory to check for model files",
-    show_default=True,
-)
-def models(model_dir: str):
+@model_dir_option(default="models/emotions")
+def models(model_dir: str) -> None:
     """
     Check emotion model availability.
 
@@ -252,50 +222,53 @@ def models(model_dir: str):
     Check model availability:
         newspaper-explorer analyze emotions models
     """
-    import torch
+    output.header("Emotion Model Status")
 
-    click.echo(f"\n{'='*80}")
-    click.echo(f"Emotion Model Status")
-    click.echo(f"{'='*80}\n")
+    # Get complete status
+    status = get_model_status(Path(model_dir))
+    cuda_info = status["cuda_info"]
+    model_info = status["model_info"]
 
-    model_dir_path = Path(model_dir)
-    click.echo(f"Model directory: {model_dir_path.absolute()}")
-    click.echo(f"Directory exists: {'Yes' if model_dir_path.exists() else 'No'}")
+    # Display model directory info
+    output.key_value("Model directory", model_info["model_dir"])
+    output.key_value("Directory exists", model_info["exists"])
     click.echo()
 
-    # Check CUDA
-    if torch.cuda.is_available():
-        click.echo(f"CUDA available: Yes ({torch.cuda.device_count()} GPU(s))")
-        for i in range(torch.cuda.device_count()):
-            props = torch.cuda.get_device_properties(i)
-            click.echo(f"  GPU {i}: {props.name} ({props.total_memory / 1024**3:.1f} GB)")
+    # Display CUDA info
+    output.section("CUDA Status")
+    if cuda_info.get("error"):
+        output.error(f"CUDA error: {cuda_info['error']}", symbol=False)
+    elif cuda_info["cuda_available"]:
+        output.info(f"CUDA available: {cuda_info['device_count']} GPU(s)")
+        for gpu in cuda_info["gpu_info"]:
+            output.info(
+                f"  GPU {gpu['id']}: {gpu['name']} ({gpu['total_memory_gb']:.1f} GB)", muted=True
+            )
     else:
-        click.echo(f"CUDA available: No (will use CPU)")
-    click.echo()
+        output.warning("CUDA not available (will use CPU)")
 
-    # Check models
-    click.echo("Required models:")
-    emotions = ["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]
-    all_found = True
-
-    for emotion in emotions:
-        model_file = model_dir_path / f"{emotion}.pt"
-        if model_file.exists():
-            size_mb = model_file.stat().st_size / (1024**2)
-            click.echo(f"  [OK] {emotion:12s} ({size_mb:.1f} MB)")
+    # Display model status
+    output.section("Model Files")
+    for emotion, model_item in model_info["models"].items():
+        if model_item["found"]:
+            output.success(f"{emotion:12s} ({model_item['size_mb']:.1f} MB)")
         else:
-            click.echo(f"  [ERROR] {emotion:12s} (NOT FOUND)")
-            all_found = False
+            output.error(f"{emotion:12s} (NOT FOUND)")
 
     click.echo()
 
-    if all_found:
-        click.echo("[OK] All models found! Ready to predict.")
+    # Summary and instructions
+    if model_info["all_found"]:
+        output.success("All models found! Ready to predict.")
     else:
-        click.echo("[ERROR] Some models are missing.")
+        output.error("Some models are missing.")
         click.echo("\nTo download models:")
-        click.echo("  1. Download from your source")
-        click.echo(f"  2. Extract to: {model_dir_path.absolute()}")
-        click.echo("  3. Ensure files are named: Sadness.pt, Love.pt, etc.")
+        output.bullet_list(
+            [
+                "Download from your source",
+                f"Extract to: {model_info['model_dir']}",
+                "Ensure files are named: Sadness.pt, Love.pt, etc.",
+            ]
+        )
 
     click.echo()

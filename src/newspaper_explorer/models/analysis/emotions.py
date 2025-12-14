@@ -9,6 +9,16 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+# Emotion schema constants
+EMOTIONS = ["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]
+EMOTION_COLS = [f"{emo}_prob" for emo in EMOTIONS]
+EMOTION_MAP = {emo.lower(): emo for emo in EMOTIONS}
+
+# Historical period boundaries - backward compatibility constants
+# For comprehensive period system, see models.data.temporal (WWI_PRESET, WAR_PHASES_PRESET, etc.)
+ERA_PRE_WAR_END = 1914  # WWI start
+ERA_WAR_END = 1918  # WWI end / Weimar Republic start
+
 
 class EmotionRecord(BaseModel):
     """

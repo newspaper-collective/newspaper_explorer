@@ -213,7 +213,9 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
                     click.echo(f"  Multi-GPU parallelism not supported by YOLO's predict() method")
                     click.echo(f"  Recommendation: Use largest possible batch size on single GPU")
             else:
-                click.echo("[WARNING] CUDA requested but no GPUs available, falling back to CPU", err=True)
+                click.echo(
+                    "[WARNING] CUDA requested but no GPUs available, falling back to CPU", err=True
+                )
                 device = "cpu"
         except ImportError:
             click.echo("[WARNING] PyTorch not found, cannot check GPU availability", err=True)

@@ -8,113 +8,101 @@ from typing import TYPE_CHECKING
 
 import click
 
+from newspaper_explorer.cli.utils import errors, output
+from newspaper_explorer.cli.utils.options import (
+    batch_size_option,
+    input_file_option,
+    limit_option,
+    source_option,
+    text_column_option,
+)
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
 from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
 
 if TYPE_CHECKING:
+    from newspaper_explorer.data.preprocessing.presets import StepType
     from newspaper_explorer.models.data.metadata import PreprocessingResult
 
 
-def register_preprocessing_commands(data_group: click.Group) -> None:
-    """Register all preprocessing commands to the data group."""
+@click.group(name="preprocessing")
+def preprocessing_group() -> None:
+    """Text preprocessing commands."""
+    pass
 
-    @data_group.command()
-    @click.option(
-        "--source",
-        "-s",
-        type=str,
-        required=True,
-        help="Source name (e.g., der_tag)",
-    )
-    @click.option(
-        "--input",
-        "-i",
-        "input_path",
-        type=click.Path(exists=True, path_type=Path),
-        help="Input parquet file (default: data/processed/{source}/text/textblocks.parquet)",
-    )
-    @click.option(
-        "--steps",
-        type=str,
-        help="Comma-separated preprocessing steps (e.g., normalize,lowercase,remove-stopwords)",
-    )
-    @click.option(
-        "--pipeline",
-        "-p",
-        type=click.Choice(
-            [
-                "minimal",
-                "basic",
-                "standard",
-                "search",
-                "analysis",
-                "entities",
-                "topics",
-                "emotions",
-                "keywords",
-                "embeddings",
-                "concepts",
-            ],
-            case_sensitive=False,
-        ),
-        help="Use a recommended pipeline preset (alternative to --steps)",
-    )
-    @click.option(
-        "--text-column",
-        type=str,
-        default="text",
-        help="Name of text column to process (default: text)",
-    )
-    @click.option(
-        "--output-column",
-        type=str,
-        default="text_processed",
-        help="Name for processed text column (default: text_processed)",
-    )
-    @click.option(
-        "--sample",
-        type=int,
-        help="Process only first N rows (for testing)",
-    )
-    @click.option(
-        "--batch-size",
-        type=int,
-        default=32,
-        help="Batch size for transnormer inference (default: 32, try 64/128 for faster processing)",
-    )
-    @click.option(
-        "--num-beams",
-        type=int,
-        default=4,
-        help="Number of beams for transnormer (default: 4, try 1-2 for faster processing)",
-    )
-    @click.option(
-        "--num-gpus",
-        type=int,
-        default=1,
-        help="Number of GPUs to use for transnormer (default: 1, multi-GPU uses parallel processing)",
-    )
-    @click.option(
-        "--no-cache",
-        is_flag=True,
-        help="Disable caching for transnormer (default: caching enabled for resume capability)",
-    )
-    def preprocess(
-        source: str,
-        input_path: Path | None,
-        steps: str | None,
-        pipeline: str | None,
-        text_column: str,
-        output_column: str,
-        sample: int | None,
-        batch_size: int,
-        num_beams: int,
-        num_gpus: int,
-        *,
-        no_cache: bool,
-    ) -> None:
-        """
+
+@preprocessing_group.command(name="preprocess")
+@source_option()
+@input_file_option(
+    help_text="Input parquet file (default: data/processed/{source}/text/textblocks.parquet)"
+)
+@click.option(
+    "--steps",
+    type=str,
+    help="Comma-separated preprocessing steps (e.g., normalize,lowercase,remove-stopwords)",
+)
+@click.option(
+    "--pipeline",
+    "-p",
+    type=click.Choice(
+        [
+            "minimal",
+            "basic",
+            "standard",
+            "search",
+            "analysis",
+            "entities",
+            "topics",
+            "emotions",
+            "keywords",
+            "embeddings",
+            "concepts",
+        ],
+        case_sensitive=False,
+    ),
+    help="Use a recommended pipeline preset (alternative to --steps)",
+)
+@text_column_option()
+@click.option(
+    "--output-column",
+    type=str,
+    default="text_processed",
+    help="Name for processed text column (default: text_processed)",
+)
+@limit_option(help_text="Limit number of rows to process (for testing)")
+@batch_size_option(default=32)
+@click.option(
+    "--num-beams",
+    type=int,
+    default=4,
+    help="Number of beams for transnormer (default: 4, try 1-2 for faster processing)",
+)
+@click.option(
+    "--num-gpus",
+    type=int,
+    default=1,
+    help="Number of GPUs to use for transnormer (default: 1, multi-GPU uses parallel processing)",
+)
+@click.option(
+    "--no-cache",
+    is_flag=True,
+    help="Disable caching for transnormer (default: caching enabled for resume capability)",
+)
+def preprocess_cmd(
+    source: str,
+    input_file: str | None,
+    steps: str | None,
+    pipeline: str | None,
+    text_column: str,
+    output_column: str,
+    limit: int | None,
+    batch_size: int,
+    num_beams: int,
+    num_gpus: int,
+    *,
+    no_cache: bool,
+) -> None:
+    """
         Preprocess text data with configurable pipeline.
 
         Apply a series of preprocessing steps to text data. Steps are applied
@@ -162,7 +150,7 @@ def register_preprocessing_commands(data_group: click.Group) -> None:
           newspaper-explorer data preprocess --source der_tag --pipeline standard
 
           # Test recommended pipeline on sample
-          newspaper-explorer data preprocess --source der_tag --pipeline basic --sample 1000
+          newspaper-explorer data preprocess --source der_tag --pipeline basic --limit 1000
 
           # Custom pipeline with specific steps
           newspaper-explorer data preprocess --source der_tag \\
@@ -181,126 +169,142 @@ def register_preprocessing_commands(data_group: click.Group) -> None:
               --steps transnormer --num-gpus 4 --batch-size 128
         """
 
-        # Setup logging
-        config = get_config()
-        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
+    # Setup logging
+    config = get_config()
+    logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
-        # Validate options
-        if not steps and not pipeline:
-            click.echo("Error: Must specify either --steps or --pipeline", err=True)
-            click.echo("\nAvailable pipelines:")
-            for name, preset_config in list_presets().items():
-                click.echo(f"  {name:10s} - {preset_config['description']}")
-            raise click.Abort()
+    # Validate options
+    if not steps and not pipeline:
+        output.error("Must specify either --steps or --pipeline")
+        output.section("AVAILABLE PIPELINES")
+        for name, preset_config in list_presets().items():
+            output.key_value(name, str(preset_config["description"]))
+        click.echo()
+        output.info(
+            "Tip: Use --pipeline <name> or view all: newspaper-explorer data preprocessing list-pipelines",
+            muted=True,
+        )
+        raise click.Abort()
 
-        if steps and pipeline:
-            click.echo("Error: Cannot specify both --steps and --pipeline", err=True)
-            raise click.Abort()
+    if steps and pipeline:
+        output.error("Cannot specify both --steps and --pipeline")
+        raise click.Abort()
 
-        # Get step list
-        if pipeline:
-            step_list = get_preset(pipeline)
-            click.echo(f"\nUsing recommended pipeline: {pipeline}")
-        else:
-            step_list = [s.strip() for s in steps.split(",")]  # type: ignore[union-attr]
+    # Get step list
+    step_list: list[StepType]
+    if pipeline:
+        step_list = get_preset(pipeline)
+        output.info(f"Using recommended pipeline: {pipeline}")
+    else:
+        step_list = [s.strip() for s in steps.split(",")]  # type: ignore[union-attr]
 
-        click.echo(f"Preprocessing source: {source}")
-        step_names = [s if isinstance(s, str) else s["name"] for s in step_list]
-        click.echo(f"Steps: {', '.join(step_names)}")
+    output.header(f"PREPROCESS TEXT: {source.upper()}")
+    step_names = [s if isinstance(s, str) else s["name"] for s in step_list]
+    output.key_value("Steps", f"{len(step_list)} steps")
+    output.info(f"Pipeline: {', '.join(step_names)}", muted=True)
 
-        try:
-            # Run preprocessing using TextPreprocessor class
-            preprocessor = TextPreprocessor(source=source, text_column=text_column)
-            result: PreprocessingResult = preprocessor.run(
-                steps=step_list,
-                input_path=input_path,
-                output_column=output_column,
-                sample=sample,
-                batch_size=batch_size,
-                num_beams=num_beams,
-                num_gpus=num_gpus,
-                use_cache=not no_cache,
-            )
+    try:
+        # Run preprocessing using TextPreprocessor class
+        preprocessor = TextPreprocessor(source=source, text_column=text_column)
+        result: PreprocessingResult = preprocessor.run(
+            steps=step_list,
+            input_path=Path(input_file) if input_file else None,
+            output_column=output_column,
+            sample=limit,
+            batch_size=batch_size,
+            num_beams=num_beams,
+            num_gpus=num_gpus,
+            use_cache=not no_cache,
+        )
 
-            # Display results
-            click.echo("\n" + "=" * 60)
-            click.echo("SAMPLE OUTPUT")
-            click.echo("=" * 60)
-
+        # Display sample output
+        if result.sample_original or result.sample_processed:
+            output.section("SAMPLE OUTPUT")
             if result.sample_original:
-                click.echo(f"Original:  {result.sample_original[:200]}...")
+                output.info(f"Original:  {result.sample_original[:200]}...", muted=True)
             if result.sample_processed:
-                click.echo(f"Processed: {result.sample_processed[:200]}...")
+                output.info(f"Processed: {result.sample_processed[:200]}...", muted=True)
 
-            click.echo("\n" + "=" * 60)
-            click.echo("PREPROCESSING COMPLETE")
-            click.echo("=" * 60)
-            click.echo(f"Total rows: {result.output_rows:,}")
-            click.echo(f"Input column: {text_column}")
-            click.echo(f"Output column: {output_column}")
-            click.echo(f"Steps applied: {len(step_list)}")
+        # Display results
+        output.section("PREPROCESSING COMPLETE")
+        output.key_value("Total rows", f"{result.output_rows:,}")
+        output.key_value("Input column", text_column)
+        output.key_value("Output column", output_column)
+        output.key_value("Steps applied", len(step_list))
 
-            all_steps = result.metadata.get_all_steps()
-            if len(all_steps) > len(step_list):
-                click.echo(f"Total steps (including previous): {len(all_steps)}")
+        all_steps = result.metadata.get_all_steps()
+        if len(all_steps) > len(step_list):
+            output.key_value("Total steps (including previous)", len(all_steps))
 
-            click.echo(f"Processing time: {result.duration_seconds:.1f}s")
+        output.key_value("Processing time", f"{result.duration_seconds:.1f}s")
 
-            file_size_mb = result.file_size_bytes / (1024 * 1024)
-            click.echo(f"\nPreprocessing ID: {result.metadata.preprocessing_id}")
-            click.echo(f"\nOutput directory: {result.output_dir}")
-            click.echo(f"  Data:     {result.results_path.name}")
-            click.echo(f"  Metadata: {result.metadata_path.name}")
-            click.echo(f"  File size: {file_size_mb:.1f} MB")
+        file_size_mb = result.file_size_bytes / (1024 * 1024)
+        output.section("OUTPUT FILES")
+        if result.metadata.preprocessing_id:
+            output.key_value("Preprocessing ID", result.metadata.preprocessing_id)
+        output.key_value("Directory", str(result.output_dir))
+        output.key_value("Data file", result.results_path.name, indent=2)
+        output.key_value("Metadata file", result.metadata_path.name, indent=2)
+        output.key_value("File size", f"{file_size_mb:.1f} MB", indent=2)
 
-            click.echo("\nTip: Load the preprocessed data with:")
-            click.echo("   import polars as pl")
-            click.echo(f"   df = pl.read_parquet('{result.results_path}')")
+        output.section("USAGE")
+        output.info("Load the preprocessed data with:", muted=True)
+        output.code_block(["import polars as pl", f"df = pl.read_parquet('{result.results_path}')"])
 
-            click.echo("\n" + "=" * 60)
+        click.echo()
+        output.success("Preprocessing completed successfully!")
 
-        except FileNotFoundError as e:
-            click.echo(f"\nError: {e}", err=True)
-            click.echo(f"\nTip: Run 'newspaper-explorer data aggregate --source {source}' first")
-            raise click.Abort() from None
-        except ValueError as e:
-            click.echo(f"\nError: {e}", err=True)
-            raise click.Abort() from None
-        except ImportError as e:
-            click.echo(f"\nError: {e}", err=True)
-            click.echo("\nSome preprocessing steps require optional dependencies.")
-            click.echo("Install with: pip install -e '.[nlp]'")
-            raise click.Abort() from None
+    except FileNotFoundError as e:
+        errors.handle_error(
+            e, tip=f"Run 'newspaper-explorer data loading aggregate --source {source}' first"
+        )
+    except ValueError as e:
+        errors.handle_error(e, show_traceback=True)
+    except ImportError as e:
+        errors.handle_error(
+            e,
+            tip="Some preprocessing steps require optional dependencies. Install with: pip install -e '.[nlp]'",
+        )
 
-    @data_group.command(name="list-pipelines")
-    def list_preprocessing_pipelines() -> None:
-        """
-        List available recommended preprocessing pipelines.
 
-        Shows all preset pipelines with their descriptions and steps.
+@preprocessing_group.command(name="list-pipelines")
+def list_pipelines_cmd() -> None:
+    """
+    List available recommended preprocessing pipelines.
 
-        Example:
-          newspaper-explorer data list-pipelines
-        """
+    Shows all preset pipelines with their descriptions and steps.
 
-        pipelines = list_presets()
+    \b
+    Example:
+      newspaper-explorer data preprocessing list-pipelines
+    """
 
-        click.echo("\n" + "=" * 80)
-        click.echo("RECOMMENDED PREPROCESSING PIPELINES")
-        click.echo("=" * 80)
+    pipelines = list_presets()
 
-        for name, preset_config in pipelines.items():
-            click.echo(f"\n{name.upper()}")
-            click.echo("-" * 80)
-            click.echo(f"Description: {preset_config['description']}")
-            click.echo(f"Use case:    {preset_config['use_case']}")
-            click.echo(f"\nSteps ({len(preset_config['steps'])}):")
-            for i, step in enumerate(preset_config["steps"], 1):
-                click.echo(f"  {i}. {step}")
+    output.header("RECOMMENDED PREPROCESSING PIPELINES")
 
-        click.echo("\n" + "=" * 80)
-        click.echo("Usage:")
-        click.echo("  newspaper-explorer data preprocess --source SOURCE --pipeline PIPELINE_NAME")
-        click.echo("\nExample:")
-        click.echo("  newspaper-explorer data preprocess --source der_tag --pipeline standard")
-        click.echo("=" * 80 + "\n")
+    for name, preset_config in pipelines.items():
+        output.section(name.upper())
+        output.key_value("Description", str(preset_config["description"]))
+        output.key_value("Use case", str(preset_config["use_case"]))
+        output.key_value("Steps", f"{len(preset_config['steps'])} steps")
+        output.divider()
+
+        # Show steps as a list
+        steps = [f"{i}. {step}" for i, step in enumerate(preset_config["steps"], 1)]
+        for step in steps:
+            output.info(step, muted=True)
+
+        click.echo()
+
+    output.section("USAGE")
+    output.code_block(
+        [
+            "newspaper-explorer data preprocessing preprocess --source SOURCE --pipeline PIPELINE_NAME"
+        ]
+    )
+
+    output.section("EXAMPLE")
+    output.code_block(
+        ["newspaper-explorer data preprocessing preprocess --source der_tag --pipeline standard"]
+    )

@@ -3,11 +3,22 @@ Text processing utilities for newspaper data.
 """
 
 import logging
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 import polars as pl
 import spacy
 from transformers.models.bert import BertTokenizerFast
+
+from newspaper_explorer.models.data.stats import (
+    CharLengthStats,
+    TokenLengthStats,
+)
+
+if TYPE_CHECKING:
+    from newspaper_explorer.models.data.stats import (
+        CharDistribution,
+        TokenDistribution,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +195,7 @@ def split_df_into_sentences(
 
     for doc_idx, doc in enumerate(nlp.pipe(texts, batch_size=batch_size)):
         # Get original row data
-        row_data = df_pandas.iloc[doc_idx].to_dict() # type: ignore[index]
+        row_data = df_pandas.iloc[doc_idx].to_dict()  # type: ignore[index]
 
         # Split into sentences
         sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
@@ -237,7 +248,7 @@ def analyze_text_line_character_lengths(
     df: pl.DataFrame,
     text_column: str = "text",
     sample_size: int = 50000,
-) -> dict[str, Union[int, float, dict[str, int], list[tuple[int, str]]]]:
+) -> CharLengthStats:
     """
     Analyze character lengths in text data.
 
@@ -320,7 +331,7 @@ def analyze_text_line_character_lengths(
     under_500 = sum(1 for length in lengths if length <= 500)  # noqa: PLR2004
     under_1000 = sum(1 for length in lengths if length <= 1000)  # noqa: PLR2004
 
-    distribution = {
+    distribution: CharDistribution = {
         "under_50": under_50,
         "under_100": under_100,
         "under_200": under_200,
@@ -334,19 +345,19 @@ def analyze_text_line_character_lengths(
 
     logger.info(f"Character analysis complete for {actual_sample_size:,} texts")
 
-    return {
-        "total_rows": total_rows,
-        "sample_size": actual_sample_size,
-        "min_chars": min_chars,
-        "max_chars": max_chars,
-        "mean_chars": mean_chars,
-        "median_chars": median_chars,
-        "p90_chars": p90,
-        "p95_chars": p95,
-        "p99_chars": p99,
-        "distribution": distribution,
-        "longest_examples": longest_examples,
-    }
+    return CharLengthStats(
+        total_rows=total_rows,
+        sample_size=actual_sample_size,
+        min_chars=min_chars,
+        max_chars=max_chars,
+        mean_chars=mean_chars,
+        median_chars=median_chars,
+        p90_chars=p90,
+        p95_chars=p95,
+        p99_chars=p99,
+        distribution=distribution,
+        longest_examples=longest_examples,
+    )
 
 
 def analyze_token_lengths(
@@ -355,7 +366,7 @@ def analyze_token_lengths(
     tokenizer_name: str = "deepset/gbert-large",
     sample_size: int = 50000,
     max_length: int = 512,
-) -> dict[str, Union[int, float, dict[str, int], list[tuple[int, str]]]]:
+) -> TokenLengthStats:
     """
     Analyze token lengths in text data using BERT tokenizer.
 
@@ -429,12 +440,13 @@ def analyze_token_lengths(
 
     # Load tokenizer
     logger.info(f"Loading tokenizer: {tokenizer_name}")
-    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name) # type: ignore[call-arg]
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)  # type: ignore[call-arg]
 
     # Tokenize and get lengths
     logger.info("Tokenizing texts (this may take a minute)...")
     lengths = [
-        len(tokenizer.encode(text, truncation=True, max_length=max_length)) for text in texts # type: ignore
+        len(tokenizer.encode(text, truncation=True, max_length=max_length))  # type: ignore[arg-type]
+        for text in texts
     ]
 
     # Compute statistics
@@ -456,7 +468,7 @@ def analyze_token_lengths(
     under_300 = sum(1 for length in lengths if length <= 300)  # noqa: PLR2004
     at_max = sum(1 for length in lengths if length == max_length)
 
-    distribution = {
+    distribution: TokenDistribution = {
         "under_50": under_50,
         "under_100": under_100,
         "under_200": under_200,
@@ -478,23 +490,23 @@ def analyze_token_lengths(
 
     logger.info(f"Token analysis complete for {actual_sample_size:,} texts")
 
-    return {
-        "total_rows": total_rows,
-        "sample_size": actual_sample_size,
-        "min_tokens": min_tokens,
-        "max_tokens": max_tokens,
-        "mean_tokens": mean_tokens,
-        "median_tokens": median_tokens,
-        "p90_tokens": p90,
-        "p95_tokens": p95,
-        "p99_tokens": p99,
-        "distribution": distribution,
-        "truncated_count": truncated_count,
-        "truncated_percent": truncated_percent,
-        "wasted_padding_percent": wasted_padding_percent,
-        "expected_speedup": expected_speedup,
-        "longest_examples": longest_examples,
-    }
+    return TokenLengthStats(
+        total_rows=total_rows,
+        sample_size=actual_sample_size,
+        min_tokens=min_tokens,
+        max_tokens=max_tokens,
+        mean_tokens=mean_tokens,
+        median_tokens=median_tokens,
+        p90_tokens=p90,
+        p95_tokens=p95,
+        p99_tokens=p99,
+        distribution=distribution,
+        truncated_count=truncated_count,
+        truncated_percent=truncated_percent,
+        wasted_padding_percent=wasted_padding_percent,
+        expected_speedup=expected_speedup,
+        longest_examples=longest_examples,
+    )
 
 
 def get_longest_lines_by_tokens(
@@ -536,7 +548,7 @@ def get_longest_lines_by_tokens(
         raise ValueError(f"Column '{text_column}' not found in DataFrame")
 
     logger.info(f"Loading tokenizer: {tokenizer_name}")
-    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name) # type: ignore[call-arg]
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)  # type: ignore[call-arg]
 
     # Get top 100 longest by character count first (optimization)
     longest_by_chars = get_longest_lines(df, text_column=text_column, top_n=100)
@@ -545,7 +557,7 @@ def get_longest_lines_by_tokens(
     logger.info("Tokenizing texts to get token counts...")
     texts = longest_by_chars[text_column].to_list()
     token_counts = [
-        len(tokenizer.encode(text, truncation=True, max_length=512))  # type: ignore[arg-type]
+        len(tokenizer.encode(text, truncation=True, max_length=512))  # type: ignore[arg-type, misc]
         for text in texts
     ]
 

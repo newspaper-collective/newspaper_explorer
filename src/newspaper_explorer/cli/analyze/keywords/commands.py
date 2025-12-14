@@ -15,7 +15,7 @@ from newspaper_explorer.config.base import get_config
 
 
 @click.group(name="keywords")
-def keywords_group():
+def keywords_group() -> None:
     """Extract keywords using TF-IDF, RAKE, YAKE, or KeyBERT."""
     pass
 

@@ -6,11 +6,13 @@ Uses models from newspaper_explorer.models.core.sources.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from natsort import natsorted
+import polars as pl
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.models.data.sources import SourceConfig
+from newspaper_explorer.models.data.sources import SourceConfig, SourceStatus
 
 
 def list_available_sources() -> list[str]:
@@ -108,3 +110,172 @@ def get_source_paths(source_config: SourceConfig) -> dict[str, Path]:
         "images_dir": images_dir,
         "output_file": output_file,
     }
+
+
+def get_source_status(source_name: str) -> SourceStatus:
+    """
+    Get comprehensive status information for a source.
+
+    Collects all status information including raw XML, parsed data,
+    aggregated text blocks, and images. Returns a structured SourceStatus
+    model for presentation.
+
+    Args:
+        source_name: Name of the source (e.g., 'der_tag')
+
+    Returns:
+        SourceStatus: Comprehensive status information
+
+    Raises:
+        ValueError: If source not found
+
+    Example:
+        >>> status = get_source_status("der_tag")
+        >>> print(f"Parsed: {status.has_parsed_data}")
+        True
+        >>> print(f"Coverage: {status.parsing_coverage_pct:.1f}%")
+        98.5
+    """
+    # Load config
+    config = load_source_config(source_name)
+    paths = get_source_paths(config)
+    app_config = get_config()
+
+    # Raw XML status
+    raw_dir = paths["raw_dir"]
+    xml_pattern = config.loading.pattern if config.loading else "**/fulltext/*.xml"
+    has_raw_xml = raw_dir.exists()
+    xml_file_count = 0
+
+    if has_raw_xml:
+        xml_files = natsorted(raw_dir.glob(xml_pattern))
+        xml_file_count = len(xml_files)
+
+    # Parsed data status
+    output_file = paths["output_file"]
+    has_parsed_data = output_file.exists()
+    parsed_row_count = 0
+    parsed_file_count = 0
+    parsing_coverage_pct: Optional[float] = None
+    parsed_date_range: Optional[tuple[str, str]] = None
+    parsed_size_mb = 0.0
+
+    if has_parsed_data:
+        df = pl.read_parquet(output_file)
+        parsed_row_count = len(df)
+        parsed_file_count = df["filename"].n_unique()
+
+        # Calculate coverage
+        if xml_file_count > 0:
+            parsing_coverage_pct = (parsed_file_count / xml_file_count) * 100
+
+        # Get date range
+        if "date" in df.columns and len(df) > 0:
+            min_date = str(df["date"].min())
+            max_date = str(df["date"].max())
+            parsed_date_range = (min_date, max_date)
+
+        # File size
+        parsed_size_mb = output_file.stat().st_size / (1024 * 1024)
+
+    # Aggregated data status
+    textblocks_path = (
+        app_config.data_dir / "processed" / config.dataset_name / "text" / "textblocks.parquet"
+    )
+    has_aggregated_data = textblocks_path.exists()
+    aggregated_row_count = 0
+    aggregated_size_mb = 0.0
+
+    if has_aggregated_data:
+        df_agg = pl.read_parquet(textblocks_path)
+        aggregated_row_count = len(df_agg)
+        aggregated_size_mb = textblocks_path.stat().st_size / (1024 * 1024)
+
+    # Image status - try index first, fallback to ImageDownloader
+    images_dir = paths["images_dir"]
+    has_images = False
+    image_count = 0
+    images_expected = 0
+    image_coverage_pct: Optional[float] = None
+    total_size_gb = 0.0
+    image_year_range: Optional[tuple[int, int]] = None
+    has_image_index = False
+
+    try:
+        from newspaper_explorer.data.indexing.image_index import ImageIndexer
+
+        indexer = ImageIndexer(source_name)
+        index = indexer.load_index()
+
+        if index is not None and len(index) > 0:
+            has_image_index = True
+            has_images = True
+            stats = indexer.get_stats()
+            image_count = stats["total_images"]
+            total_size_gb = stats["total_size_gb"]
+            image_year_range = (stats["min_year"], stats["max_year"])
+
+            # Also get expected count from ImageDownloader
+            try:
+                from newspaper_explorer.data.download.images import ImageDownloader
+
+                image_downloader = ImageDownloader(source_name=source_name)
+                image_status = image_downloader.get_download_status()
+                images_expected = image_status["total_images_expected"]
+
+                if images_expected > 0:
+                    image_coverage_pct = (image_count / images_expected) * 100
+            except Exception:
+                # If ImageDownloader fails, use indexed count
+                images_expected = image_count
+                image_coverage_pct = 100.0
+        else:
+            # No index, use ImageDownloader directly
+            try:
+                from newspaper_explorer.data.download.images import ImageDownloader
+
+                image_downloader = ImageDownloader(source_name=source_name)
+                image_status = image_downloader.get_download_status()
+
+                has_images = image_status["images_dir_exists"]
+                image_count = image_status["images_downloaded"]
+                images_expected = image_status["total_images_expected"]
+
+                if images_expected > 0:
+                    image_coverage_pct = image_status["coverage_pct"]
+            except Exception:
+                # Fall through to defaults
+                pass
+    except Exception:
+        # If both fail, use defaults
+        has_images = images_dir.exists()
+
+    return SourceStatus(
+        source_name=source_name,
+        # Raw XML
+        has_raw_xml=has_raw_xml,
+        xml_file_count=xml_file_count,
+        raw_dir=str(raw_dir),
+        # Parsed data
+        has_parsed_data=has_parsed_data,
+        parsed_row_count=parsed_row_count,
+        parsed_file_count=parsed_file_count,
+        parsing_coverage_pct=parsing_coverage_pct,
+        parsed_date_range=parsed_date_range,
+        parsed_size_mb=parsed_size_mb,
+        output_file=str(output_file),
+        # Aggregated data
+        has_aggregated_data=has_aggregated_data,
+        aggregated_row_count=aggregated_row_count,
+        aggregated_size_mb=aggregated_size_mb,
+        textblocks_path=str(textblocks_path),
+        # Images
+        has_images=has_images,
+        image_count=image_count,
+        images_expected=images_expected,
+        image_coverage_pct=image_coverage_pct,
+        total_size_gb=total_size_gb,
+        image_year_range=image_year_range,
+        images_dir=str(images_dir),
+        has_image_index=has_image_index,
+    )

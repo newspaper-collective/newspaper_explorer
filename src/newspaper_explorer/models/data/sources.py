@@ -136,3 +136,52 @@ class SourceConfig(BaseModel):
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump(self.model_dump(mode="json"), f, indent=2, ensure_ascii=False)
+
+
+class SourceStatus(BaseModel):
+    """
+    Complete status information for a newspaper source.
+
+    Used by the info command to report on download, extraction, parsing,
+    aggregation, and image download status.
+    """
+
+    source_name: str = Field(..., description="Source identifier")
+
+    # Raw XML status
+    has_raw_xml: bool = Field(..., description="Whether raw XML directory exists with files")
+    xml_file_count: int = Field(..., description="Number of XML files found")
+    raw_dir: str = Field(..., description="Path to raw XML directory")
+
+    # Parsed data status
+    has_parsed_data: bool = Field(..., description="Whether parsed parquet file exists")
+    parsed_row_count: int = Field(0, description="Number of rows in parsed data")
+    parsed_file_count: int = Field(0, description="Number of unique files parsed")
+    parsing_coverage_pct: Optional[float] = Field(
+        None, description="Percentage of XML files parsed"
+    )
+    parsed_date_range: Optional[tuple[str, str]] = Field(
+        None, description="Min/max dates in parsed data"
+    )
+    parsed_size_mb: float = Field(0, description="Size of parsed parquet file in MB")
+    output_file: str = Field(..., description="Path to parsed parquet file")
+
+    # Aggregated data status
+    has_aggregated_data: bool = Field(..., description="Whether aggregated textblocks exist")
+    aggregated_row_count: int = Field(0, description="Number of aggregated text blocks")
+    aggregated_size_mb: float = Field(0, description="Size of aggregated parquet file in MB")
+    textblocks_path: str = Field(..., description="Path to textblocks parquet file")
+
+    # Image status
+    has_images: bool = Field(..., description="Whether images directory exists with files")
+    image_count: int = Field(0, description="Number of downloaded images")
+    images_expected: int = Field(0, description="Total images expected from METS files")
+    image_coverage_pct: Optional[float] = Field(
+        None, description="Percentage of expected images downloaded"
+    )
+    total_size_gb: float = Field(0, description="Total size of images in GB")
+    image_year_range: Optional[tuple[int, int]] = Field(
+        None, description="Min/max years in image collection"
+    )
+    images_dir: str = Field(..., description="Path to images directory")
+    has_image_index: bool = Field(False, description="Whether image index exists")

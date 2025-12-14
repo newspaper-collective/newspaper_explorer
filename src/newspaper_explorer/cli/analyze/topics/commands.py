@@ -14,7 +14,7 @@ from newspaper_explorer.config.base import get_config
 
 
 @click.group(name="topics")
-def topics_group():
+def topics_group() -> None:
     """Discover topics in newspaper text using LDA, BERTopic, or LLMs."""
     pass
 

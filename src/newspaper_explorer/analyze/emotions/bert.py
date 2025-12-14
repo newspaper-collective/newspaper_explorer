@@ -21,7 +21,7 @@ import multiprocessing as mp
 from pathlib import Path
 import queue
 import time
-from typing import Dict, List, Optional
+from typing import Optional
 import warnings
 
 import polars as pl
@@ -35,6 +35,7 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
+from newspaper_explorer.models.analysis.emotions import EMOTIONS
 from newspaper_explorer.models.data.metadata import AnalysisMetadata
 
 logger = logging.getLogger(__name__)
@@ -333,14 +334,13 @@ class EmotionPredictor:
     device detection and optimal batch sizing.
     """
 
-    EMOTION_NAMES = ["Sadness", "Love", "Joy", "Fear", "Anger", "Agitation"]
-
     def __init__(
         self,
         source_name: str,
         model_dir: Optional[Path] = None,
         batch_size: int = 64,
         chunk_size: int = 100000,
+        *,
         use_fp16: bool = True,  # Enabled by default for Ampere+ GPUs (L40S)
         use_compile: bool = True,
         multi_gpu: bool = True,
@@ -379,12 +379,10 @@ class EmotionPredictor:
             )
 
         # Model files
-        self.model_files = {
-            emotion: self.model_dir / f"{emotion}.pt" for emotion in self.EMOTION_NAMES
-        }
+        self.model_files = {emotion: self.model_dir / f"{emotion}.pt" for emotion in EMOTIONS}
 
         # Verify models exist
-        for emotion, path in self.model_files.items():
+        for path in self.model_files.values():
             if not path.exists():
                 raise FileNotFoundError(f"Model file not found: {path}")
 
@@ -394,7 +392,7 @@ class EmotionPredictor:
             self.num_gpus = torch.cuda.device_count()
             logger.info(f"Using {self.num_gpus} GPU(s)")
             if self.multi_gpu and self.num_gpus > 1:
-                logger.info(f"Multi-GPU parallel mode enabled (process-based)")
+                logger.info("Multi-GPU parallel mode enabled (process-based)")
             if self.use_compile:
                 logger.info("Model compilation enabled (torch.compile)")
         else:
@@ -409,10 +407,10 @@ class EmotionPredictor:
         # Base results directory (subdirectories created per analysis run)
         self.results_base = config.results_dir / source_name
 
-    def load_models(self):
+    def load_models(self) -> dict[str, BertForSequenceClassification | torch.nn.Module]:
         """Load all emotion models (sequential mode only)"""
         logger.info("Loading emotion models...")
-        models = {}
+        models: dict[str, BertForSequenceClassification | torch.nn.Module] = {}
 
         for emotion, model_path in self.model_files.items():
             logger.info(f"  Loading {emotion}...")
@@ -433,6 +431,7 @@ class EmotionPredictor:
         input_file: Path,
         text_column: str = "text",
         output_name: str = "emotion_predictions",
+        limit: Optional[int] = None,
     ) -> Path:
         """
         Predict emotions for text data.
@@ -443,20 +442,22 @@ class EmotionPredictor:
             input_file: Input parquet file
             text_column: Name of text column
             output_name: Base name for output file
+            limit: Limit number of rows to process (for testing)
 
         Returns:
             Path to output file
         """
         if self.multi_gpu and self.num_gpus > 1:
-            return self._predict_parallel(input_file, text_column, output_name)
+            return self._predict_parallel(input_file, text_column, output_name, limit)
         else:
-            return self._predict_sequential(input_file, text_column, output_name)
+            return self._predict_sequential(input_file, text_column, output_name, limit)
 
     def _predict_sequential(
         self,
         input_file: Path,
         text_column: str,
         output_name: str,
+        limit: Optional[int] = None,
     ) -> Path:
         """Sequential prediction (single GPU or CPU)"""
         start_time = time.time()
@@ -480,12 +481,16 @@ class EmotionPredictor:
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
+        if limit:
+            logger.info(f"Limit: {limit:,} rows")
 
         # Load models
         models = self.load_models()
 
         # Load input data for metadata extraction
         df_input = pl.read_parquet(input_file)
+        if limit:
+            df_input = df_input.head(limit)
         total_rows = len(df_input)
         logger.info(f"Total rows: {total_rows:,}")
 
@@ -600,7 +605,7 @@ class EmotionPredictor:
 
         # Calculate emotion statistics
         emotion_counts = {}
-        for emotion in self.EMOTION_NAMES:
+        for emotion in EMOTIONS:
             count = df_result[emotion].sum()
             emotion_counts[emotion.lower()] = count
 
@@ -617,7 +622,7 @@ class EmotionPredictor:
             source=self.source_name,
             parameters={
                 "model_base": "deepset/gbert-large",
-                "emotions": list(self.EMOTION_NAMES),
+                "emotions": list(EMOTIONS),
                 "batch_size": self.batch_size,
                 "chunk_size": self.chunk_size,
                 "max_length": 512,
@@ -653,6 +658,7 @@ class EmotionPredictor:
         input_file: Path,
         text_column: str,
         output_name: str,
+        limit: Optional[int] = None,
     ) -> Path:
         """
         Parallel prediction using multi-GPU.
@@ -674,6 +680,8 @@ class EmotionPredictor:
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
+        if limit:
+            logger.info(f"Limit: {limit:,} rows")
 
         # Set multiprocessing start method to 'spawn' for CUDA compatibility
         try:
@@ -684,6 +692,8 @@ class EmotionPredictor:
 
         # Load input data for metadata extraction
         df_input = pl.read_parquet(input_file)
+        if limit:
+            df_input = df_input.head(limit)
         total_rows = len(df_input)
         logger.info(f"Total rows: {total_rows:,}")
 
@@ -709,12 +719,12 @@ class EmotionPredictor:
                 return output_file
 
         # Setup queues for communication
-        texts_queues: List[mp.Queue] = [mp.Queue() for _ in self.EMOTION_NAMES]
+        texts_queues: list[mp.Queue] = [mp.Queue() for _ in EMOTIONS]
         results_queue: mp.Queue = mp.Queue()
 
         # Start worker processes (one per emotion)
         processes = []
-        for i, emotion in enumerate(self.EMOTION_NAMES):
+        for i, emotion in enumerate(EMOTIONS):
             gpu_id = i % self.num_gpus  # Distribute emotions across GPUs
             p = mp.Process(
                 target=worker_process_emotion,
@@ -768,7 +778,7 @@ class EmotionPredictor:
             # Collect results from all emotions
             predictions = {}
             probabilities = {}
-            for _ in self.EMOTION_NAMES:
+            for _ in EMOTIONS:
                 emotion, received_chunk_idx, preds, probs = results_queue.get()
                 assert received_chunk_idx == chunk_idx
                 predictions[emotion] = preds
@@ -830,7 +840,7 @@ class EmotionPredictor:
 
         # Calculate emotion statistics
         emotion_counts = {}
-        for emotion in self.EMOTION_NAMES:
+        for emotion in EMOTIONS:
             count = df_result[emotion].sum()
             emotion_counts[emotion.lower()] = count
 
@@ -847,7 +857,7 @@ class EmotionPredictor:
             source=self.source_name,
             parameters={
                 "model_base": "deepset/gbert-large",
-                "emotions": list(self.EMOTION_NAMES),
+                "emotions": list(EMOTIONS),
                 "batch_size": self.batch_size,
                 "chunk_size": self.chunk_size,
                 "max_length": 512,
@@ -883,6 +893,7 @@ class EmotionPredictor:
         text_column: str = "text",
         input_file: Optional[Path] = None,
         output_name: str = "emotion_predictions",
+        limit: Optional[int] = None,
     ) -> Path:
         """
         Predict emotions from source data.
@@ -891,6 +902,7 @@ class EmotionPredictor:
             text_column: Name of text column
             input_file: Custom input file (default: textblocks.parquet or lines.parquet)
             output_name: Base name for output file
+            limit: Limit number of rows to process (for testing)
 
         Returns:
             Path to output file
@@ -925,4 +937,4 @@ class EmotionPredictor:
                     f"Run parsing first: newspaper-explorer data parse --source {self.source_name}"
                 )
 
-        return self.predict(input_file, text_column, output_name)
+        return self.predict(input_file, text_column, output_name, limit)

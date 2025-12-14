@@ -91,7 +91,7 @@ The emotion classifiers are based on research from the University of Würzburg a
 src/newspaper_explorer/
 ├── analyze/
 │   └── emotions/
-│       ├── bert_classifier.py    # Main EmotionPredictor class
+│       ├── bert.py    # Main EmotionPredictor class
 │       ├── predict_parquet.py    # Standalone script (legacy)
 │       └── predict_parquet_multi_gpu.py  # Standalone script (legacy)
 ├── cli/
@@ -146,7 +146,7 @@ Download → Parse ALTO/METS → Polars DataFrame → Preprocessing (optional)
 
 **Initialization**:
 ```python
-from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert import EmotionPredictor
 
 predictor = EmotionPredictor(
     source_name="der_tag",
@@ -487,7 +487,7 @@ newspaper-explorer analyze emotions predict --source der_tag \
 
 ```python
 from pathlib import Path
-from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert import EmotionPredictor
 
 # Initialize predictor
 predictor = EmotionPredictor(
@@ -510,7 +510,7 @@ print(f"Results saved to: {output_file}")
 
 ```python
 from pathlib import Path
-from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert import EmotionPredictor
 
 # High-performance configuration
 predictor = EmotionPredictor(
@@ -546,7 +546,7 @@ print(df[["Sadness_prob", "Love_prob", "Joy_prob", "Fear_prob", "Anger_prob", "A
 ```python
 from pathlib import Path
 import polars as pl
-from newspaper_explorer.analyze.emotions.bert_classifier import EmotionPredictor
+from newspaper_explorer.analyze.emotions.bert import EmotionPredictor
 
 # 1. Setup
 source = "der_tag"
@@ -1276,8 +1276,8 @@ print(anger_keywords.head(20))
 
 **Solutions**:
 1. Increase batch size (more work per batch)
-2. Increase DataLoader workers (edit `bert_classifier.py`: `num_workers=8`)
-3. Increase prefetch factor (edit `bert_classifier.py`: `prefetch_factor=8`)
+2. Increase DataLoader workers (edit `bert.py`: `num_workers=8`)
+3. Increase prefetch factor (edit `bert.py`: `prefetch_factor=8`)
 4. Check if data loading is bottleneck (use `htop` to monitor CPU)
 5. Use faster storage (SSD/NVMe)
 

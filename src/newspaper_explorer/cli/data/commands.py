@@ -1,21 +1,21 @@
 """Data management CLI commands.
 
 This module provides commands for downloading, loading, and processing
-historical newspaper data from various sources.
+historical newspaper data.
 """
 
 import click
 
-from .download import register_download_commands
-from .images import register_image_commands
-from .info import register_info_commands
-from .loading import register_loading_commands
-from .preprocessing import register_preprocessing_commands
-from .validation import register_validation_commands
+from newspaper_explorer.cli.data.download import download_group
+from newspaper_explorer.cli.data.images import images_group
+from newspaper_explorer.cli.data.info import info_group
+from newspaper_explorer.cli.data.loading import loading_group
+from newspaper_explorer.cli.data.preprocessing import preprocessing_group
+from newspaper_explorer.cli.data.validation import validation_group
 
 
 @click.group()
-def data():
+def data() -> None:
     """
     Manage newspaper data (download, load, preprocess).
 
@@ -31,9 +31,9 @@ def data():
 
 
 # Register all command modules
-register_info_commands(data)
-register_download_commands(data)
-register_image_commands(data)
-register_loading_commands(data)
-register_preprocessing_commands(data)
-register_validation_commands(data)
+data.add_command(info_group)
+data.add_command(download_group)
+data.add_command(images_group)
+data.add_command(loading_group)
+data.add_command(validation_group)
+data.add_command(preprocessing_group)

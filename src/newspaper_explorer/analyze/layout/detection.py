@@ -10,10 +10,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import numpy as np
+
+# isort: off
+# Must set environment BEFORE importing ultralytics
+from newspaper_explorer.config import external_tools  # noqa: F401
+
 from ultralytics import settings
 from ultralytics.models import YOLO
-
-from newspaper_explorer.config import external_tools  # noqa: F401 (sets YOLO_CONFIG_DIR)
+# isort: on
 
 # Update settings to avoid unnecessary downloads
 settings.update({"sync": False})

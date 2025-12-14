@@ -15,12 +15,11 @@ import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.parser.mets import METSParser
-from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
-from newspaper_explorer.data.utils.xml import (
+from newspaper_explorer.data.utils.files import (
     find_mets_files,
     find_xml_files,
-    get_file_extension_from_mimetype,
 )
+from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +261,7 @@ def _check_images_in_mets(
 
             # Determine extension from MIMETYPE
             mimetype = file_elem.get("MIMETYPE", "image/jpg")
-            ext = get_file_extension_from_mimetype(mimetype)
+            ext = ".jpg" if "jp" in mimetype.lower() else ".tif"
 
             # Check if image exists
             image_path = images_dir / relative_path / f"{file_id}{ext}"

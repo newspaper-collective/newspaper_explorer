@@ -5,144 +5,131 @@ Provides generic endpoints for loading, listing, and querying analysis results
 with metadata. Can be used by all analysis modules (entities, emotions, topics, etc.).
 """
 
-from typing import Any, Dict, List, Optional
+import logging
+from pathlib import Path
+from typing import Any, Optional, get_args
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
 
-from newspaper_explorer.ui.backend.utils.results import ResultsLoader
+from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.utils.results import (
+    list_analysis_runs,
+    load_analysis_metadata,
+    load_analysis_results,
+)
+from newspaper_explorer.models.api.results import (
+    AnalysisAvailability,
+    AnalysisRunInfo,
+    AvailableAnalysis,
+)
+from newspaper_explorer.models.data.metadata import AnalysisType
 
-
-# Response models
-class AnalysisRunInfo(BaseModel):
-    """Information about a single analysis run"""
-
-    run_id: str
-    display_name: str
-    source: str
-    analysis_type: str
-    created_at: Optional[str]
-    duration_seconds: Optional[float]
-    row_count: int
-    parameters: Dict[str, Any]
-
-
-class AnalysisMetadata(BaseModel):
-    """Complete metadata for an analysis run"""
-
-    source: str
-    analysis_type: str
-    run_id: str
-    display_name: str
-    row_count: int
-    created_at: Optional[str]
-    duration_seconds: Optional[float]
-    parameters: Dict[str, Any]
-    metadata: Dict[str, Any]  # Full metadata object
-
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/{source}/{analysis_type}/runs", response_model=List[AnalysisRunInfo])
-async def list_runs(source: str, analysis_type: str):
+@router.get("/{source}/{analysis_type}/runs", response_model=list[AnalysisRunInfo])
+async def list_runs(source: str, analysis_type: AnalysisType) -> list[AnalysisRunInfo]:
     """
     List all available runs for a source and analysis type.
 
-    Returns runs sorted by creation date (newest first).
+    Returns runs sorted chronologically (oldest first).
     """
     try:
-        loader = ResultsLoader()
-        runs = loader.list_runs(source, analysis_type)
+        run_ids = list_analysis_runs(source, analysis_type)
 
-        if not runs:
+        if not run_ids:
             return []
 
-        # Load full metadata for each run
-        run_infos = []
-        for run_id, display_name in runs:
-            result = loader.load_result(source, analysis_type, run_id)
-            if result:
+        # Load metadata for each run
+        run_infos: list[AnalysisRunInfo] = []
+        for run_id in run_ids:
+            try:
+                metadata = load_analysis_metadata(source, analysis_type, run_id)
+                df = load_analysis_results(source, analysis_type, run_id)
+
                 run_infos.append(
                     AnalysisRunInfo(
                         run_id=run_id,
-                        display_name=display_name,
                         source=source,
                         analysis_type=analysis_type,
-                        created_at=result.metadata.get("created_at"),
-                        duration_seconds=result.duration_seconds,
-                        row_count=result.row_count,
-                        parameters=result.parameters,
+                        method_type=metadata.method_type,
+                        model_name=metadata.model_name,
+                        created_at=metadata.created_at,
+                        row_count=len(df),
+                        parameters=metadata.parameters,
                     )
                 )
+            except (FileNotFoundError, ValueError, KeyError) as e:
+                logger.warning(f"Error loading run {run_id}: {e}")
+                continue
 
         return run_infos
+    except FileNotFoundError:
+        return []  # No runs found
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{source}/{analysis_type}/metadata", response_model=AnalysisMetadata)
-async def get_metadata(source: str, analysis_type: str, run_id: Optional[str] = Query(None)):
+@router.get("/{source}/{analysis_type}/metadata")
+async def get_metadata(
+    source: str, analysis_type: AnalysisType, run_id: Optional[str] = Query(None)
+) -> dict[str, Any]:
     """
     Get metadata for a specific run or the most recent run.
 
     If run_id is not provided, returns metadata for the most recent run.
     """
     try:
-        loader = ResultsLoader()
-        result = loader.load_result(source, analysis_type, run_id)
-
-        if not result:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No {analysis_type} results found for {source}",
-            )
-
-        return AnalysisMetadata(**result.to_dict())
-    except HTTPException:
-        raise
+        metadata = load_analysis_metadata(source, analysis_type, run_id)
+        return metadata.model_dump()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{source}/{analysis_type}/availability")
-async def check_availability(source: str, analysis_type: str):
+@router.get("/{source}/{analysis_type}/availability", response_model=AnalysisAvailability)
+async def check_availability(source: str, analysis_type: AnalysisType) -> AnalysisAvailability:
     """Check if any results exist for the given source and analysis type"""
     try:
-        loader = ResultsLoader()
-        available = loader.check_availability(source, analysis_type)
-        runs = loader.list_runs(source, analysis_type)
+        runs = list_analysis_runs(source, analysis_type)
 
-        return {
-            "available": available,
-            "run_count": len(runs),
-            "latest_run": runs[0][0] if runs else None,
-        }
+        return AnalysisAvailability(
+            available=len(runs) > 0,
+            run_count=len(runs),
+            latest_run=runs[-1] if runs else None,
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{source}/available-analyses")
-async def get_available_analyses(source: str):
+@router.get("/{source}/available-analyses", response_model=list[AvailableAnalysis])
+async def get_available_analyses(source: str) -> list[AvailableAnalysis]:
     """Get list of all available analysis types for a source"""
     try:
-        loader = ResultsLoader()
-        analysis_types = loader.list_analysis_types(source)
+        config = get_config()
+        results_dir = Path(config.results_dir) / source
 
-        # Get run count for each analysis type
-        results = []
+        if not results_dir.exists():
+            return []
+
+        # Check each known analysis type
+        analysis_types = get_args(AnalysisType)
+
+        results: list[AvailableAnalysis] = []
         for analysis_type in analysis_types:
-            runs = loader.list_runs(source, analysis_type)
-            if runs:  # Only include types with actual runs
+            runs = list_analysis_runs(source, analysis_type)
+            if runs:
                 results.append(
-                    {
-                        "analysis_type": analysis_type,
-                        "run_count": len(runs),
-                        "latest_run": runs[0][0],
-                        "latest_display_name": runs[0][1],
-                    }
+                    AvailableAnalysis(
+                        analysis_type=analysis_type,
+                        run_count=len(runs),
+                        latest_run=runs[-1],
+                    )
                 )
 
         return results
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

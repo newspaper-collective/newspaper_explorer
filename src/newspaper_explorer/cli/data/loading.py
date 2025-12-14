@@ -1,289 +1,271 @@
-"""Loading commands for the data CLI."""
+"""CLI commands for data loading and aggregation."""
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 import click
-from natsort import natsorted
 
+from newspaper_explorer.cli.utils import errors, output
+from newspaper_explorer.cli.utils.options import (
+    force_option,
+    input_file_option,
+    limit_option,
+    output_path_option,
+    resume_option,
+    source_option,
+)
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.ingest.loader import DataIngester
+from newspaper_explorer.data.processing.aggregation import load_and_aggregate_textblocks
+from newspaper_explorer.data.processing.validation import find_empty_xml_files
+from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
+
+# Display limit for empty file lists
+MAX_EMPTY_FILES_TO_DISPLAY = 10
 
 
-def register_loading_commands(data_group):
-    """Register all loading-related commands to the data group."""
+@click.group(name="loading")
+def loading_group() -> None:
+    """Data loading and aggregation commands."""
+    pass
 
-    @data_group.command()
-    @click.option(
-        "--source",
-        "-s",
-        type=str,
-        required=True,
-        help="Source name (e.g., der_tag)",
-    )
-    @click.option(
-        "--resume/--no-resume",
-        default=True,
-        help="Skip already processed files (default: True)",
-    )
-    @click.option(
-        "--limit",
-        type=int,
-        help="Process only N files (for testing)",
-    )
-    def parse(source, resume, limit):
-        """
-        Parse XML files to Parquet format.
 
-        Reads ALTO XML files and extracts line-level text data with coordinates
-        and metadata from METS files. Output is saved to a compressed Parquet file
-        in data/raw/{source}/text/{source}_lines.parquet.
+@loading_group.command(name="parse")
+@source_option()
+@resume_option()
+@limit_option()
+def parse_cmd(source: str, *, resume: bool, limit: Optional[int]) -> None:
+    """
+    Parse XML files to Parquet format.
 
-        By default, resumes from where it left off by skipping already processed
-        files. Use --no-resume to force reprocessing all files.
+    Reads ALTO XML files and extracts line-level text data with coordinates
+    and metadata from METS files. Output is saved to a compressed Parquet file
+    in data/raw/{source}/text/{source}_lines.parquet.
 
-        \b
-        Examples:
-          newspaper-explorer data parse --source der_tag
-          newspaper-explorer data parse --source der_tag --no-resume
-          newspaper-explorer data parse --source der_tag --limit 100
-        """
-        from newspaper_explorer.data.ingest.loader import DataIngester
+    By default, resumes from where it left off by skipping already processed
+    files. Use --no-resume to force reprocessing all files.
 
-        # Setup logging with simple format
-        config = get_config()
-        logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
+    \b
+    Examples:
+      newspaper-explorer data loading parse --source der_tag
+      newspaper-explorer data loading parse --source der_tag --no-resume
+      newspaper-explorer data loading parse --source der_tag --limit 100
+    """
+    # Setup logging
+    config = get_config()
+    logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
-        try:
-            click.echo(f"\nParsing source: {source}")
-            ingester = DataIngester(source_name=source)
+    try:
+        output.header(f"PARSE XML: {source.upper()}")
 
-            # Load the source with optional limit
-            df = ingester.load_source(skip_processed=resume, max_files=limit)
+        # Show configuration
+        output.section("CONFIGURATION")
+        output.key_value("Resume mode", "Enabled" if resume else "Disabled")
+        if limit:
+            output.key_value("File limit", f"{limit:,}")
 
-            if df is None or len(df) == 0:
-                click.echo("\nNo data loaded. Check if files exist and are valid.")
-                raise click.Abort()
+        output.section("PARSING")
+        ingester = DataIngester(source_name=source)
 
-            # Show statistics
-            click.echo("\n" + "=" * 60)
-            click.echo("PARSING COMPLETE")
-            click.echo("=" * 60)
-            click.echo(f"Total rows: {len(df):,}")
+        # Load the source with optional limit
+        df = ingester.load_source(skip_processed=resume, max_files=limit)
 
-            # Construct output path from source config
-            from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
+        if len(df) == 0:
+            output.error("No data loaded. Check if files exist and are valid.")
+            return
 
-            config = load_source_config(source)
-            paths = get_source_paths(config)
-            source_name = config.dataset_name
-            output_path = paths["text_dir"] / f"{source_name}_lines.parquet"
-            click.echo(f"Output: {output_path}")
+        # Construct output path from source config
+        source_config = load_source_config(source)
+        paths = get_source_paths(source_config)
+        source_name = source_config.dataset_name
+        output_path = paths["text_dir"] / f"{source_name}_lines.parquet"
+
+        # Calculate file size
+        file_size_mb = output_path.stat().st_size / (1024 * 1024) if output_path.exists() else 0
+
+        output.section("RESULTS")
+        output.key_value("Total rows", f"{len(df):,}")
+        output.key_value("Columns", len(df.columns))
+        output.key_value("File size", f"{file_size_mb:.1f} MB")
+        output.key_value("Output file", str(output_path))
+
+        # Show sample
+        output.section("SAMPLE DATA")
+        click.echo(df.head(3))
+
+        click.echo()
+        output.success("Parsing completed successfully!")
+
+    except FileNotFoundError as e:
+        errors.handle_error(
+            e,
+            tip=f"Run 'newspaper-explorer data download --source {source}' first",
+            show_traceback=False,
+        )
+    except (ValueError, RuntimeError) as e:
+        errors.handle_error(e, show_traceback=True)
+
+
+@loading_group.command(name="aggregate")
+@source_option()
+@input_file_option(
+    help_text="Input parquet file (default: data/raw/{source}/text/{source}_lines.parquet)"
+)
+@output_path_option(
+    help_text="Output parquet file (default: data/processed/{source}/text/textblocks.parquet)"
+)
+@force_option()
+def aggregate_cmd(
+    source: str, input_file: Optional[str], output_file: Optional[str], *, force: bool
+) -> None:
+    """
+    Aggregate line-level data into text blocks.
+
+    Combines individual text lines from ALTO XML into logical text blocks
+    based on text_block_id. Each block represents a coherent text region
+    (paragraph, column, etc.) with concatenated text and bounding box.
+
+    Output is automatically saved to data/processed/{source}/text/textblocks.parquet
+    unless a custom output path is specified.
+
+    \b
+    Examples:
+      newspaper-explorer data loading aggregate --source der_tag
+      newspaper-explorer data loading aggregate --source der_tag --force
+    """
+    try:
+        # Load config
+        source_config = load_source_config(source)
+        source_name = source_config.dataset_name
+
+        # Get paths
+        paths = get_source_paths(source_config)
+
+        # Determine input path
+        input_path = (
+            Path(input_file) if input_file else paths["text_dir"] / f"{source_name}_lines.parquet"
+        )
+
+        # Determine output path
+        output_path = (
+            Path(output_file)
+            if output_file
+            else Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
+        )
+
+        # Check input exists
+        errors.require_file(
+            input_path,
+            error_message=f"Input file not found: {input_path}",
+            tip=f"Run 'newspaper-explorer data loading parse --source {source}' first",
+        )
+
+        # Check output - use confirm_overwrite utility
+        if not errors.confirm_overwrite(output_path, force=force):
+            output.info("Skipping (file exists, use --force to overwrite)")
+            return
+
+        output.header(f"AGGREGATE TEXT BLOCKS: {source_name.upper()}")
+
+        # Show configuration
+        output.section("CONFIGURATION")
+        output.key_value("Input file", str(input_path))
+        output.key_value("Output file", str(output_path))
+
+        # Aggregate
+        output.section("PROCESSING")
+        output.info("Aggregating text blocks...")
+        df = load_and_aggregate_textblocks(str(input_path))
+
+        if len(df) == 0:
+            output.error("No data after aggregation")
+            return
+
+        # Save output
+        output.info("Saving aggregated data...")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.write_parquet(output_path, compression="zstd")
+
+        # Calculate file size
+        file_size_mb = output_path.stat().st_size / (1024 * 1024)
+
+        output.section("RESULTS")
+        output.key_value("Text blocks", f"{len(df):,}")
+        output.key_value("Columns", len(df.columns))
+        output.key_value("File size", f"{file_size_mb:.1f} MB")
+        output.key_value("Output", str(output_path))
+
+        # Show sample
+        output.section("SAMPLE DATA")
+        click.echo(df.select(["text_block_id", "text", "year", "month", "day"]).head(3))
+
+        click.echo()
+        output.success("Aggregation completed successfully!")
+
+    except FileNotFoundError as e:
+        errors.handle_error(e, show_traceback=False)
+    except (ValueError, RuntimeError) as e:
+        errors.handle_error(e, show_traceback=True)
+
+
+@loading_group.command(name="find-empty")
+@source_option()
+@click.option(
+    "--show",
+    type=int,
+    default=MAX_EMPTY_FILES_TO_DISPLAY,
+    help=f"Number of empty files to display (default: {MAX_EMPTY_FILES_TO_DISPLAY})",
+)
+def find_empty_cmd(source: str, show: int) -> None:
+    """
+    Find XML files without OCR text content.
+
+    Identifies XML files that were skipped during loading due to
+    having no extractable text. Uses the processed parquet file
+    to determine which files have text content.
+
+    \b
+    Examples:
+      newspaper-explorer data loading find-empty --source der_tag
+      newspaper-explorer data loading find-empty --source der_tag --show 20
+    """
+    try:
+        output.header(f"FIND EMPTY FILES: {source.upper()}")
+
+        # Use validation utility
+        output.section("SCANNING")
+        output.info("Analyzing XML files...")
+        result = find_empty_xml_files(source)
+
+        # Display results
+        output.section("RESULTS")
+        output.key_value("Total XML files", f"{result['total_xml_files']:,}")
+        output.key_value("Processed files", f"{result['processed_files']:,}")
+        output.key_value("Empty files", f"{result['empty_files']:,}")
+
+        if result["empty_files"] > 0:
+            empty_pct = (result["empty_files"] / result["total_xml_files"]) * 100
+            output.key_value("Empty rate", f"{empty_pct:.2f}%")
 
             # Show sample
-            click.echo("\nSample data:")
-            click.echo(df.head(3))
+            empty_list = result["empty_file_list"]
+            output.section(
+                f"EMPTY FILES (showing {min(show, len(empty_list))} of {len(empty_list)})"
+            )
 
-            click.echo("\n" + "=" * 60)
+            for i, path in enumerate(empty_list[:show], 1):
+                output.info(f"{i}. {path}", muted=True)
 
-        except FileNotFoundError as e:
-            click.echo(f"\nError: {e}", err=True)
-            click.echo(f"\nTip: Run 'newspaper-explorer data download --source {source}' first")
-            raise click.Abort()
-        except Exception as e:
-            click.echo(f"\nError during parsing: {e}", err=True)
-            import traceback
+            if len(empty_list) > show:
+                remaining = len(empty_list) - show
+                output.info(f"... and {remaining:,} more", muted=True)
 
-            traceback.print_exc()
-            raise click.Abort()
+            click.echo()
+            output.warning("Some files have no extractable text content")
+        else:
+            click.echo()
+            output.success("No empty files found!")
 
-    @data_group.command()
-    @click.option(
-        "--source",
-        "-s",
-        type=str,
-        required=True,
-        help="Source name (e.g., der_tag)",
-    )
-    @click.option(
-        "--input",
-        "-i",
-        type=click.Path(exists=True),
-        help="Input parquet file (default: data/raw/{source}/text/{source}_lines.parquet)",
-    )
-    @click.option(
-        "--output",
-        "-o",
-        type=click.Path(),
-        help="Output parquet file (default: data/processed/{source}/text/textblocks.parquet)",
-    )
-    @click.option(
-        "--force/--no-force",
-        default=False,
-        help="Overwrite existing output file",
-    )
-    def aggregate(source, input, output, force):
-        """
-        Aggregate line-level data into text blocks.
-
-        Combines individual text lines from ALTO XML into logical text blocks
-        based on text_block_id. Each block represents a coherent text region
-        (paragraph, column, etc.) with concatenated text and bounding box.
-
-        Output is automatically saved to data/processed/{source}/text/textblocks.parquet
-        unless a custom output path is specified.
-
-        \b
-        Examples:
-          newspaper-explorer data aggregate --source der_tag
-          newspaper-explorer data aggregate --source der_tag --force
-        """
-        import polars as pl
-
-        from newspaper_explorer.data.processing.aggregation import load_and_aggregate_textblocks
-        from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
-
-        try:
-            # Load config
-            config = load_source_config(source)
-            source_name = config.dataset_name
-
-            # Get paths
-            paths = get_source_paths(config)
-
-            # Determine input path
-            if input:
-                input_path = Path(input)
-            else:
-                input_path = paths["text_dir"] / f"{source_name}_lines.parquet"
-
-            # Determine output path
-            if output:
-                output_path = Path(output)
-            else:
-                output_path = (
-                    Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
-                )
-
-            # Check input exists
-            if not input_path.exists():
-                click.echo(f"Error: Input file not found: {input_path}", err=True)
-                click.echo(f"\nTip: Run 'newspaper-explorer data parse --source {source}' first")
-                raise click.Abort()
-
-            # Check output
-            if output_path.exists() and not force:
-                click.echo(f"Output file already exists: {output_path}")
-                click.echo("Use --force to overwrite")
-                raise click.Abort()
-
-            click.echo(f"\nAggregating text blocks for: {source_name}")
-            click.echo(f"Input:  {input_path}")
-            click.echo(f"Output: {output_path}")
-
-            # Aggregate
-            df = load_and_aggregate_textblocks(str(input_path))
-
-            if df is None or len(df) == 0:
-                click.echo("\nError: No data after aggregation", err=True)
-                raise click.Abort()
-
-            # Save output
-            click.echo(f"\nSaving aggregated data...")
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            df.write_parquet(output_path, compression="zstd")
-
-            # Show statistics
-            click.echo("\n" + "=" * 60)
-            click.echo("AGGREGATION COMPLETE")
-            click.echo("=" * 60)
-            click.echo(f"Text blocks: {len(df):,}")
-            click.echo(f"Output: {output_path}")
-
-            # File size
-            file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            click.echo(f"File size: {file_size_mb:.1f} MB")
-
-            # Show sample
-            click.echo("\nSample data:")
-            click.echo(df.select(["text_block_id", "text", "year", "month", "day"]).head(3))
-
-            click.echo("\n" + "=" * 60)
-
-        except click.Abort:
-            # Clean exit from expected conditions (file exists, etc.)
-            raise
-        except FileNotFoundError as e:
-            click.echo(f"\nError: {e}", err=True)
-            raise click.Abort()
-        except Exception as e:
-            click.echo(f"\nError during aggregation: {e}", err=True)
-            import traceback
-
-            traceback.print_exc()
-            raise click.Abort()
-
-    @data_group.command("find-empty")
-    @click.option(
-        "--source",
-        "-s",
-        type=str,
-        required=True,
-        help="Source name (e.g., der_tag)",
-    )
-    @click.option(
-        "--show",
-        type=int,
-        default=10,
-        help="Number of empty files to display (default: 10)",
-    )
-    def find_empty(source, show):
-        """
-        Find XML files without OCR text content.
-
-        Identifies XML files that were skipped during loading due to
-        having no extractable text. Uses the processed parquet file
-        to determine which files have text content.
-
-        \b
-        Examples:
-          newspaper-explorer data find-empty --source der_tag
-          newspaper-explorer data find-empty --source der_tag --show 20
-        """
-        from newspaper_explorer.data.processing.validation import find_empty_xml_files
-
-        try:
-            # Use validation utility
-            result = find_empty_xml_files(source)
-
-            # Display results
-            click.echo("\n" + "=" * 60)
-            click.echo("EMPTY FILE SCAN RESULTS")
-            click.echo("=" * 60)
-            click.echo(f"Total XML files: {result['total_xml_files']:,}")
-            click.echo(f"Processed files: {result['processed_files']:,}")
-            click.echo(f"Empty files: {result['empty_files']:,}")
-
-            if result["empty_files"] > 0:
-                empty_pct = (result["empty_files"] / result["total_xml_files"]) * 100
-                click.echo(f"Empty rate: {empty_pct:.2f}%")
-
-                # Show sample
-                empty_list = result["empty_file_list"]
-                click.echo(f"\nShowing first {min(show, len(empty_list))} empty files:")
-                for path in empty_list[:show]:
-                    click.echo(f"  {path}")
-
-                if len(empty_list) > show:
-                    remaining = len(empty_list) - show
-                    click.echo(f"  ... and {remaining:,} more")
-            else:
-                click.echo("\n[OK] No empty files found!")
-
-            click.echo("\n" + "=" * 60)
-
-        except Exception as e:
-            click.echo(f"\nError: {e}", err=True)
-            import traceback
-
-            traceback.print_exc()
-            raise click.Abort()
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        errors.handle_error(e, show_traceback=True)

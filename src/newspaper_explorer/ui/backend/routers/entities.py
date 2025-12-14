@@ -2,21 +2,18 @@
 Entity extraction endpoints
 """
 
-from datetime import date
-from pathlib import Path
-from typing import List, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-import polars as pl
 
-from newspaper_explorer.config.base import get_config
+from newspaper_explorer.analyze.entities import queries as entity_queries
+from newspaper_explorer.data.utils.results import load_analysis_results
 from newspaper_explorer.models.analysis.entities import AggregatedEntityRecord, EntityRecord
-from newspaper_explorer.ui.backend.utils.results import ResultsLoader
 
 router = APIRouter()
 
 
-@router.get("/{source_name}/", response_model=List[AggregatedEntityRecord])
+@router.get("/{source_name}/", response_model=list[AggregatedEntityRecord])
 async def get_entities(
     source_name: str,
     entity_type: Optional[str] = None,
@@ -25,77 +22,30 @@ async def get_entities(
 ):
     """Get list of aggregated entities with optional filtering"""
     try:
-        loader = ResultsLoader()
-        result = loader.load_result(source_name, "entities", run_id)
-
-        if not result:
-            raise HTTPException(status_code=404, detail="No entity data available")
-
-        df = result.df
-
-        # Apply filters
-        if entity_type:
-            df = df.filter(df["entity_type"] == entity_type)
-
-        # Aggregate by entity text and type
-        entities_df = (
-            df.group_by(["entity_text", "entity_type"])
-            .agg(
-                [
-                    pl.count().alias("detection_count"),
-                    pl.col("confidence").mean().alias("avg_confidence"),
-                    pl.col("confidence").min().alias("min_confidence"),
-                    pl.col("confidence").max().alias("max_confidence"),
-                    pl.col("text_block_id").unique().alias("text_block_ids"),
-                ]
-            )
-            .sort("detection_count", descending=True)
-        )
-
-        # Apply limit only if specified
-        if limit is not None:
-            entities_df = entities_df.head(limit)
+        df = load_analysis_results(source_name, "entities", run_id)
+        aggregated_df = entity_queries.aggregate_entities(df, entity_type, limit)
 
         # Convert to response model
-        entities = []
-        for row in entities_df.iter_rows(named=True):
-            entities.append(
-                AggregatedEntityRecord(
-                    entity_text=row["entity_text"],
-                    entity_type=row["entity_type"],
-                    detection_count=row["detection_count"],
-                    avg_confidence=row["avg_confidence"],
-                    min_confidence=row["min_confidence"],
-                    max_confidence=row["max_confidence"],
-                    text_block_ids=row["text_block_ids"],
-                )
-            )
-
-        return entities
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="No entity data available")
+        return [AggregatedEntityRecord(**row) for row in aggregated_df.to_dicts()]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{source_name}/types", response_model=List[str])
+@router.get("/{source_name}/types", response_model=list[str])
 async def get_entity_types(source_name: str, run_id: Optional[str] = Query(None)):
     """Get list of unique entity types"""
     try:
-        loader = ResultsLoader()
-        result = loader.load_result(source_name, "entities", run_id)
-
-        if not result:
-            return []
-
-        df = result.df
-        types = df["entity_type"].unique().to_list()
-        return sorted(types)
+        df = load_analysis_results(source_name, "entities", run_id)
+        return entity_queries.get_entity_types(df)
+    except FileNotFoundError:
+        return []
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{source_name}/occurrences", response_model=List[EntityRecord])
+@router.get("/{source_name}/occurrences", response_model=list[EntityRecord])
 async def get_entity_occurrences(
     source_name: str,
     entity_text: str,
@@ -105,27 +55,14 @@ async def get_entity_occurrences(
 ):
     """Get individual occurrences of a specific entity"""
     try:
-        loader = ResultsLoader()
-        result = loader.load_result(source_name, "entities", run_id)
+        df = load_analysis_results(source_name, "entities", run_id)
+        occurrences_df = entity_queries.get_entity_occurrences(df, entity_text, entity_type, limit)
 
-        if not result:
-            raise HTTPException(status_code=404, detail="No entity data available")
-
-        df = result.df
-
-        # Filter by entity text
-        df = df.filter(df["entity_text"] == entity_text)
-        if entity_type:
-            df = df.filter(df["entity_type"] == entity_type)
-
-        # Apply limit only if specified
-        if limit is not None:
-            df = df.head(limit)
-
-        # Convert to response model using existing schema
-        return [EntityRecord(**row) for row in df.to_dicts()]
+        return [EntityRecord(**row) for row in occurrences_df.to_dicts()]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{source_name}/timeline")
@@ -134,90 +71,12 @@ async def get_entity_timeline(
     entity_type: Optional[str] = None,
     run_id: Optional[str] = Query(None),
     aggregation: str = Query(default="month", regex="^(day|month|year)$"),
-):
+) -> dict[str, list[dict[str, Any]]]:
     """Get entity counts over time, aggregated by day/month/year"""
     try:
-        loader = ResultsLoader()
-        result = loader.load_result(source_name, "entities", run_id)
-
-        if not result:
-            raise HTTPException(status_code=404, detail="No entity data available")
-
-        df = result.df
-
-        # Extract date from text_block_id (format: source_YYYY-MM-DD_issue_daily_page_block)
-        # text_block_id example: "der_tag_1902-09-05_415_2_005_r_1_1"
-        if "text_block_id" not in df.columns:
-            return {}
-
-        # Parse date from text_block_id structure
-        df = df.with_columns(
-            [
-                pl.col("text_block_id")
-                .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 1)
-                .cast(pl.Int32)
-                .alias("year"),
-                pl.col("text_block_id")
-                .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 2)
-                .cast(pl.Int32)
-                .alias("month"),
-                pl.col("text_block_id")
-                .str.extract(r"_(\d{4})-(\d{2})-(\d{2})_", 3)
-                .cast(pl.Int32)
-                .alias("day"),
-            ]
-        )
-
-        # Drop rows where date extraction failed
-        df = df.filter(pl.col("year").is_not_null())
-
-        # Filter by entity type if specified
-        if entity_type:
-            df = df.filter(df["entity_type"] == entity_type)
-
-        # Create date column based on aggregation
-        if aggregation == "year":
-            df = df.with_columns(pl.col("year").cast(pl.Utf8).alias("date"))
-        elif aggregation == "month":
-            df = df.with_columns(
-                (
-                    pl.col("year").cast(pl.Utf8) + "-" + pl.col("month").cast(pl.Utf8).str.zfill(2)
-                ).alias("date")
-            )
-        else:  # day
-            if "day" in df.columns:
-                df = df.with_columns(
-                    (
-                        pl.col("year").cast(pl.Utf8)
-                        + "-"
-                        + pl.col("month").cast(pl.Utf8).str.zfill(2)
-                        + "-"
-                        + pl.col("day").cast(pl.Utf8).str.zfill(2)
-                    ).alias("date")
-                )
-            else:
-                # Fall back to month if day not available
-                df = df.with_columns(
-                    (
-                        pl.col("year").cast(pl.Utf8)
-                        + "-"
-                        + pl.col("month").cast(pl.Utf8).str.zfill(2)
-                    ).alias("date")
-                )
-
-        # Group by date and entity type
-        timeline_df = (
-            df.group_by(["date", "entity_type"]).agg(pl.count().alias("count")).sort("date")
-        )
-
-        # Convert to dictionary format for frontend
-        result_data = {}
-        for row in timeline_df.iter_rows(named=True):
-            entity_type = row["entity_type"]
-            if entity_type not in result_data:
-                result_data[entity_type] = []
-            result_data[entity_type].append({"date": row["date"], "value": row["count"]})
-
-        return result_data
+        df = load_analysis_results(source_name, "entities", run_id)
+        return entity_queries.get_timeline(df, entity_type, aggregation)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

@@ -5,16 +5,16 @@ Organizes all analysis commands (layout, entities, keywords, topics, emotions, e
 
 import click
 
-from newspaper_explorer.cli.analyze.layout.commands import layout_group
+from newspaper_explorer.cli.analyze.captions.commands import captions_group
+from newspaper_explorer.cli.analyze.emotions.commands import emotions_group
 from newspaper_explorer.cli.analyze.entities.commands import entities_group
 from newspaper_explorer.cli.analyze.keywords.commands import keywords_group
+from newspaper_explorer.cli.analyze.layout.commands import layout_group
 from newspaper_explorer.cli.analyze.topics.commands import topics_group
-from newspaper_explorer.cli.analyze.emotions.commands import emotions_group
-from newspaper_explorer.cli.analyze.captions.commands import captions_group
 
 
 @click.group()
-def analyze():
+def analyze() -> None:
     """Run analysis on newspaper data (entities, keywords, topics, layout, etc.)."""
     pass
 

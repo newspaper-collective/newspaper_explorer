@@ -8,9 +8,12 @@ enabling reproducibility and provenance tracking.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Type definitions for analysis types
+AnalysisType = Literal["entities", "keywords", "topics", "emotions", "layout", "concepts"]
 
 # Constants for ID generation
 _MAX_STEPS_IN_ID = 3  # Maximum number of steps to include in preprocessing ID
@@ -28,8 +31,8 @@ class AnalysisMetadata(BaseModel):
     """
 
     # Required core fields
-    analysis_type: str = Field(
-        ..., description="Type of analysis (entities, topics, emotions, keywords, layout)"
+    analysis_type: AnalysisType = Field(
+        ..., description="Type of analysis (entities, topics, emotions, keywords, layout, concepts)"
     )
     method_type: str = Field(
         ..., description="Method category (gliner, llm, transformer, yolo, keybert)"
@@ -256,7 +259,7 @@ class PreprocessingMetadata(BaseModel):
         if self.previous_preprocessing:
             prev_steps = self.previous_preprocessing.get("steps", [])
             if isinstance(prev_steps, list):
-                all_steps.extend(prev_steps) # type: ignore
+                all_steps.extend(prev_steps)  # type: ignore
         all_steps.extend(self.steps)
         return all_steps
 

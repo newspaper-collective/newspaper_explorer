@@ -73,28 +73,3 @@ def find_mets_files(xml_dir: Path) -> list[Path]:
     return mets_files
 
 
-def get_file_extension_from_mimetype(mimetype: str) -> str:
-    """
-    Determine file extension from METS MIMETYPE attribute.
-
-    Used when extracting image references from METS XML to determine
-    the correct file extension for downloaded images.
-
-    Args:
-        mimetype: MIME type string (e.g., "image/jpeg", "image/tiff")
-
-    Returns:
-        File extension including dot (e.g., ".jpg", ".tif")
-
-    Example:
-        >>> get_file_extension_from_mimetype("image/jpeg")
-        '.jpg'
-        >>> get_file_extension_from_mimetype("image/tiff")
-        '.tif'
-    """
-    # JPEG variants
-    if "jpg" in mimetype or "jpeg" in mimetype:
-        return ".jpg"
-
-    # TIFF variants (default)
-    return ".tif"

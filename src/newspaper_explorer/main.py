@@ -15,6 +15,12 @@ Usage:
     newspaper-explorer analyze --help
 """
 
+# isort: off
+# Configure external tool cache directories BEFORE any imports
+# This must be first to ensure ultralytics, transformers, etc. use correct paths
+from newspaper_explorer.config import external_tools  # noqa: F401 # type: ignore
+# isort: on
+
 import click
 
 from newspaper_explorer.cli.analyze.commands import analyze

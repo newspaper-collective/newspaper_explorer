@@ -28,9 +28,14 @@ os.environ.setdefault("HF_HOME", str(_cache_dir / "huggingface"))
 # Sentence Transformers (KeyBERT, BERTopic, FASTopic)
 os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", str(_cache_dir / "sentence_transformers"))
 
-# YOLO / Ultralytics
+# YOLO / Ultralytics (uses YOLO_CONFIG_DIR, not ULTRALYTICS_CONFIG_DIR)
 os.environ.setdefault("YOLO_CONFIG_DIR", str(_cache_dir / "ultralytics"))
 os.environ.setdefault("ULTRALYTICS_AUTOINSTALL", "False")
+
+# Suppress noisy warnings
+import warnings
+
+warnings.filterwarnings("ignore", message=".*Error decoding JSON.*persistent_cache.json.*")
 
 # Suppress noisy HuggingFace Hub warnings
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")

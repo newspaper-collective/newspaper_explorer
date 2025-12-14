@@ -5,22 +5,24 @@ Provides commands for extracting named entities using GLiNER or LLM methods.
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
+
 import click
 
+from newspaper_explorer.analyze.entities.gliner import GLINER_MODELS, GLiNEREntityExtractor
 from newspaper_explorer.config.base import get_config
 
 
 @click.group(name="entities")
-def entities_group():
+def entities_group() -> None:
     """Extract named entities from newspaper text."""
     pass
 
 
 @entities_group.command(name="list-models")
-def list_models():
+def list_models() -> None:
     """List available GLiNER models."""
-    from newspaper_explorer.analyze.entities.gliner import GLINER_MODELS
 
     click.echo("\nAvailable GLiNER Models:")
     click.echo("=" * 80)
@@ -114,8 +116,6 @@ def gliner(
     num_gpus,
 ):
     """Extract named entities using GLiNER model (fast, local, offline)."""
-    from newspaper_explorer.analyze.entities.gliner import GLiNEREntityExtractor
-    from pathlib import Path
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
@@ -262,9 +262,10 @@ def gliner2(
     limit,
 ):
     """Extract named entities using GLiNER2 (optimized CPU inference, 205M params)."""
-    from newspaper_explorer.analyze.entities.gliner2 import GLiNER2EntityExtractor
-    from pathlib import Path
     import json as json_module
+    from pathlib import Path
+
+    from newspaper_explorer.analyze.entities.gliner2 import GLiNER2EntityExtractor
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
@@ -418,8 +419,9 @@ def llm(
     limit,
 ):
     """Extract named entities using LLM (high quality, requires API)."""
-    from newspaper_explorer.analyze.entities.llm import LLMEntityExtractor
     from pathlib import Path
+
+    from newspaper_explorer.analyze.entities.llm import LLMEntityExtractor
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)

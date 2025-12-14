@@ -12,13 +12,13 @@
    - Reads from `data/sources/{source}.json` for URLs, checksums, metadata
    - Organizes archives into `data/raw/{source}/{data_type}/YYYY/` structure
    - Automatic error correction via `DataFixer` for known data issues
-   
+
 2. **ImageDownloader** (`data/download/images.py`) - Page image download from METS
    - Downloads high-resolution newspaper page images from METS XML references
    - Stores in `data/raw/{source}/images/` mirroring XML directory structure
    - Parallel download with progress tracking and resume support
    - Provides download status via `get_download_status()` method
-   
+
 3. **DataIngester** (`data/ingest/`) - Configuration-driven XML parsing (modular)
    - `loader.py`: Main DataIngester class, initialized with `source_name`
    - `workers.py`: Parallel processing workers for ALTO/METS parsing
@@ -71,12 +71,33 @@
 - Import style: `from newspaper_explorer.data.loading.loader import DataLoader`
 - Never: `from newspaper_explorer.data import DataLoader`
 
+### Central Model Storage
+
+**ML Models** (YOLO, BERT, embeddings): Store in `models/` at project root
+- Layout detection: `models/layout/` (YOLO models)
+- Emotion classification: `models/emotions/` (BERT models)
+- Sentence transformers: `models/sentence_transformers/` (cached embedding models)
+- Example: `models/yolo11m_doc_layout.pt`
+- **NEVER** store ML model files in `src/` or package directories
+
+**Type Models** (Pydantic schemas): Store in `src/newspaper_explorer/models/`
+- Data schemas: `src/newspaper_explorer/models/data/` (e.g., `schema.py`)
+- Analysis schemas: `src/newspaper_explorer/models/analysis/` (e.g., entity, topic schemas)
+- LLM schemas: `src/newspaper_explorer/models/llm/` (LLM response models)
+- API schemas: `src/newspaper_explorer/models/api/` (API request/response models)
+- Import: `from newspaper_explorer.models.data.schema import LineData`
+
 ### Module Structure
 ```
 src/newspaper_explorer/
 ├── config/                 # Configuration management
 │   ├── environment.py     # Environment variable loading
 │   └── base.py           # Main Config class
+├── models/                # Type definitions (Pydantic schemas)
+│   ├── data/             # Data schemas (LineData, TextBlock, etc.)
+│   ├── analysis/         # Analysis result schemas (entities, topics, etc.)
+│   ├── llm/              # LLM response schemas
+│   └── api/              # API request/response models
 ├── llm/                   # LLM functionality (first-class module)
 │   ├── client.py         # LLM client with retry & validation
 │   ├── examples.py       # Usage examples
@@ -264,6 +285,100 @@ Known data issues are automatically corrected during extraction:
 - **Docstrings**: Required for public APIs
 - **CLI**: Rich examples in docstrings
 - **Emojis**: Do not use emojis in any generated code, comments, docstrings, log messages, CLI output, documentation, or commit messages.
+- **Imports**: All imports must be at the top of the file - NEVER use imports inside functions
+- **Magic numbers**: Define constants for any numeric literals used in comparisons or logic (except 0, 1, -1)
+
+### Import Organization
+
+**All imports at module top - no exceptions:**
+
+```python
+# GOOD: All imports at top
+import logging
+from pathlib import Path
+from typing import Optional
+
+import click
+
+from newspaper_explorer.cli.utils import errors, output
+from newspaper_explorer.data.utils.validation import validate_images_in_directory
+from newspaper_explorer.data.download.images import ImageDownloader
+
+def my_function():
+    result = validate_images_in_directory(...)
+    # Use imported modules
+
+# BAD: Import inside function
+def my_function():
+    from newspaper_explorer.data.utils.validation import validate_images_in_directory
+    result = validate_images_in_directory(...)
+```
+
+**Why**: PEP 8 compliance, better static analysis, clearer dependencies, avoids circular import issues at runtime.
+
+**Handling circular imports**: If you encounter circular imports, refactor to break the cycle rather than hiding imports in functions.
+
+### Magic Numbers
+
+**Define constants for all numeric literals:**
+
+```python
+# BAD: Magic numbers in code
+if len(result["invalid_list"]) > 10:
+    click.echo(f"  ... and {len(result['invalid_list']) - 10} more")
+
+# GOOD: Named constants
+MAX_ITEMS_TO_DISPLAY = 10
+
+if len(result["invalid_list"]) > MAX_ITEMS_TO_DISPLAY:
+    remaining = len(result["invalid_list"]) - MAX_ITEMS_TO_DISPLAY
+    click.echo(f"  ... and {remaining} more")
+```
+
+**Exceptions** (no constant needed):
+- 0, 1, -1 (common mathematical values)
+- 100 (for percentages)
+- Powers of 2 in byte calculations (1024, etc.) when context is clear
+
+**Why**: Self-documenting code, easier to maintain, clearer intent.
+
+### YAGNI - You Aren't Gonna Need It
+
+**Don't add functionality until you actually need it.**
+
+Write code for problems you **have**, not problems you **might** have.
+
+```python
+# BAD: Over-engineering for hypothetical use cases
+try:
+    import torch
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+def check_cuda():
+    if not TORCH_AVAILABLE:
+        return {"error": "PyTorch not installed"}
+    # Complex fallback logic...
+
+# GOOD: Import what you need, let it fail clearly if missing
+import torch
+
+def check_cuda():
+    return {
+        "cuda_available": torch.cuda.is_available(),
+        "device_count": torch.cuda.device_count(),
+    }
+```
+
+**Apply YAGNI to:**
+- **Optional dependencies**: Don't handle missing imports unless there's a real use case
+- **Flexibility**: Don't add abstraction layers "in case we need them later"
+- **Feature flags**: Don't add toggles for features that don't exist yet
+- **Error handling**: Handle errors you've actually encountered, not every possible edge case
+- **Configuration**: Don't make everything configurable - hard-code until you need to change it
+
+**Why**: Simpler code, less maintenance burden, fewer bugs, faster development.
 
 ### Data Validation with Pydantic
 
@@ -335,7 +450,7 @@ send_email(user, format=EmailFormat.HTML, async_send=False)
    - Use `click.echo()` for all user-facing messages
    - Use `click.echo(..., err=True)` for errors
    - Use `tqdm` for progress bars
-   
+
 2. **Library Code** (`data/*.py`, `analysis/*.py`):
    - Use `logging` module exclusively
    - `logger.info()` for informational messages
@@ -343,7 +458,7 @@ send_email(user, format=EmailFormat.HTML, async_send=False)
    - `logger.warning()` for warnings
    - `logger.error()` for errors
    - Configure logging in CLI entry points, not in library code
-   
+
 3. **Progress Tracking**:
    - Use `tqdm` for long-running operations
    - Works alongside logging
@@ -351,6 +466,108 @@ send_email(user, format=EmailFormat.HTML, async_send=False)
 **Why**: Separates user-facing CLI output from internal library logging, enables proper testing, and allows output control via log levels.
 
 See `docs/OUTPUT_STANDARDS.md` for detailed guidelines.
+
+### CLI Structure - Thin Commands, Fat Utilities
+
+**Keep CLI commands thin - extract ALL logic to utilities.**
+
+CLI commands are for presentation only. Business logic belongs in utility modules.
+
+```python
+# BAD: Logic embedded in CLI command
+@click.command()
+@click.option("--source", required=True)
+def process(source):
+    """Process data."""
+    # 50 lines of validation, processing, error handling
+    config = get_config()
+    input_path = config.data_dir / source / "raw"
+    if not input_path.exists():
+        click.echo("Error: Path not found", err=True)
+        return
+
+    # Complex processing logic...
+    for file in input_path.glob("*.xml"):
+        # Parse, validate, transform...
+        pass
+
+    click.echo("Done!")
+
+# GOOD: Logic in utility, CLI just presents
+from newspaper_explorer.analyze.processor import process_source
+
+@click.command()
+@click.option("--source", required=True)
+def process(source):
+    """Process data."""
+    result = process_source(source)  # Logic in utility
+
+    # Presentation only
+    if result["success"]:
+        click.echo(f"Processed {result['count']} files")
+    else:
+        click.echo(f"Error: {result['error']}", err=True)
+```
+
+**Unified CLI Pattern** - Use group nesting for ALL commands (data and analyze):
+
+```python
+# cli/{group}/{module}/commands.py - Click decorators only
+"""CLI commands for {module}."""
+
+import click
+from newspaper_explorer.{group}.{module}.utils import process_task
+
+@click.group(name="{module}")
+def {module}_group():
+    """{Module} commands."""
+    pass
+
+@{module}_group.command(name="process")
+@click.option("--source", required=True, help="Source name")
+@click.option("--batch-size", default=100, help="Processing batch size")
+def process_cmd(source, batch_size):
+    """Process {module} data."""
+    result = process_task(source, batch_size)  # Logic in utility
+
+    # Just presentation
+    click.echo(f"Processed {result['count']} items")
+    for warning in result.get("warnings", []):
+        click.echo(f"Warning: {warning}", err=True)
+```
+
+**File Organization**:
+```
+cli/{group}/{module}/
+└── commands.py          # Click decorators + presentation ONLY
+
+{group}/{module}/        # analyze/ or data/
+├── core.py             # Main processing classes
+├── utils.py            # Helper functions, orchestration
+└── {specific}.py       # Domain-specific logic
+```
+
+**Why This Pattern**:
+- **Testable**: Utilities can be unit tested easily
+- **Reusable**: Logic accessible from Python API, not just CLI
+- **Maintainable**: Clear separation of concerns
+- **Composable**: Utilities can call other utilities
+- **Consistent**: Same pattern for data and analyze commands
+
+**CLI Responsibilities**:
+- Click decorators and options
+- Argument validation (Click-level only)
+- Output formatting (`click.echo`, Rich, tqdm)
+- User interaction (prompts, confirmations)
+
+**Utility Responsibilities**:
+- Business logic
+- Data validation (beyond Click)
+- Processing orchestration
+- Error handling
+- Return structured data (dict, Pydantic models)
+
+**See Also**: `docs/cli/ARCHITECTURE.md` for complete CLI structure documentation.
 
 ## Common Operations
 
