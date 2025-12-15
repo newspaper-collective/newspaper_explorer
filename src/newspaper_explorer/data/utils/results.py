@@ -191,7 +191,7 @@ def load_analysis_results(
     return pl.read_parquet(results_path)
 
 
-def list_analysis_runs(
+def list_analysis_results(
     source: str,
     analysis_type: AnalysisType,
     results_base_dir: Optional[Path] = None,

@@ -20,6 +20,8 @@ import logging
 import multiprocessing as mp
 from pathlib import Path
 import queue
+import shutil
+import tempfile
 import time
 from typing import Optional
 import warnings
@@ -33,7 +35,7 @@ from transformers.models.bert import BertForSequenceClassification, BertTokenize
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
-from newspaper_explorer.data.utils.metadata import save_metadata
+from newspaper_explorer.data.utils.results import save_analysis_results
 from newspaper_explorer.data.utils.stats import extract_input_stats, extract_output_stats
 from newspaper_explorer.models.analysis.emotions import EMOTIONS
 from newspaper_explorer.models.data.metadata import AnalysisMetadata
@@ -430,7 +432,6 @@ class EmotionPredictor:
         self,
         input_file: Path,
         text_column: str = "text",
-        output_name: str = "emotion_predictions",
         limit: Optional[int] = None,
     ) -> Path:
         """
@@ -441,34 +442,27 @@ class EmotionPredictor:
         Args:
             input_file: Input parquet file
             text_column: Name of text column
-            output_name: Base name for output file
             limit: Limit number of rows to process (for testing)
 
         Returns:
             Path to output file
         """
         if self.multi_gpu and self.num_gpus > 1:
-            return self._predict_parallel(input_file, text_column, output_name, limit)
+            return self._predict_parallel(input_file, text_column, limit)
         else:
-            return self._predict_sequential(input_file, text_column, output_name, limit)
+            return self._predict_sequential(input_file, text_column, limit)
 
     def _predict_sequential(
         self,
         input_file: Path,
         text_column: str,
-        output_name: str,
         limit: Optional[int] = None,
     ) -> Path:
         """Sequential prediction (single GPU or CPU)"""
         start_time = time.time()
 
-        # Create output directory with analysis_id for versioning
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        analysis_id = f"gbert_large_shaver_{timestamp}"
-        output_dir = self.results_base / "emotions" / analysis_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Create temporary directory for chunk files
+        temp_dir = Path(tempfile.mkdtemp(prefix="emotions_chunks_"))
 
         # Enable TF32 for Ampere+ GPUs (L40S supports this) - ~20% speedup
         if torch.cuda.is_available():
@@ -477,7 +471,6 @@ class EmotionPredictor:
             torch.backends.cuda.matmul.allow_tf32 = True
 
         logger.info(f"Processing {input_file} (sequential mode)")
-        logger.info(f"Output directory: {output_dir}")
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
@@ -495,14 +488,10 @@ class EmotionPredictor:
         logger.info(f"Total rows: {total_rows:,}")
 
         # Check for existing results (resume functionality)
-        output_file = output_dir / "emotions.parquet"
         processed_ids = set()
 
-        # Check both final output and chunk files
-        existing_files = []
-        if output_file.exists():
-            existing_files.append(output_file)
-        existing_files.extend(output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        # Check chunk files in temp directory
+        existing_files = list(temp_dir.glob("chunk_*.parquet"))
 
         if existing_files:
             logger.info(f"Found {len(existing_files)} existing file(s)")
@@ -512,11 +501,9 @@ class EmotionPredictor:
             logger.info(f"Already processed: {len(processed_ids):,} rows")
             logger.info(f"Remaining: {total_rows - len(processed_ids):,} rows")
             if len(processed_ids) >= total_rows:
-                logger.info("All rows already processed. Skipping.")
-                return output_file
+                logger.info("All rows already processed. Loading from chunks...")
 
         # Process in chunks
-        first_chunk = not output_file.exists() or len(processed_ids) == 0
 
         for chunk_idx, chunk_start in enumerate(range(0, total_rows, self.chunk_size), start=1):
             chunk_end = min(chunk_start + self.chunk_size, total_rows)
@@ -579,40 +566,34 @@ class EmotionPredictor:
             )
 
             # Save chunk to temporary file (fast - no concat needed)
-            chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
+            chunk_file = temp_dir / f"chunk_{chunk_idx:04d}.parquet"
             df_chunk.write_parquet(chunk_file)
 
             logger.info(f"  [OK] Chunk {chunk_idx} saved to {chunk_file.name}")
 
-        # Combine all chunk files into final output
+        # Combine all chunk files into final dataframe
         logger.info("\nCombining chunk files...")
-        chunk_files = sorted(output_dir.glob(f"{output_name}_chunk_*.parquet"))
-        if chunk_files:
-            df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
-            df_final.write_parquet(output_file)
+        chunk_files = sorted(temp_dir.glob("chunk_*.parquet"))
+        if not chunk_files:
+            raise RuntimeError("No chunk files found - processing may have failed")
 
-            # Clean up chunk files
-            for f in chunk_files:
-                f.unlink()
-            logger.info(f"Combined {len(chunk_files)} chunks into {output_file}")
+        df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
+        logger.info(f"Combined {len(chunk_files)} chunks into final dataframe")
 
         # Create and save metadata
         duration_seconds = time.time() - start_time
         logger.info("Creating metadata...")
 
-        # Load final results for statistics
-        df_result = pl.read_parquet(output_file)
-
         # Calculate emotion statistics
         emotion_counts = {}
         for emotion in EMOTIONS:
-            count = df_result[emotion].sum()
+            count = df_final[emotion].sum()
             emotion_counts[emotion.lower()] = count
 
         # Create output statistics dict
-        output_stats = extract_output_stats(df_result)
+        output_stats = extract_output_stats(df_final)
         output_stats["emotion_counts"] = emotion_counts
-        output_stats["total_predictions"] = len(df_result)
+        output_stats["total_predictions"] = len(df_final)
 
         # Create metadata
         metadata = AnalysisMetadata(
@@ -643,21 +624,25 @@ class EmotionPredictor:
             error_message=None,
         )
 
-        # Save metadata
-        metadata_path = save_metadata(metadata, output_file)
-        logger.info(f"Metadata saved to: {metadata_path}")
+        # Save results using unified helper
+        results_base = self.results_base
+        paths = save_analysis_results(
+            results_df=df_final, metadata=metadata, results_base_dir=results_base
+        )
 
-        logger.info(f"\n[OK] Processing complete!")
-        logger.info(f"Results saved to: {output_file}")
+        # Clean up temporary chunk files
+        shutil.rmtree(temp_dir)
+
+        logger.info("\n[OK] Processing complete!")
+        logger.info(f"Results saved to: {paths['results_path']}")
         logger.info(f"Analysis ID: {metadata.analysis_id}")
 
-        return output_file
+        return paths["results_path"]
 
     def _predict_parallel(
         self,
         input_file: Path,
         text_column: str,
-        output_name: str,
         limit: Optional[int] = None,
     ) -> Path:
         """
@@ -667,16 +652,10 @@ class EmotionPredictor:
         """
         start_time = time.time()
 
-        # Create output directory with analysis_id for versioning
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        analysis_id = f"gbert_large_shaver_{timestamp}"
-        output_dir = self.results_base / "emotions" / analysis_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Create temporary directory for chunk files
+        temp_dir = Path(tempfile.mkdtemp(prefix="emotions_chunks_"))
 
         logger.info(f"Processing {input_file} (parallel mode - {self.num_gpus} GPUs)")
-        logger.info(f"Output directory: {output_dir}")
         logger.info(f"Text column: {text_column}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Chunk size: {self.chunk_size:,}")
@@ -698,14 +677,10 @@ class EmotionPredictor:
         logger.info(f"Total rows: {total_rows:,}")
 
         # Check for existing results (resume functionality)
-        output_file = output_dir / "emotions.parquet"
         processed_ids = set()
 
-        # Check both final output and chunk files
-        existing_files = []
-        if output_file.exists():
-            existing_files.append(output_file)
-        existing_files.extend(output_dir.glob(f"{output_name}_chunk_*.parquet"))
+        # Check chunk files in temp directory
+        existing_files = list(temp_dir.glob("chunk_*.parquet"))
 
         if existing_files:
             logger.info(f"Found {len(existing_files)} existing file(s)")
@@ -715,8 +690,7 @@ class EmotionPredictor:
             logger.info(f"Already processed: {len(processed_ids):,} rows")
             logger.info(f"Remaining: {total_rows - len(processed_ids):,} rows")
             if len(processed_ids) >= total_rows:
-                logger.info("All rows already processed. Skipping.")
-                return output_file
+                logger.info("All rows already processed. Loading from chunks...")
 
         # Setup queues for communication
         texts_queues: list[mp.Queue] = [mp.Queue() for _ in EMOTIONS]
@@ -745,11 +719,6 @@ class EmotionPredictor:
             logger.info(f"Started worker for {emotion} on GPU {gpu_id}")
 
         # Process in chunks
-        output_file = output_dir / f"{output_name}.parquet"
-        first_chunk = (
-            not output_file.exists() or len(processed_ids) == 0
-        )  # If file exists with data, we're resuming
-
         for chunk_idx, chunk_start in enumerate(range(0, total_rows, self.chunk_size), start=1):
             chunk_end = min(chunk_start + self.chunk_size, total_rows)
             logger.info(f"Processing chunk {chunk_idx} (rows {chunk_start:,}-{chunk_end:,})")
@@ -807,47 +776,41 @@ class EmotionPredictor:
             )
 
             # Save chunk to temporary file (fast - no concat needed)
-            chunk_file = output_dir / f"{output_name}_chunk_{chunk_idx}.parquet"
+            chunk_file = temp_dir / f"chunk_{chunk_idx:04d}.parquet"
             df_chunk.write_parquet(chunk_file)
 
             logger.info(f"  [OK] Chunk {chunk_idx} saved to {chunk_file.name}")
 
         # Stop worker processes
-        for queue in texts_queues:
+        for q in texts_queues:
             queue.put(None)  # Poison pill
 
         for p in processes:
             p.join()
 
-        # Combine all chunk files into final output
+        # Combine all chunk files into final dataframe
         logger.info("\nCombining chunk files...")
-        chunk_files = sorted(output_dir.glob(f"{output_name}_chunk_*.parquet"))
-        if chunk_files:
-            df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
-            df_final.write_parquet(output_file)
+        chunk_files = sorted(temp_dir.glob("chunk_*.parquet"))
+        if not chunk_files:
+            raise RuntimeError("No chunk files found - processing may have failed")
 
-            # Clean up chunk files
-            for f in chunk_files:
-                f.unlink()
-            logger.info(f"Combined {len(chunk_files)} chunks into {output_file}")
+        df_final = pl.concat([pl.read_parquet(f) for f in chunk_files])
+        logger.info(f"Combined {len(chunk_files)} chunks into final dataframe")
 
         # Create and save metadata
         duration_seconds = time.time() - start_time
         logger.info("Creating metadata...")
 
-        # Load final results for statistics
-        df_result = pl.read_parquet(output_file)
-
         # Calculate emotion statistics
         emotion_counts = {}
         for emotion in EMOTIONS:
-            count = df_result[emotion].sum()
+            count = df_final[emotion].sum()
             emotion_counts[emotion.lower()] = count
 
         # Create output statistics dict
-        output_stats = extract_output_stats(df_result)
+        output_stats = extract_output_stats(df_final)
         output_stats["emotion_counts"] = emotion_counts
-        output_stats["total_predictions"] = len(df_result)
+        output_stats["total_predictions"] = len(df_final)
 
         # Create metadata
         metadata = AnalysisMetadata(
@@ -878,21 +841,25 @@ class EmotionPredictor:
             error_message=None,
         )
 
-        # Save metadata
-        metadata_path = save_metadata(metadata, output_file)
-        logger.info(f"Metadata saved to: {metadata_path}")
+        # Save results using unified helper
+        results_base = self.results_base
+        paths = save_analysis_results(
+            results_df=df_final, metadata=metadata, results_base_dir=results_base
+        )
 
-        logger.info(f"\n[OK] Processing complete!")
-        logger.info(f"Results saved to: {output_file}")
+        # Clean up temporary chunk files
+        shutil.rmtree(temp_dir)
+
+        logger.info("\n[OK] Processing complete!")
+        logger.info(f"Results saved to: {paths['results_path']}")
         logger.info(f"Analysis ID: {metadata.analysis_id}")
 
-        return output_file
+        return paths["results_path"]
 
     def predict_from_source(
         self,
         text_column: str = "text",
         input_file: Optional[Path] = None,
-        output_name: str = "emotion_predictions",
         limit: Optional[int] = None,
     ) -> Path:
         """
@@ -937,4 +904,4 @@ class EmotionPredictor:
                     f"Run parsing first: newspaper-explorer data parse --source {self.source_name}"
                 )
 
-        return self.predict(input_file, text_column, output_name, limit)
+        return self.predict(input_file, text_column, limit)

@@ -4,14 +4,40 @@ CLI commands for entity extraction.
 Provides commands for extracting named entities using GLiNER or LLM methods.
 """
 
+import json
 import logging
-from pathlib import Path
 from typing import Optional
 
 import click
 
 from newspaper_explorer.analyze.entities.gliner import GLINER_MODELS, GLiNEREntityExtractor
+from newspaper_explorer.analyze.entities.gliner2 import GLiNER2EntityExtractor
+from newspaper_explorer.analyze.entities.llm import LLMEntityExtractor
+from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
+from newspaper_explorer.analyze.entities.utils import (
+    compare_existing_results,
+    list_entity_results,
+    print_comparison_report,
+)
+from newspaper_explorer.cli.utils import errors, output, paths
+from newspaper_explorer.cli.utils.options import (
+    batch_size_option,
+    input_file_option,
+    limit_option,
+    max_length_option,
+    max_tokens_option,
+    min_length_option,
+    model_option,
+    num_gpus_option,
+    source_option,
+    temperature_option,
+    text_column_option,
+    threshold_option,
+)
 from newspaper_explorer.config.base import get_config
+
+# Display constants
+MAX_MODEL_NAME_LENGTH = 20
 
 
 @click.group(name="entities")
@@ -24,146 +50,91 @@ def entities_group() -> None:
 def list_models() -> None:
     """List available GLiNER models."""
 
-    click.echo("\nAvailable GLiNER Models:")
-    click.echo("=" * 80)
+    output.header("Available GLiNER Models")
 
     for short_name, info in GLINER_MODELS.items():
         default_marker = " (default)" if info.get("default") else ""
-        click.echo(f"\n{short_name}{default_marker}")
-        click.echo(f"  Model ID: {info['model_id']}")
-        click.echo(f"  Size: {info['size']}")
-        click.echo(f"  Max tokens: {info['max_tokens']}")
-        click.echo(f"  Description: {info['description']}")
+        output.section(f"{short_name}{default_marker}")
+        output.key_value("Model ID", info["model_id"])
+        output.key_value("Size", info["size"])
+        output.key_value("Max tokens", info["max_tokens"])
+        output.key_value("Description", info["description"])
+        click.echo()
 
-    click.echo("\n" + "=" * 80)
-    click.echo("\nUsage:")
-    click.echo("  newspaper-explorer analyze entities gliner --source der_tag \\")
-    click.echo("    --labels 'Person,Organisation,Ort' --model xxl-v2.5")
-    click.echo("\nOr use full Hugging Face model ID:")
-    click.echo("  --model 'urchade/gliner_multi-v2.1'")
-    click.echo("")
+    output.section("Usage Examples")
+    output.code_block(
+        [
+            "# Use short name with labels",
+            "newspaper-explorer analyze entities gliner --source der_tag \\",
+            "  --labels 'Person,Organisation,Ort' --model xxl-v2.5",
+            "",
+            "# Use full Hugging Face model ID",
+            "newspaper-explorer analyze entities gliner --source der_tag \\",
+            "  --labels 'Person,Organisation,Ort' --model 'urchade/gliner_multi-v2.1'",
+        ]
+    )
+    click.echo()
 
 
 @entities_group.command(name="gliner")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@source_option()
 @click.option("--labels", type=str, required=True, help="Comma-separated entity labels to extract")
-@click.option(
-    "--input-type",
-    type=click.Choice(["textblocks", "lines"], case_sensitive=False),
-    default="textblocks",
-    help="Input data type (textblocks recommended for better context)",
-    show_default=True,
-)
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (overrides --input-type, e.g., textblocks_normalized.parquet)",
-)
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@input_file_option(help_text="Custom input parquet file (default: textblocks or lines)")
+@text_column_option()
 @click.option(
     "--id-column",
     type=str,
     help="Name of ID column (auto-detected: text_block_id or line_id)",
 )
-@click.option(
-    "--model",
-    type=str,
+@model_option(
     default="multi-v2.1",
-    help="GLiNER model (multi-v2.1, xxl-v2.5, small-v2.1, large-v2.1, or full HF ID)",
-    show_default=True,
+    help_text="GLiNER model (multi-v2.1, xxl-v2.5, small-v2.1, large-v2.1, or full HF ID)",
 )
-@click.option(
-    "--threshold", type=float, default=0.2, help="Confidence threshold (0-1)", show_default=True
-)
-@click.option(
-    "--batch-size", type=int, default=32, help="Batch size for processing", show_default=True
-)
-@click.option("--min-length", type=int, default=10, help="Minimum text length", show_default=True)
-@click.option(
-    "--max-length",
-    type=int,
-    default=1000,
-    help="Maximum text length (~1000 chars = ~200 tokens)",
-    show_default=True,
-)
-@click.option("--limit", type=int, help="Limit number of rows to process")
-@click.option(
-    "--num-gpus",
-    type=int,
-    default=1,
-    help="Number of GPUs to use for parallel processing (auto-detects available GPUs)",
-    show_default=True,
-)
+@threshold_option(default=0.2)
+@batch_size_option(default=32)
+@min_length_option(default=10)
+@max_length_option(default=1000, help_text="Maximum text length (~1000 chars = ~200 tokens)")
+@limit_option()
+@num_gpus_option(default=1)
 def gliner(
-    source,
-    labels,
-    input_type,
-    input_file,
-    text_column,
-    id_column,
-    model,
-    threshold,
-    batch_size,
-    min_length,
-    max_length,
-    limit,
-    num_gpus,
-):
+    source: str,
+    labels: str,
+    input_file: Optional[str],
+    text_column: str,
+    id_column: Optional[str],
+    model: str,
+    threshold: float,
+    batch_size: int,
+    min_length: int,
+    max_length: int,
+    limit: Optional[int],
+    num_gpus: int,
+) -> None:
     """Extract named entities using GLiNER model (fast, local, offline)."""
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
+    output.header("GLiNER Entity Extraction")
+
+    label_list = [label.strip() for label in labels.split(",")]
+
+    output.key_value("Source", source)
+    if input_file:
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Model", model)
+    output.key_value("Labels", ", ".join(label_list))
+    output.key_value("Threshold", str(threshold))
+    output.key_value("Batch size", batch_size)
+    if limit:
+        output.key_value("Limit", f"{limit:,} rows")
+    output.key_value("GPUs", num_gpus)
+    click.echo()
+
     try:
-        label_list = [label.strip() for label in labels.split(",")]
-
-        # Determine input file path
-        if input_file:
-            # Custom file provided
-            input_path = Path(input_file)
-            # Auto-detect ID column if not provided
-            if not id_column:
-                import polars as pl
-
-                df_sample = pl.read_parquet(input_path, n_rows=1)
-                if "text_block_id" in df_sample.columns:
-                    id_col = "text_block_id"
-                elif "line_id" in df_sample.columns:
-                    id_col = "line_id"
-                else:
-                    click.echo("Error: Cannot auto-detect ID column. Use --id-column", err=True)
-                    raise click.Abort()
-            else:
-                id_col = id_column
-        else:
-            # Use input-type to determine default file
-            if input_type == "textblocks":
-                input_path = Path("data") / "processed" / source / "text" / "textblocks.parquet"
-                id_col = id_column or "text_block_id"
-            else:  # lines
-                input_path = Path("data") / "raw" / source / "text" / f"{source}_lines.parquet"
-                id_col = id_column or "line_id"
-
-            if not input_path.exists():
-                click.echo(f"Error: Input file not found: {input_path}", err=True)
-                if input_type == "textblocks":
-                    click.echo(
-                        "Run 'newspaper-explorer data aggregate --source {source}' first", err=True
-                    )
-                raise click.Abort()
-
-        click.echo(f"Extracting entities from source: {source}")
-        click.echo(f"Input: {input_path}")
-        click.echo(f"Text column: {text_column}, ID column: {id_col}")
-        click.echo(f"Model: {model}")
-        click.echo(f"Labels: {', '.join(label_list)}")
-        click.echo("")
+        # Resolve input path and ID column
+        input_path, id_col = paths.resolve_input_path(source, input_file, id_column)
 
         extractor = GLiNEREntityExtractor(
             source_name=source,
@@ -183,157 +154,114 @@ def gliner(
             num_gpus=num_gpus,
         )
 
-        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
-        click.echo(f"  Entities: {len(results['results_df'])}")
-        click.echo(f"  Output: {results['output_dir']}")
+        click.echo()
+        output.success("Entity extraction complete!")
+        output.info(f"Method ID: {results['metadata'].analysis_id}")
+        output.info(f"Entities extracted: {len(results['results_df']):,}")
+        output.info(f"Results saved to: {results['output_dir']}")
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except FileNotFoundError as e:
+        click.echo()
+        errors.handle_validation_error(
+            f"File not found: {e}",
+            issues=[
+                f"Run parsing first: newspaper-explorer data parse --source {source}",
+                "Specify custom input: --input-file path/to/file.parquet",
+            ],
+        )
+    except (RuntimeError, ValueError, OSError) as e:
+        click.echo()
+        errors.handle_error(e, show_traceback=True)
 
 
 @entities_group.command(name="gliner2")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@source_option()
 @click.option("--labels", type=str, required=True, help="Comma-separated entity labels to extract")
 @click.option(
     "--label-descriptions",
     type=str,
     help='JSON dict with label descriptions for better accuracy (e.g., \'{"Person":"Names of people"}\')',
 )
-@click.option(
-    "--input-type",
-    type=click.Choice(["textblocks", "lines"], case_sensitive=False),
-    default="textblocks",
-    help="Input data type (textblocks recommended for better context)",
-    show_default=True,
-)
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (overrides --input-type)",
-)
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@input_file_option(help_text="Custom input parquet file (default: textblocks or lines)")
+@text_column_option()
 @click.option(
     "--id-column",
     type=str,
     help="Name of ID column (auto-detected: text_block_id or line_id)",
 )
-@click.option(
-    "--model",
-    type=str,
+@model_option(
     default="fastino/gliner2-base-0207",
-    help="GLiNER2 model (base=205M, large=340M)",
-    show_default=True,
+    help_text="GLiNER2 model (base=205M, large=340M)",
 )
-@click.option(
-    "--threshold", type=float, default=0.5, help="Confidence threshold (0-1)", show_default=True
-)
-@click.option(
-    "--batch-size", type=int, default=32, help="Batch size for processing", show_default=True
-)
-@click.option("--min-length", type=int, default=100, help="Minimum text length", show_default=True)
-@click.option(
-    "--max-length",
-    type=int,
-    default=2500,
-    help="Maximum text length before chunking",
-    show_default=True,
-)
-@click.option("--limit", type=int, help="Limit number of rows (for testing)")
+@threshold_option(default=0.5)
+@batch_size_option(default=32)
+@min_length_option(default=100)
+@max_length_option(default=2500, help_text="Maximum text length before chunking")
+@limit_option()
 def gliner2(
-    source,
-    labels,
-    label_descriptions,
-    input_type,
-    input_file,
-    text_column,
-    id_column,
-    model,
-    threshold,
-    batch_size,
-    min_length,
-    max_length,
-    limit,
-):
+    source: str,
+    labels: str,
+    label_descriptions: Optional[str],
+    input_file: Optional[str],
+    text_column: str,
+    id_column: Optional[str],
+    model: str,
+    threshold: float,
+    batch_size: int,
+    min_length: int,
+    max_length: int,
+    limit: Optional[int],
+) -> None:
     """Extract named entities using GLiNER2 (optimized CPU inference, 205M params)."""
-    import json as json_module
-    from pathlib import Path
-
-    from newspaper_explorer.analyze.entities.gliner2 import GLiNER2EntityExtractor
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
+    output.header("GLiNER2 Entity Extraction")
+
+    # Parse labels
+    label_list = [label.strip() for label in labels.split(",")]
+
+    # Parse label descriptions if provided (GLiNER2-specific)
+    if label_descriptions:
+        try:
+            parsed_dict = json.loads(label_descriptions)
+            if not isinstance(parsed_dict, dict):
+                errors.handle_validation_error(
+                    "Invalid label descriptions format",
+                    issues=["--label-descriptions must be a JSON dict"],
+                )
+                raise click.Abort()
+            labels_dict = parsed_dict
+        except json.JSONDecodeError as e:
+            errors.handle_validation_error(
+                f"Error parsing JSON: {e}",
+                issues=["Check your JSON syntax in --label-descriptions"],
+            )
+            raise click.Abort() from None
+    else:
+        # Use German descriptions by default for better accuracy
+        labels_dict = {
+            label: f"{label} in German historical newspaper text" for label in label_list
+        }
+
+    output.key_value("Source", source)
+    if input_file:
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Model", f"{model} (CPU-optimized)")
+    output.key_value("Labels", ", ".join(label_list))
+    output.key_value("Label descriptions", "Yes" if label_descriptions else "Auto-generated")
+    output.key_value("Threshold", str(threshold))
+    output.key_value("Batch size", batch_size)
+    if limit:
+        output.key_value("Limit", f"{limit:,} rows")
+    click.echo()
+
     try:
-        # Parse labels
-        label_list = [label.strip() for label in labels.split(",")]
-
-        # Parse label descriptions if provided
-        labels_dict: dict[str, str | dict] = {}
-        if label_descriptions:
-            try:
-                parsed_dict = json_module.loads(label_descriptions)
-                if not isinstance(parsed_dict, dict):
-                    click.echo("Error: --label-descriptions must be a JSON dict", err=True)
-                    raise click.Abort()
-                labels_dict = parsed_dict
-            except json_module.JSONDecodeError as e:
-                click.echo(f"Error parsing --label-descriptions JSON: {e}", err=True)
-                raise click.Abort()
-        else:
-            # Use German descriptions by default for better accuracy
-            labels_dict = {
-                label: f"{label} in German historical newspaper text" for label in label_list
-            }
-
-        # Determine input file path
-        if input_file:
-            # Custom file provided
-            input_path = Path(input_file)
-            # Auto-detect ID column if not provided
-            if not id_column:
-                import polars as pl
-
-                df_sample = pl.read_parquet(input_path, n_rows=1)
-                if "text_block_id" in df_sample.columns:
-                    id_col = "text_block_id"
-                elif "line_id" in df_sample.columns:
-                    id_col = "line_id"
-                else:
-                    click.echo("Error: Cannot auto-detect ID column. Use --id-column", err=True)
-                    raise click.Abort()
-            else:
-                id_col = id_column
-        else:
-            # Use input-type to determine default file
-            if input_type == "textblocks":
-                input_path = Path("data") / "processed" / source / "text" / "textblocks.parquet"
-                id_col = id_column or "text_block_id"
-            else:  # lines
-                input_path = Path("data") / "raw" / source / "text" / f"{source}_lines.parquet"
-                id_col = id_column or "line_id"
-
-            if not input_path.exists():
-                click.echo(f"Error: Input file not found: {input_path}", err=True)
-                if input_type == "textblocks":
-                    click.echo(
-                        f"Run 'newspaper-explorer data aggregate --source {source}' first", err=True
-                    )
-                raise click.Abort()
-
-        click.echo(f"Extracting entities from source: {source}")
-        click.echo(f"Input: {input_path}")
-        click.echo(f"Text column: {text_column}, ID column: {id_col}")
-        click.echo(f"Model: {model} (GLiNER2, CPU-optimized)")
-        click.echo(f"Labels: {', '.join(label_list)}")
-        click.echo(f"Using descriptions: Yes")
-        click.echo("")
+        # Resolve input path and ID column
+        input_path, id_col = paths.resolve_input_path(source, input_file, id_column)
 
         extractor = GLiNER2EntityExtractor(
             source_name=source,
@@ -352,122 +280,79 @@ def gliner2(
             id_column=id_col,
         )
 
-        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
-        click.echo(f"  Entities: {len(results['results_df'])}")
-        click.echo(f"  Output: {results['output_dir']}")
+        click.echo()
+        output.success("Entity extraction complete!")
+        output.info(f"Method ID: {results['metadata'].analysis_id}")
+        output.info(f"Entities extracted: {len(results['results_df']):,}")
+        output.info(f"Results saved to: {results['output_dir']}")
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except FileNotFoundError as e:
+        click.echo()
+        errors.handle_validation_error(
+            f"File not found: {e}",
+            issues=[
+                f"Run parsing first: newspaper-explorer data parse --source {source}",
+                "Specify custom input: --input-file path/to/file.parquet",
+            ],
+        )
+    except (RuntimeError, ValueError, OSError) as e:
+        click.echo()
+        errors.handle_error(e, show_traceback=True)
 
 
 @entities_group.command(name="llm")
-@click.option("--source", type=str, required=True, help="Source name")
-@click.option(
-    "--input-type",
-    type=click.Choice(["textblocks", "lines"], case_sensitive=False),
-    default="textblocks",
-    help="Input data type (textblocks recommended for better context)",
-    show_default=True,
-)
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (overrides --input-type)",
-)
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@source_option()
+@input_file_option(help_text="Custom input parquet file (default: textblocks or lines)")
+@text_column_option()
 @click.option(
     "--id-column",
     type=str,
     help="Name of ID column (auto-detected)",
 )
-@click.option("--model", type=str, default="gpt-4o-mini", help="LLM model", show_default=True)
-@click.option(
-    "--temperature", type=float, default=0.3, help="Sampling temperature", show_default=True
-)
-@click.option("--max-tokens", type=int, default=2000, help="Maximum tokens", show_default=True)
-@click.option(
-    "--min-length", type=int, default=100, help="Minimum text length in chars", show_default=True
-)
-@click.option(
-    "--max-length",
-    type=int,
-    default=8000,
-    help="Maximum text length before chunking (chars)",
-    show_default=True,
-)
-@click.option("--batch-size", type=int, default=10, help="Batch size", show_default=True)
-@click.option("--limit", type=int, help="Limit number of rows")
+@model_option(default="gpt-4o-mini", help_text="LLM model")
+@temperature_option(default=0.3)
+@max_tokens_option(default=2000)
+@min_length_option(default=100)
+@max_length_option(default=8000, help_text="Maximum text length before chunking (chars)")
+@batch_size_option(default=10)
+@limit_option()
 def llm(
-    source,
-    input_type,
-    input_file,
-    text_column,
-    id_column,
-    model,
-    temperature,
-    max_tokens,
-    min_length,
-    max_length,
-    batch_size,
-    limit,
-):
+    source: str,
+    input_file: Optional[str],
+    text_column: str,
+    id_column: Optional[str],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    min_length: int,
+    max_length: int,
+    batch_size: int,
+    limit: Optional[int],
+) -> None:
     """Extract named entities using LLM (high quality, requires API)."""
-    from pathlib import Path
-
-    from newspaper_explorer.analyze.entities.llm import LLMEntityExtractor
 
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
+    output.header("LLM Entity Extraction")
+
+    output.key_value("Source", source)
+    if input_file:
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Model", model)
+    output.key_value("Temperature", str(temperature))
+    output.key_value("Max tokens", max_tokens)
+    output.key_value("Text length", f"min={min_length}, max={max_length} chars")
+    output.key_value("Batch size", batch_size)
+    if limit:
+        output.key_value("Limit", f"{limit:,} rows")
+    click.echo()
+
     try:
-        # Determine input file path
-        if input_file:
-            # Custom file provided
-            input_path = Path(input_file)
-            # Auto-detect ID column if not provided
-            if not id_column:
-                import polars as pl
-
-                df_sample = pl.read_parquet(input_path, n_rows=1)
-                if "text_block_id" in df_sample.columns:
-                    id_col = "text_block_id"
-                elif "line_id" in df_sample.columns:
-                    id_col = "line_id"
-                else:
-                    click.echo("Error: Cannot auto-detect ID column. Use --id-column", err=True)
-                    raise click.Abort()
-            else:
-                id_col = id_column
-        else:
-            # Use input-type to determine default file
-            if input_type == "textblocks":
-                input_path = Path("data") / "processed" / source / "text" / "textblocks.parquet"
-                id_col = id_column or "text_block_id"
-            else:  # lines
-                input_path = Path("data") / "raw" / source / "text" / f"{source}_lines.parquet"
-                id_col = id_column or "line_id"
-
-            if not input_path.exists():
-                click.echo(f"Error: Input file not found: {input_path}", err=True)
-                if input_type == "textblocks":
-                    click.echo(
-                        "Run 'newspaper-explorer data aggregate --source {source}' first", err=True
-                    )
-                raise click.Abort()
-
-        click.echo(f"Extracting entities from source: {source}")
-        click.echo(f"Input: {input_path}")
-        click.echo(f"Text column: {text_column}, ID column: {id_col}")
-        click.echo(f"Model: {model}")
-        click.echo(f"Text length: min={min_length}, max={max_length} chars")
-        click.echo("")
+        # Resolve input path and ID column
+        input_path, id_col = paths.resolve_input_path(source, input_file, id_column)
 
         extractor = LLMEntityExtractor(
             source_name=source,
@@ -486,18 +371,30 @@ def llm(
             id_column=id_col,
         )
 
-        click.echo(f"\n[OK] Complete! Method ID: {results['metadata'].analysis_id}")
-        click.echo(f"  Entities: {len(results['results_df'])}")
-        click.echo(f"  Output: {results['output_dir']}")
+        click.echo()
+        output.success("Entity extraction complete!")
+        output.info(f"Method ID: {results['metadata'].analysis_id}")
+        output.info(f"Entities extracted: {len(results['results_df']):,}")
+        output.info(f"Results saved to: {results['output_dir']}")
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except FileNotFoundError as e:
+        click.echo()
+        errors.handle_validation_error(
+            f"File not found: {e}",
+            issues=[
+                f"Run parsing first: newspaper-explorer data parse --source {source}",
+                "Specify custom input: --input-file path/to/file.parquet",
+            ],
+        )
+    except (RuntimeError, ValueError, OSError) as e:
+        click.echo()
+        errors.handle_error(e, show_traceback=True)
 
 
 @entities_group.command(name="list-results")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-def list_results(source: str):
+@source_option()
+def list_results(source: str) -> None:
     """
     List all available entity extraction results for a source.
 
@@ -506,7 +403,6 @@ def list_results(source: str):
     Example:
         newspaper-explorer analyze entities list-results --source der_tag
     """
-    from newspaper_explorer.analyze.entities.utils import list_entity_results
 
     try:
         results = list_entity_results(source)
@@ -523,7 +419,7 @@ def list_results(source: str):
         for result in results:
             method_id = result["method_id"]
             method_type = result["method_type"]
-            model = result["model"][:18] + ".." if len(result["model"]) > 20 else result["model"]
+            model = result["model"][:18] + ".." if len(result["model"]) > MAX_MODEL_NAME_LENGTH else result["model"]
             entity_count = result["entity_count"]
             line_count = result["line_count"]
 
@@ -537,13 +433,13 @@ def list_results(source: str):
         click.echo(f"  newspaper-explorer analyze entities compare --source {source} \\")
         click.echo("    --method-1 <method_id_1> --method-2 <method_id_2>")
 
-    except Exception as e:
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
         click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from None
 
 
 @entities_group.command(name="compare")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@source_option()
 @click.option("--method-1", type=str, required=True, help="First method ID to compare")
 @click.option("--method-2", type=str, required=True, help="Second method ID to compare")
 @click.option(
@@ -551,7 +447,7 @@ def list_results(source: str):
     default=False,
     help="Show detailed comparison (default: summary only)",
 )
-def compare_results(source: str, method_1: str, method_2: str, detailed: bool):
+def compare_results(source: str, method_1: str, method_2: str, *, detailed: bool) -> None:
     """
     Compare two existing entity extraction results.
 
@@ -568,10 +464,6 @@ def compare_results(source: str, method_1: str, method_2: str, detailed: bool):
             --method-1 llm_gpt-4o-mini_20241103_143022 \\
             --method-2 gliner_multi-v2-1_20241103_143145
     """
-    from newspaper_explorer.analyze.entities.utils import (
-        compare_existing_results,
-        print_comparison_report,
-    )
 
     try:
         click.echo(f"\nComparing entity extraction results for '{source}':")
@@ -598,14 +490,14 @@ def compare_results(source: str, method_1: str, method_2: str, detailed: bool):
         click.echo(f"\nError: {e}", err=True)
         click.echo("\nUse 'list-results' to see available method IDs:")
         click.echo(f"  newspaper-explorer analyze entities list-results --source {source}")
-        raise click.Abort()
+        raise click.Abort() from None
     except Exception as e:
         click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from None
 
 
 @entities_group.command(name="network")
-@click.option("--source", type=str, default="der_tag", help="Source name (e.g., der_tag)")
+@source_option()
 @click.option(
     "--method-id",
     type=str,
@@ -643,7 +535,7 @@ def network_stats(
     min_cooccur: int,
     entity_types: Optional[str],
     top_n: int,
-):
+) -> None:
     """
     Build and analyze entity co-occurrence network.
 
@@ -660,21 +552,24 @@ def network_stats(
         newspaper-explorer analyze entities network --source der_tag \\
             --entity-types "person,organization" --top-n 30
     """
-    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
 
     try:
-        click.echo(f"\nBuilding entity network for '{source}'")
+        output.header("Entity Network Analysis")
+
+        output.key_value("Source", source)
         if method_id:
-            click.echo(f"Method ID: {method_id}")
+            output.key_value("Method ID", method_id)
         else:
-            click.echo("Using most recent entity extraction")
-        click.echo("")
+            output.info("Using most recent entity extraction")
+        output.key_value("Connection type", connection_type)
+        output.key_value("Min co-occurrences", min_cooccur)
 
         # Parse entity types
         entity_type_list = None
         if entity_types:
             entity_type_list = [t.strip() for t in entity_types.split(",")]
-            click.echo(f"Filtering to entity types: {entity_type_list}")
+            output.key_value("Entity types filter", ", ".join(entity_type_list))
+        click.echo()
 
         # Build network
         analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
@@ -685,44 +580,39 @@ def network_stats(
         )
 
         # Print network stats
-        click.echo("\n" + "=" * 80)
-        click.echo("NETWORK STATISTICS")
-        click.echo("=" * 80)
-        click.echo(f"Nodes (entities): {stats['nodes']}")
-        click.echo(f"Edges (connections): {stats['edges']}")
-        click.echo(f"Connection type: {stats['connection_type']}")
-        click.echo(f"Min co-occurrences: {stats['min_co_occurrences']}")
-        click.echo(f"Avg connections per entity: {stats['avg_connections_per_entity']:.2f}")
+        output.section("Network Statistics")
+        output.key_value("Nodes (entities)", f"{stats['nodes']:,}")
+        output.key_value("Edges (connections)", f"{stats['edges']:,}")
+        output.key_value("Avg connections/entity", f"{stats['avg_connections_per_entity']:.2f}")
 
         # Get comprehensive stats
         full_stats = analyzer.get_network_stats()
-        click.echo(f"\nMax degree: {full_stats['max_degree']}")
-        click.echo(f"Min degree: {full_stats['min_degree']}")
-        click.echo(f"Total co-occurrences: {full_stats['total_co_occurrences']}")
+        output.key_value("Max degree", full_stats["max_degree"])
+        output.key_value("Min degree", full_stats["min_degree"])
+        output.key_value("Total co-occurrences", f"{full_stats['total_co_occurrences']:,}")
 
         # Show top entities
-        click.echo("\n" + "=" * 80)
-        click.echo(f"TOP {top_n} MOST CONNECTED ENTITIES (by degree)")
-        click.echo("=" * 80)
+        click.echo()
+        output.section(f"Top {top_n} Most Connected Entities")
         click.echo(f"{'Entity':<40} {'Connections':<15} {'Total Co-occur':<15}")
-        click.echo("-" * 80)
+        click.echo("─" * 70)
 
         top_entities = analyzer.get_top_entities(n=top_n, metric="degree")
         for entity, degree in top_entities:
             total_cooccur = analyzer.entity_metadata[entity]["total_co_occurrences"]
             click.echo(f"{entity:<40} {int(degree):<15} {total_cooccur:<15}")
 
-        click.echo("\n" + "=" * 80)
-        click.echo("\nUse 'find-path' command to find connections between entities.")
-        click.echo("")
+        click.echo()
+        output.info("Use 'find-path' command to find connections between entities", muted=True)
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        click.echo()
+        errors.handle_validation_error(str(e))
 
 
 @entities_group.command(name="find-path")
-@click.option("--source", type=str, default="der_tag", help="Source name")
+@source_option()
 @click.option("--from", "source_entity", type=str, required=True, help="Source entity name")
 @click.option("--to", "target_entity", type=str, required=True, help="Target entity name")
 @click.option(
@@ -762,8 +652,9 @@ def find_path(
     connection_type: str,
     min_cooccur: int,
     max_degrees: int,
+    *,
     show_details: bool,
-):
+) -> None:
     """
     Find shortest path between two entities (Six Degrees of Separation).
 
@@ -780,16 +671,18 @@ def find_path(
             --from "Bismarck" --to "Reichstag" \\
             --show-details
     """
-    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
 
     try:
-        click.echo(f"\nFinding path from '{source_entity}' to '{target_entity}'")
-        click.echo(f"Source: {source}")
+        output.header("Find Entity Connection Path")
+
+        output.key_value("From", source_entity)
+        output.key_value("To", target_entity)
+        output.key_value("Source", source)
         if method_id:
-            click.echo(f"Method ID: {method_id}")
-        click.echo(f"Connection type: {connection_type}")
-        click.echo(f"Max degrees: {max_degrees}")
-        click.echo("")
+            output.key_value("Method ID", method_id)
+        output.key_value("Connection type", connection_type)
+        output.key_value("Max degrees", max_degrees)
+        click.echo()
 
         # Build network
         analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
@@ -802,20 +695,23 @@ def find_path(
         path = analyzer.find_path(source_entity, target_entity, max_degrees=max_degrees)
 
         if path is None:
-            click.echo(f"\n[ERROR] No path found within {max_degrees} degrees of separation")
-            click.echo("\nTips:")
-            click.echo("  - Check entity names (case-sensitive)")
-            click.echo("  - Try increasing --max-degrees")
-            click.echo("  - Try different --connection-type (date allows more connections)")
-            click.echo("  - Use 'network' command to see available entities")
+            click.echo()
+            errors.handle_validation_error(
+                f"No path found within {max_degrees} degrees of separation",
+                issues=[
+                    "Check entity names (case-sensitive)",
+                    f"Try increasing --max-degrees (current: {max_degrees})",
+                    "Try different --connection-type (date allows more connections)",
+                    "Use 'network-stats' command to see available entities",
+                ],
+            )
             return
 
         # Show path
-        click.echo("=" * 80)
-        click.echo(f"[OK] FOUND PATH: {path.degrees} DEGREES OF SEPARATION")
-        click.echo("=" * 80)
-        click.echo("")
+        output.section(f"Found Path: {path.degrees} Degrees of Separation")
+        click.echo()
 
+        max_dates_to_show = 3
         for i, entity in enumerate(path.path):
             if i == 0:
                 click.echo(f"START: {entity}")
@@ -828,32 +724,32 @@ def find_path(
             if show_details and i < len(path.connections):
                 conn = path.connections[i]
                 click.echo(f"      Co-occurrences: {conn.co_occurrences}")
-                click.echo(
-                    f"      Dates: {', '.join(conn.dates[:3])}"
-                    + (f" (and {len(conn.dates) - 3} more)" if len(conn.dates) > 3 else "")
-                )
+                dates_display = ", ".join(conn.dates[:max_dates_to_show])
+                if len(conn.dates) > max_dates_to_show:
+                    dates_display += f" (and {len(conn.dates) - max_dates_to_show} more)"
+                click.echo(f"      Dates: {dates_display}")
                 if conn.pages and conn.pages[0] != "unknown":
                     click.echo(f"      Pages: {len(conn.pages)} pages")
-                click.echo("")
+                click.echo()
 
-        click.echo("=" * 80)
-        click.echo(f"\nConnection summary:")
-        click.echo(f"  Total path length: {path.degrees} step(s)")
-        click.echo(f"  Total co-occurrences: {sum(c.co_occurrences for c in path.connections)}")
+        click.echo()
+        output.section("Connection Summary")
+        output.key_value("Path length", f"{path.degrees} step(s)")
+        output.key_value("Total co-occurrences", sum(c.co_occurrences for c in path.connections))
 
         unique_dates = set()
         for conn in path.connections:
             unique_dates.update(conn.dates)
-        click.echo(f"  Unique dates: {len(unique_dates)}")
-        click.echo("")
+        output.key_value("Unique dates", len(unique_dates))
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        click.echo()
+        errors.handle_validation_error(str(e))
 
 
 @entities_group.command(name="entity-connections")
-@click.option("--source", type=str, default="der_tag", help="Source name")
+@source_option()
 @click.option("--entity", type=str, required=True, help="Entity name to explore")
 @click.option(
     "--method-id",
@@ -886,7 +782,7 @@ def entity_connections(
     connection_type: str,
     min_cooccur: int,
     top_n: int,
-):
+) -> None:
     """
     Show all connections for a specific entity.
 
@@ -902,13 +798,17 @@ def entity_connections(
         newspaper-explorer analyze entities entity-connections \\
             --entity "Reichstag" --min-cooccur 5
     """
-    from newspaper_explorer.analyze.entities.network import EntityNetworkAnalyzer
 
     try:
-        click.echo(f"\nFinding connections for: '{entity}'")
-        click.echo(f"Source: {source}")
-        click.echo(f"Connection type: {connection_type}")
-        click.echo("")
+        output.header("Entity Connections")
+
+        output.key_value("Entity", entity)
+        output.key_value("Source", source)
+        if method_id:
+            output.key_value("Method ID", method_id)
+        output.key_value("Connection type", connection_type)
+        output.key_value("Min co-occurrences", min_cooccur)
+        click.echo()
 
         # Build network
         analyzer = EntityNetworkAnalyzer(source_name=source, method_id=method_id)
@@ -925,24 +825,26 @@ def entity_connections(
         )
 
         if not connections:
-            click.echo(f"[ERROR] Entity not found or no connections: '{entity}'")
-            click.echo("\nTips:")
-            click.echo("  - Check spelling (case-sensitive)")
-            click.echo("  - Try lowering --min-cooccur")
-            click.echo("  - Use 'network' command to see top entities")
+            click.echo()
+            errors.handle_validation_error(
+                f"Entity not found or no connections: '{entity}'",
+                issues=[
+                    "Check spelling (case-sensitive)",
+                    f"Try lowering --min-cooccur (current: {min_cooccur})",
+                    "Use 'network-stats' command to see top entities",
+                ],
+            )
             return
 
         # Show connections
         connections_to_show = connections[:top_n]
 
-        click.echo("=" * 80)
-        click.echo(f"CONNECTIONS FOR: {entity}")
-        click.echo("=" * 80)
-        click.echo(f"Total connections: {len(connections)}")
-        click.echo(f"Showing top {len(connections_to_show)}")
-        click.echo("")
+        output.section(f"Connections for: {entity}")
+        output.key_value("Total connections", len(connections))
+        output.key_value("Showing", len(connections_to_show))
+        click.echo()
         click.echo(f"{'Connected Entity':<40} {'Co-occur':<12} {'Dates':<12} {'Pages':<12}")
-        click.echo("-" * 80)
+        click.echo("─" * 76)
 
         for conn in connections_to_show:
             other_entity = conn.entity2 if conn.entity1 == entity else conn.entity1
@@ -952,12 +854,13 @@ def entity_connections(
             )
 
         if len(connections) > top_n:
-            click.echo(f"\n... and {len(connections) - top_n} more connections")
+            click.echo()
+            output.info(f"... and {len(connections) - top_n} more connections", muted=True)
 
-        click.echo("\n" + "=" * 80)
-        click.echo("\nUse 'find-path' to find paths between this entity and others.")
-        click.echo("")
+        click.echo()
+        output.info("Use 'find-path' to find paths between this entity and others", muted=True)
+        click.echo()
 
-    except Exception as e:
-        click.echo(f"\nError: {e}", err=True)
-        raise click.Abort()
+    except (FileNotFoundError, ValueError, KeyError, RuntimeError) as e:
+        click.echo()
+        errors.handle_validation_error(str(e))

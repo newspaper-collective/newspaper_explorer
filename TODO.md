@@ -31,18 +31,46 @@ Consolidate CLI improvements into a cohesive refactoring effort with reusable ut
   - [x] Use output module throughout (header, key_value, success, error, code_block)
   - [x] Add `--limit` support to EmotionPredictor.predict() and predict_from_source()
 
-**Phase 4: Migrate Analyze Commands (0/5 complete)**
-- [ ] `cli/analyze/entities/commands.py` (961 lines) - GLiNER entity extraction
-  - [ ] Apply decorators: source_option, input_file_option, output_name_option, limit_option
-  - [ ] Update error handling and output styling
-  - [ ] Add limit support to entity extraction methods
+**Phase 4: Migrate Analyze Commands (2/5 complete)**
+- [x] `cli/analyze/entities/commands.py` (863 lines) - Entity extraction & network analysis - **COMPLETED**
+  - [x] **Extraction commands** (gliner, gliner2, llm):
+    - [x] Apply decorators: source_option, input_file_option, text_column_option, id_column_option, limit_option, batch_size_option, threshold_option, model_option, num_gpus_option, min_length_option, max_length_option, temperature_option, max_tokens_option
+    - [x] Update error handling (errors.handle_error, errors.handle_validation_error)
+    - [x] Update output styling (output.header, output.key_value, output.success, output.info)
+    - [x] Extract input path resolution to cli/utils/paths.py (resolve_input_path)
+    - [x] Create reusable option decorators in cli/utils/options.py (7 new options)
+    - [x] **Removed output_name_option** - now uses standardized auto-naming via save_analysis_results()
+  - [x] **Network commands** (network-stats, find-path, entity-connections):
+    - [x] Replace click.echo() with output module (header, section, key_value, info)
+    - [x] Replace manual "=" separators with output.section()
+    - [x] Replace click.echo(err=True) with errors.handle_validation_error()
+    - [x] Add return type annotations
+    - [x] Standardize tips/help messages with muted info
+  - [x] **Overall**:
+    - [x] File reduced from 1003 to 863 lines (140 line reduction, 14%)
+    - [x] All extraction methods support limit parameter
+    - [x] All commands follow consistent output patterns
+    - [x] **Bonus**: Refactored emotions to also use save_analysis_results() for consistency
 - [ ] `cli/analyze/topics/commands.py` (1,787 lines) - LDA, BERTopic
   - [ ] Apply decorators: source_option, input_file_option, output_name_option, limit_option
   - [ ] Update error handling and output styling
   - [ ] Standardize across lda, bertopic, query commands
-- [ ] `cli/analyze/keywords/commands.py` (923 lines) - Keyword extraction
-  - [ ] Apply decorators: source_option, input_file_option, output_name_option, limit_option
-  - [ ] Update error handling and output styling
+- [x] `cli/analyze/keywords/commands.py` (858 lines) - Keyword extraction - **COMPLETED (CLI improvements)**
+  - [x] **CLI improvements (completed)**:
+    - [x] Apply decorators: source_option, input_file_option, text_column_option, limit_option (tfidf only)
+    - [x] Remove inline imports (4 extractors now imported at top)
+    - [x] Add return type annotations (-> None) to all 4 commands
+    - [x] Remove unused get_config import
+    - [x] Replace click.echo() with output module (header, key_value, success, info, error) - ALL DONE
+    - [x] Replace error handling with output.error() and output.info()
+    - [x] Document stopwords as algorithm-specific (tfidf: --no-stopwords, rake: --use-stopwords/--no-stopwords, yake/keybert: none)
+    - [x] File reduced from 872 to 858 lines (14 line reduction, ~1.6%)
+  - [ ] **Architectural refactoring (future)**:
+    - [ ] Refactor TFIDFExtractor.save_results() to use save_analysis_results() from cli/utils/results.py
+    - [ ] Refactor RAKEExtractor.save_results() to use save_analysis_results()
+    - [ ] Refactor YAKEExtractor.save_results() to use save_analysis_results()
+    - [ ] Refactor KeyBERTExtractor.save_results() to use save_analysis_results()
+    - [ ] After extractor refactoring, remove --output-name from CLI (auto-naming like entities)
 - [ ] `cli/analyze/layout/commands.py` (1,447 lines) - YOLO layout detection
   - [ ] Apply decorators where applicable (different pattern - image-focused)
   - [ ] Update error handling and output styling
@@ -224,3 +252,10 @@ simple stats page? word count etc?
 drowpdon filters in browse month view
 
 support external image urls -> include in index
+
+
+emotions cli: use list-models
+
+keywords commands: tfidf gourp by / document level clarification
+
+keywords commands: tfidf min-df and max-df do what?

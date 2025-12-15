@@ -8,7 +8,7 @@ import click
 from newspaper_explorer.cli.utils import errors, output
 from newspaper_explorer.cli.utils.options import (
     force_option,
-    max_workers_option,
+    num_workers_option,
     source_option,
 )
 from newspaper_explorer.config.base import get_config
@@ -24,6 +24,7 @@ def download_group() -> None:
 
 
 @download_group.command(name="download")
+@source_option()
 @click.option("--part", type=str, help="Single dataset part to download")
 @click.option(
     "--parts",
@@ -39,8 +40,9 @@ def download_group() -> None:
     is_flag=True,
     help="Download multiple parts in parallel (faster)",
 )
-@max_workers_option(default=3)
+@num_workers_option(default=3)
 def download_cmd(
+    source: str,
     part: str,
     parts: str,
     *,
@@ -49,7 +51,7 @@ def download_cmd(
     no_extract: bool,
     no_fix: bool,
     parallel: bool,
-    max_workers: int,
+    num_workers: int,
 ) -> None:
     """
     Download newspaper data archives from Zenodo.
@@ -59,21 +61,21 @@ def download_cmd(
 
     \b
     Examples:
-      newspaper-explorer data download --part dertag_1900-1902
-      newspaper-explorer data download --parts dertag_1900-1902,dertag_1903-1905
-      newspaper-explorer data download --all
-      newspaper-explorer data download --all --parallel
+      newspaper-explorer data download download --source der_tag --all
+      newspaper-explorer data download download --source der_tag --part dertag_1900-1902
+      newspaper-explorer data download download --source der_tag --parts dertag_1900-1902,dertag_1903-1905
+      newspaper-explorer data download download --source der_tag --all --parallel
     """
 
     # Configure logging so user sees download progress
     config = get_config()
     logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
 
-    downloader = ZenodoDownloader()
+    downloader = ZenodoDownloader(source_name=source)
     part_names: Optional[list[str]] = None
     # Determine which parts to download
     if download_all:
-        output.header("DOWNLOAD ALL DATASET PARTS")
+        output.header(f"DOWNLOAD ALL PARTS: {source.upper()}")
     elif part or parts:
         # Combine single part and multiple parts
         part_names = []
@@ -83,7 +85,7 @@ def download_cmd(
             part_names.extend([p.strip() for p in parts.split(",") if p.strip()])
         count = len(part_names)
         part_word = "part" if count == 1 else "parts"
-        output.header(f"DOWNLOAD {count} {part_word.upper()}")
+        output.header(f"DOWNLOAD {count} {part_word.upper()}: {source.upper()}")
     else:
         output.error("Please specify parts to download with --part, --parts, or use --all")
         output.section("AVAILABLE PARTS")
@@ -112,7 +114,7 @@ def download_cmd(
                 part_names=part_names,
                 fix_errors=not no_fix,
                 parallel=parallel,
-                max_workers=max_workers,
+                max_workers=num_workers,
             )
 
         click.echo()
@@ -171,7 +173,7 @@ def unpack(source: str, part: str, parts: str, *, fix: bool) -> None:
             output.header(f"UNPACK {source_name.upper()}")
             output.key_value("Parts to unpack", len(part_names))
 
-        downloader = ZenodoDownloader()
+        downloader = ZenodoDownloader(source_name=source)
 
         output.section("EXTRACTING")
         for i, part_name in enumerate(part_names, 1):
@@ -191,16 +193,14 @@ def unpack(source: str, part: str, parts: str, *, fix: bool) -> None:
 
 
 @download_group.command(name="verify")
+@source_option()
 @click.option("--part", type=str, help="Single dataset part to verify")
 @click.option(
     "--parts",
     type=str,
     help="Comma-separated list of parts (e.g., part1,part2)",
 )
-@click.confirmation_option(
-    prompt="Are you sure you want to verify checksums? This may take a while."
-)
-def verify(part: str, parts: str) -> None:
+def verify(source: str, part: str, parts: str) -> None:
     """
     Verify MD5 checksums of downloaded archives.
 
@@ -209,8 +209,9 @@ def verify(part: str, parts: str) -> None:
 
     \b
     Examples:
-      newspaper-explorer data verify --part dertag_1900-1902
-      newspaper-explorer data verify --parts dertag_1900-1902,dertag_1903-1905
+      newspaper-explorer data download verify --source der_tag
+      newspaper-explorer data download verify --source der_tag --part dertag_1900-1902
+      newspaper-explorer data download verify --source der_tag --parts dertag_1900-1902,dertag_1903-1905
     """
     # Combine single part and multiple parts
     part_names: list[str] = []
@@ -219,14 +220,14 @@ def verify(part: str, parts: str) -> None:
     if parts:
         part_names.extend([p.strip() for p in parts.split(",") if p.strip()])
 
+    downloader = ZenodoDownloader(source_name=source)
+
+    # If no parts specified, verify all parts
     if not part_names:
-        output.error("Please specify parts to verify with --part or --parts")
-        return
+        part_names = [p["name"] for p in downloader.list_available_parts()]
 
-    output.header("VERIFY CHECKSUMS")
+    output.header(f"VERIFY CHECKSUMS: {source.upper()}")
     output.key_value("Parts to verify", len(part_names))
-
-    downloader = ZenodoDownloader()
 
     output.section("VERIFICATION")
     verified = 0

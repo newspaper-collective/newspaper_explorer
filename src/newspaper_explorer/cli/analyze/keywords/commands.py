@@ -11,7 +11,29 @@ from typing import Optional
 
 import click
 
-from newspaper_explorer.config.base import get_config
+from newspaper_explorer.analyze.keywords.keybert import KeyBERTExtractor
+from newspaper_explorer.analyze.keywords.rake import RAKEExtractor
+from newspaper_explorer.analyze.keywords.tf_idf import TFIDFExtractor
+from newspaper_explorer.analyze.keywords.yake import YAKEExtractor
+from newspaper_explorer.cli.utils import output
+from newspaper_explorer.cli.utils.options import (
+    batch_size_option,
+    chunk_overlap_option,
+    chunk_size_option,
+    compile_model_option,
+    device_option,
+    group_by_option,
+    input_file_option,
+    limit_option,
+    max_length_option,
+    min_length_option,
+    num_workers_option,
+    output_name_option,
+    source_option,
+    text_column_option,
+    top_k_option,
+    use_chunking_option,
+)
 
 
 @click.group(name="keywords")
@@ -21,19 +43,11 @@ def keywords_group() -> None:
 
 
 @keywords_group.command(name="tfidf")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: lines.parquet or textblocks.parquet)",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: lines.parquet or textblocks.parquet)"
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@text_column_option()
 @click.option(
     "--document-level",
     type=click.Choice(["page", "textblock", "file", "date"], case_sensitive=False),
@@ -46,13 +60,7 @@ def keywords_group() -> None:
     type=str,
     help="Custom grouping column(s), comma-separated (e.g., 'year,month'). Overrides --document-level.",
 )
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of top keywords to extract per document",
-    show_default=True,
-)
+@top_k_option(help_text="Number of top keywords to extract per document")
 @click.option(
     "--min-df",
     type=int,
@@ -80,23 +88,15 @@ def keywords_group() -> None:
     help="Disable stopword removal",
 )
 @click.option(
-    "--stopwords",
+    "--custom-stopwords",
     type=str,
     help="Additional stopwords (comma-separated)",
 )
-@click.option(
-    "--num-workers",
-    type=int,
-    help="Number of CPU workers for parallel extraction (default: auto-detect)",
+@num_workers_option(
+    help_text="Number of CPU workers for parallel extraction (default: auto-detect)"
 )
-@click.option(
-    "--output-name",
-    type=str,
-    default="tfidf_keywords",
-    help="Base name for output file",
-    show_default=True,
-)
-@click.option("--limit", type=int, help="Limit number of rows to process (for testing)")
+@output_name_option(default="tfidf_keywords")
+@limit_option()
 def tfidf(
     source: str,
     input_file: str,
@@ -107,12 +107,13 @@ def tfidf(
     min_df: int,
     max_df: float,
     ngram_range: str,
+    *,
     no_stopwords: bool,
-    stopwords: str,
+    custom_stopwords: str,
     num_workers: int,
     output_name: str,
     limit: int,
-):
+) -> None:
     """
     Extract keywords using TF-IDF (Term Frequency-Inverse Document Frequency).
 
@@ -161,66 +162,61 @@ def tfidf(
         Saves to: results/{source}/keywords/{output_name}.parquet
         Columns: grouping columns, keywords (list), scores (list)
     """
-    from newspaper_explorer.analyze.keywords.tf_idf import TFIDFExtractor
-
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    click.echo(f"\n{'='*80}")
-    click.echo(f"TF-IDF Keyword Extraction")
-    click.echo(f"{'='*80}\n")
+    output.header("TF-IDF Keyword Extraction")
 
-    click.echo(f"Source: {source}")
+    output.key_value("Source", source)
     if input_file:
-        click.echo(f"Input file: {input_file}")
-    click.echo(f"Text column: {text_column}")
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
 
     if group_by:
         group_by_list = [g.strip() for g in group_by.split(",")]
-        click.echo(f"Custom grouping: {', '.join(group_by_list)}")
+        output.key_value("Custom grouping", ", ".join(group_by_list))
     else:
         group_by_list = None
-        click.echo(f"Document level: {document_level.upper()}")
+        output.key_value("Document level", document_level.upper())
 
-    click.echo(f"Top keywords: {top_k}")
-    click.echo(f"Min document frequency: {min_df}")
-    click.echo(f"Max document frequency: {max_df}")
+    output.key_value("Top keywords", top_k)
+    output.key_value("Min document frequency", min_df)
+    output.key_value("Max document frequency", f"{max_df:.1f}")
 
     # Parse ngram range
     try:
         ngram_min, ngram_max = map(int, ngram_range.split(","))
         ngram_tuple = (ngram_min, ngram_max)
         if ngram_tuple == (1, 1):
-            click.echo("N-grams: unigrams only")
+            output.key_value("N-grams", "unigrams only")
         elif ngram_tuple == (1, 2):
-            click.echo("N-grams: unigrams + bigrams")
+            output.key_value("N-grams", "unigrams + bigrams")
         else:
-            click.echo(f"N-grams: {ngram_tuple}")
+            output.key_value("N-grams", str(ngram_tuple))
     except ValueError:
-        click.echo(f"Error: Invalid ngram-range format: {ngram_range}", err=True)
-        click.echo("Expected format: 'min,max' (e.g., '1,2')", err=True)
+        output.error(f"Invalid ngram-range format: {ngram_range}")
+        output.info("Expected format: 'min,max' (e.g., '1,2')")
         return
 
     # Parse custom stopwords
-    custom_stopwords = None
-    if stopwords:
-        custom_stopwords = [w.strip() for w in stopwords.split(",")]
-        click.echo(f"Custom stopwords: {len(custom_stopwords)}")
+    custom_stopwords_list = None
+    if custom_stopwords:
+        custom_stopwords_list = [w.strip() for w in custom_stopwords.split(",")]
+        output.key_value("Custom stopwords", len(custom_stopwords_list))
 
     use_stopwords = not no_stopwords
     if no_stopwords:
-        click.echo("Stopwords: disabled")
+        output.key_value("Stopwords", "disabled")
     else:
-        click.echo("Stopwords: enabled (German)")
+        output.key_value("Stopwords", "enabled (German)")
 
     if limit:
-        click.echo(f"Limit: {limit:,} rows")
+        output.key_value("Limit", f"{limit:,} rows")
 
-    click.echo()
-
+    output.info("Extracting keywords...\n")
     try:
         # Initialize extractor
         extractor = TFIDFExtractor(
@@ -228,11 +224,10 @@ def tfidf(
             input_file=Path(input_file) if input_file else None,
             text_column=text_column,
             use_stopwords=use_stopwords,
-            custom_stopwords=custom_stopwords,
+            custom_stopwords=custom_stopwords_list,
         )
 
         # Extract keywords
-        click.echo("Extracting keywords...\n")
         results_df = extractor.extract_keywords(
             group_by=group_by_list,
             document_level=document_level,
@@ -247,16 +242,13 @@ def tfidf(
         # Save results
         output_file = extractor.save_results(results_df, output_name=output_name)
 
-        click.echo(f"\n{'='*80}")
-        click.echo(f"[OK] Keyword extraction complete!")
-        click.echo(f"{'='*80}\n")
-        click.echo(f"Results saved to: {output_file}")
-        click.echo(f"Total documents: {len(results_df):,}")
+        output.success("Keyword extraction complete!")
+        output.key_value("Results saved to", str(output_file))
+        output.key_value("Total documents", f"{len(results_df):,}")
 
         # Show sample
         if len(results_df) > 0:
-            click.echo(f"\nSample keywords (first 3 documents):")
-            click.echo("-" * 80)
+            output.section("Sample keywords (first 3 documents)")
             sample = results_df.head(3)
             for row in sample.iter_rows(named=True):
                 # Show grouping info
@@ -264,108 +256,57 @@ def tfidf(
                     group_info = ", ".join(
                         [f"{col}={row.get(col, 'N/A')}" for col in group_by_list]
                     )
-                    click.echo(f"\n{group_info}")
+                    output.info(f"\n{group_info}")
                 elif document_level == "page":
-                    click.echo(
+                    output.info(
                         f"\nFile: {row.get('filename', 'N/A')}, Page: {row.get('page_number', 'N/A')}"
                     )
                 elif document_level == "date":
-                    click.echo(
+                    output.info(
                         f"\nDate: {row.get('year', '?')}-{row.get('month', '?')}-{row.get('day', '?')}"
                     )
                 else:
                     # Show first grouping column value
-                    first_col = list(row.keys())[0]
-                    click.echo(f"\n{first_col}: {row.get(first_col, 'N/A')}")
+                    first_col = next(iter(row.keys()))
+                    output.info(f"\n{first_col}: {row.get(first_col, 'N/A')}")
 
                 keywords = row["keywords"][:5]  # Show top 5
                 scores = row["scores"][:5]
                 for kw, score in zip(keywords, scores):
-                    click.echo(f"  {kw:20s} {score:.4f}")
-
-        click.echo(f"\n{'='*80}\n")
+                    output.info(f"  {kw:20s} {score:.4f}")
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: Input file not found: {e}", err=True)
-        click.echo("\nAvailable options:", err=True)
-        click.echo(
-            "  1. Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
-        click.echo("  2. Specify custom input: --input-file path/to/file.parquet", err=True)
+        output.error(f"Input file not found: {e}")
+        output.info("Available options:")
+        output.info(f"  1. Run parsing first: newspaper-explorer data parse --source {source}")
+        output.info("  2. Specify custom input: --input-file path/to/file.parquet")
         return
     except Exception as e:
-        click.echo(f"\nError during keyword extraction: {e}", err=True)
+        output.error(f"Error during keyword extraction: {e}")
         logging.exception("Full error details:")
         return
 
 
 @keywords_group.command(name="rake")
-@click.option(
-    "--source",
-    type=str,
-    required=True,
-    help="Source name (e.g., 'der_tag')",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@text_column_option()
+@group_by_option(
+    help_text="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Default: per page."
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
-@click.option(
-    "--group-by",
-    type=str,
-    multiple=True,
-    default=None,
-    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
-)
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of top keyphrases to extract per document",
-)
-@click.option(
-    "--min-length",
-    type=int,
-    default=1,
-    help="Minimum number of words in a keyphrase",
-)
-@click.option(
-    "--max-length",
-    type=int,
-    default=4,
-    help="Maximum number of words in a keyphrase",
-)
+@top_k_option(help_text="Number of top keyphrases to extract per document")
+@min_length_option(default=1)
+@max_length_option(default=4, help_text="Maximum number of words in a keyphrase")
 @click.option(
     "--use-stopwords/--no-stopwords",
     default=True,
     help="Use German stopwords (recommended)",
 )
-@click.option(
-    "--batch-size",
-    type=int,
-    default=1000,
-    help="Number of documents per batch",
-    show_default=True,
-)
-@click.option(
-    "--num-workers",
-    type=int,
-    help="Number of parallel workers (default: CPU count - 1)",
-)
-@click.option(
-    "--output-name",
-    type=str,
-    default="rake_keywords",
-    help="Output filename (without extension)",
-)
+@batch_size_option(default=1000)
+@num_workers_option()
+@output_name_option(default="rake_keywords")
 def rake(
     source: str,
     input_file: Optional[str],
@@ -374,11 +315,12 @@ def rake(
     top_k: int,
     min_length: int,
     max_length: int,
+    *,
     use_stopwords: bool,
     batch_size: int,
     num_workers: int,
     output_name: str,
-):
+) -> None:
     """
     Extract multi-word keyphrases using RAKE (Rapid Automatic Keyword Extraction).
 
@@ -416,21 +358,17 @@ def rake(
         Saves to: results/{source}/keywords/{output_name}.parquet
         Columns: grouping columns, keywords (list), scores (list)
     """
-    from newspaper_explorer.analyze.keywords.rake import RAKEExtractor
-
-    config = get_config()
-
-    click.echo("\n=== RAKE Keyphrase Extraction ===")
-    click.echo(f"Source: {source}")
-    click.echo(f"Group by: {group_by or '(page - default)'}")
-    click.echo(f"Top keyphrases: {top_k}")
-    click.echo(f"Phrase length: {min_length}-{max_length} words")
-    click.echo(f"Use stopwords: {use_stopwords}")
-    click.echo(f"Batch size: {batch_size}")
+    output.header("RAKE Keyphrase Extraction")
+    output.key_value("Source", source)
+    output.key_value("Group by", str(group_by) if group_by else "(page - default)")
+    output.key_value("Top keyphrases", top_k)
+    output.key_value("Phrase length", f"{min_length}-{max_length} words")
+    output.key_value("Use stopwords", use_stopwords)
+    output.key_value("Batch size", batch_size)
     if num_workers:
-        click.echo(f"Workers: {num_workers}")
+        output.key_value("Workers", num_workers)
     else:
-        click.echo("Workers: auto-detect (CPU count - 1)")
+        output.key_value("Workers", "auto-detect (CPU count - 1)")
 
     try:
         # Initialize extractor
@@ -447,7 +385,7 @@ def rake(
         group_by_list = list(group_by) if group_by else None
 
         # Extract keyphrases with batching and multiprocessing
-        click.echo("\nExtracting keyphrases...")
+        output.info("\nExtracting keyphrases...")
         df_keywords = extractor.extract_keyphrases(
             top_k=top_k,
             group_by=group_by_list,
@@ -456,57 +394,34 @@ def rake(
         )
 
         # Save results with metadata
-        click.echo("\nSaving results...")
+        output.info("\nSaving results...")
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n[OK] Saved keyphrases to: {output_path}")
-        click.echo(f"  Total documents: {len(df_keywords)}")
-        click.echo(f"  Columns: {df_keywords.columns}")
+        output.success("Saved keyphrases")
+        output.key_value("Output", str(output_path))
+        output.key_value("Total documents", len(df_keywords))
+        output.key_value("Columns", ", ".join(df_keywords.columns))
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(
-            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
+        output.error(f"{e}")
+        output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during RAKE extraction: {e}", err=True)
+        output.error(f"Error during RAKE extraction: {e}")
         logging.exception("Full error details:")
         return
 
 
 @keywords_group.command(name="yake")
-@click.option(
-    "--source",
-    type=str,
-    required=True,
-    help="Source name (e.g., 'der_tag')",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@text_column_option()
+@group_by_option(
+    help_text="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Default: per page."
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
-@click.option(
-    "--group-by",
-    type=str,
-    multiple=True,
-    default=None,
-    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
-)
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of top keywords to extract per document",
-)
+@top_k_option(help_text="Number of top keywords to extract per document")
 @click.option(
     "--language",
     type=str,
@@ -525,25 +440,9 @@ def rake(
     default=0.9,
     help="Threshold for removing similar keywords (0-1, higher=less deduplication)",
 )
-@click.option(
-    "--batch-size",
-    type=int,
-    default=1000,
-    help="Number of documents per batch for parallel processing",
-    show_default=True,
-)
-@click.option(
-    "--num-workers",
-    type=int,
-    default=None,
-    help="Number of worker processes (default: CPU count - 1)",
-)
-@click.option(
-    "--output-name",
-    type=str,
-    default="yake_keywords",
-    help="Output filename (without extension)",
-)
+@batch_size_option(default=1000)
+@num_workers_option()
+@output_name_option(default="yake_keywords")
 def yake(
     source: str,
     input_file: Optional[str],
@@ -556,7 +455,7 @@ def yake(
     batch_size: int,
     num_workers: int,
     output_name: str,
-):
+) -> None:
     """
     Extract keywords using YAKE (Yet Another Keyword Extractor).
 
@@ -595,22 +494,18 @@ def yake(
         Saves to: results/{source}/keywords/{output_name}.parquet
         Columns: grouping columns, keywords (list), scores (list)
     """
-    from newspaper_explorer.analyze.keywords.yake import YAKEExtractor
-
-    config = get_config()
-
-    click.echo("\n=== YAKE Keyword Extraction ===")
-    click.echo(f"Source: {source}")
-    click.echo(f"Group by: {group_by or '(page - default)'}")
-    click.echo(f"Top keywords: {top_k}")
-    click.echo(f"Language: {language}")
-    click.echo(f"Max n-gram size: {max_ngram_size}")
-    click.echo(f"Deduplication threshold: {deduplication_threshold}")
-    click.echo(f"Batch size: {batch_size}")
+    output.header("YAKE Keyword Extraction")
+    output.key_value("Source", source)
+    output.key_value("Group by", str(group_by) if group_by else "(page - default)")
+    output.key_value("Top keywords", top_k)
+    output.key_value("Language", language)
+    output.key_value("Max n-gram size", max_ngram_size)
+    output.key_value("Deduplication threshold", f"{deduplication_threshold:.2f}")
+    output.key_value("Batch size", batch_size)
     if num_workers:
-        click.echo(f"Workers: {num_workers}")
+        output.key_value("Workers", num_workers)
     else:
-        click.echo("Workers: auto-detect (CPU count - 1)")
+        output.key_value("Workers", "auto-detect (CPU count - 1)")
 
     try:
         # Initialize extractor
@@ -627,7 +522,7 @@ def yake(
         group_by_list = list(group_by) if group_by else None
 
         # Extract keywords
-        click.echo("\nExtracting keywords...")
+        output.info("\nExtracting keywords...")
         df_keywords = extractor.extract_keywords(
             top_k=top_k,
             group_by=group_by_list,
@@ -636,57 +531,34 @@ def yake(
         )
 
         # Save results with metadata
-        click.echo("\nSaving results...")
+        output.info("\nSaving results...")
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n[OK] Saved keywords to: {output_path}")
-        click.echo(f"  Total documents: {len(df_keywords)}")
-        click.echo(f"  Columns: {df_keywords.columns}")
+        output.success("Saved keywords")
+        output.key_value("Output", str(output_path))
+        output.key_value("Total documents", len(df_keywords))
+        output.key_value("Columns", ", ".join(df_keywords.columns))
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(
-            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
+        output.error(f"{e}")
+        output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during YAKE extraction: {e}", err=True)
+        output.error(f"Error during YAKE extraction: {e}")
         logging.exception("Full error details:")
         return
 
 
 @keywords_group.command(name="keybert")
-@click.option(
-    "--source",
-    type=str,
-    required=True,
-    help="Source name (e.g., 'der_tag')",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@text_column_option()
+@group_by_option(
+    help_text="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Default: per page."
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
-@click.option(
-    "--group-by",
-    type=str,
-    multiple=True,
-    default=None,
-    help="Column(s) to group by (e.g., 'newspaper_page_id' for pages, 'date' for dates). Can specify multiple times. Default: per page.",
-)
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of top keywords to extract per document",
-)
+@top_k_option(help_text="Number of top keywords to extract per document")
 @click.option(
     "--model",
     type=str,
@@ -716,19 +588,8 @@ def yake(
     default=True,
     help="Use Maximal Marginal Relevance for diversity",
 )
-@click.option(
-    "--output-name",
-    type=str,
-    default="keybert_keywords",
-    help="Output filename (without extension)",
-)
-@click.option(
-    "--batch-size",
-    type=int,
-    default=32,
-    help="Batch size for GPU processing (increase for better GPU utilization)",
-    show_default=True,
-)
+@output_name_option(default="keybert_keywords")
+@batch_size_option(default=32)
 @click.option(
     "--max-seq-length",
     type=int,
@@ -736,31 +597,12 @@ def yake(
     help="Maximum sequence length for BERT (truncates longer texts)",
     show_default=True,
 )
-@click.option(
-    "--device",
-    type=str,
-    help="Device to use ('cuda', 'cpu', or None for auto-detect)",
+@device_option()
+@use_chunking_option(
+    default=True, help_text="Split long texts into chunks to avoid truncation (recommended)"
 )
-@click.option(
-    "--use-chunking/--no-chunking",
-    default=True,
-    help="Split long texts into chunks to avoid truncation (recommended)",
-    show_default=True,
-)
-@click.option(
-    "--chunk-size",
-    type=int,
-    default=400,
-    help="Token size for each chunk",
-    show_default=True,
-)
-@click.option(
-    "--chunk-overlap",
-    type=int,
-    default=50,
-    help="Overlap between chunks in tokens",
-    show_default=True,
-)
+@chunk_size_option(default=400)
+@chunk_overlap_option(default=50)
 @click.option(
     "--use-multi-gpu",
     type=click.Choice(["auto", "yes", "no"]),
@@ -768,16 +610,8 @@ def yake(
     help="Use multiple GPUs if available (auto=detect, yes=force, no=disable)",
     show_default=True,
 )
-@click.option(
-    "--compile-model",
-    is_flag=True,
-    help="Use torch.compile for model optimization (requires PyTorch 2.0+)",
-)
-@click.option(
-    "--limit",
-    type=int,
-    help="Limit number of documents to process (for testing)",
-)
+@compile_model_option()
+@limit_option()
 def keybert(
     source: str,
     input_file: Optional[str],
@@ -788,6 +622,7 @@ def keybert(
     min_ngram: int,
     max_ngram: int,
     diversity: float,
+    *,
     use_mmr: bool,
     output_name: str,
     batch_size: int,
@@ -799,7 +634,7 @@ def keybert(
     use_multi_gpu: str,
     compile_model: bool,
     limit: Optional[int],
-):
+) -> None:
     """
     Extract keywords using KeyBERT (BERT-based semantic extraction).
 
@@ -846,25 +681,21 @@ def keybert(
         Saves to: results/{source}/keywords/{output_name}.parquet
         Columns: grouping columns, keywords (list), scores (list)
     """
-    from newspaper_explorer.analyze.keywords.keybert import KeyBERTExtractor
-
-    config = get_config()
-
-    click.echo("\n=== KeyBERT Keyword Extraction ===")
-    click.echo(f"Source: {source}")
-    click.echo(f"Group by: {group_by or '(page - default)'}")
-    click.echo(f"Top keywords: {top_k}")
-    click.echo(f"Model: {model}")
-    click.echo(f"N-gram range: {min_ngram}-{max_ngram}")
-    click.echo(f"Diversity (MMR): {diversity if use_mmr else 'disabled'}")
-    click.echo(f"Batch size: {batch_size}")
-    click.echo(f"Max sequence length: {max_seq_length}")
-    click.echo(f"Chunking: {'enabled' if use_chunking else 'disabled'}")
+    output.header("KeyBERT Keyword Extraction")
+    output.key_value("Source", source)
+    output.key_value("Group by", str(group_by) if group_by else "(page - default)")
+    output.key_value("Top keywords", top_k)
+    output.key_value("Model", model)
+    output.key_value("N-gram range", f"{min_ngram}-{max_ngram}")
+    output.key_value("Diversity (MMR)", f"{diversity:.1f}" if use_mmr else "disabled")
+    output.key_value("Batch size", batch_size)
+    output.key_value("Max sequence length", max_seq_length)
+    output.key_value("Chunking", "enabled" if use_chunking else "disabled")
     if use_chunking:
-        click.echo(f"  Chunk size: {chunk_size}, overlap: {chunk_overlap}")
+        output.info(f"  Chunk size: {chunk_size}, overlap: {chunk_overlap}")
     if compile_model:
-        click.echo(f"Model compilation: enabled (torch.compile)")
-    click.echo(f"Multi-GPU: {use_multi_gpu}")
+        output.info("Model compilation: enabled (torch.compile)")
+    output.key_value("Multi-GPU", use_multi_gpu)
 
     try:
         # Convert multi-GPU string to Optional[bool]
@@ -877,7 +708,7 @@ def keybert(
             multi_gpu_setting = False
 
         # Initialize extractor
-        click.echo("\nLoading BERT model (this may take a moment)...")
+        output.info("\nLoading BERT model (this may take a moment)...")
         extractor = KeyBERTExtractor(
             source_name=source,
             input_file=Path(input_file) if input_file else None,
@@ -899,7 +730,7 @@ def keybert(
         group_by_list = list(group_by) if group_by else None
 
         # Extract keywords
-        click.echo("Extracting keywords...")
+        output.info("Extracting keywords...")
         df_keywords = extractor.extract_keywords(
             top_k=top_k, group_by=group_by_list, use_mmr=use_mmr, limit=limit
         )
@@ -907,17 +738,16 @@ def keybert(
         # Save results with metadata
         output_path = extractor.save_results(df_keywords, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n[OK] Saved keywords to: {output_path}")
-        click.echo(f"  Total groups: {len(df_keywords)}")
-        click.echo(f"  Columns: {df_keywords.columns}")
+        output.success("Saved keywords")
+        output.key_value("Output", str(output_path))
+        output.key_value("Total groups", len(df_keywords))
+        output.key_value("Columns", ", ".join(df_keywords.columns))
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(
-            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
+        output.error(f"{e}")
+        output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during KeyBERT extraction: {e}", err=True)
+        output.error(f"Error during KeyBERT extraction: {e}")
         logging.exception("Full error details:")
         return

@@ -26,11 +26,12 @@ logger = logging.getLogger(__name__)
 class ZenodoDownloader:
     """Download and extract newspaper data from Zenodo collections."""
 
-    def __init__(self, data_dir: Optional[Path] = None) -> None:
+    def __init__(self, source_name: str = "der_tag", data_dir: Optional[Path] = None) -> None:
         """
         Initialize the Zenodo downloader.
 
         Args:
+            source_name: Name of the source to download (e.g., 'der_tag')
             data_dir: Directory to store downloaded and extracted data.
                      Defaults to config or workspace data/ directory.
         """
@@ -47,9 +48,8 @@ class ZenodoDownloader:
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.extracted_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load Zenodo links configuration from sources directory
-        # TODO: Make this configurable instead of hardcoded to 'der_tag'
-        self.config = load_source_config("der_tag")
+        # Load source configuration
+        self.config = load_source_config(source_name)
 
         # Get dataset metadata
         self.dataset_name: str = self.config.dataset_name

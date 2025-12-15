@@ -15,45 +15,60 @@ from newspaper_explorer.config.base import get_config
 
 def resolve_input_path(
     source: str,
-    input_type: str = "textblocks",
-    custom_path: Optional[Union[Path, str]] = None,
+    input_file: Optional[Union[Path, str]] = None,
+    id_column: Optional[str] = None,
 ) -> tuple[Path, str]:
     """
-    Resolve input file path and detect ID column.
+    Resolve input file path and ID column with auto-detection.
+
+    Auto-detects between textblocks and lines files, preferring textblocks
+    for better context in analysis tasks.
 
     Args:
         source: Source name (e.g., "der_tag")
-        input_type: Input data type ("textblocks" or "lines")
-        custom_path: Optional custom path to parquet file
+        input_file: Optional custom path to parquet file
+        id_column: Optional explicit ID column name (auto-detected if not provided)
 
     Returns:
         Tuple of (input_path, id_column)
 
     Raises:
-        FileNotFoundError: If resolved path doesn't exist
+        FileNotFoundError: If no suitable input file exists
         ValueError: If ID column cannot be detected
 
     Example:
-        >>> path, id_col = resolve_input_path("der_tag", "textblocks")
+        >>> # Auto-detect (prefers textblocks)
+        >>> path, id_col = resolve_input_path("der_tag")
         >>> print(path)
         /path/to/data/processed/der_tag/text/textblocks.parquet
         >>> print(id_col)
         text_block_id
+
+        >>> # Custom file
+        >>> path, id_col = resolve_input_path("der_tag", input_file="custom.parquet")
     """
     config = get_config()
 
-    if custom_path:
-        input_path = Path(custom_path)
-        id_col = detect_id_column(input_path)
-    elif input_type == "textblocks":
-        input_path = config.data_dir / "processed" / source / "text" / "textblocks.parquet"
-        id_col = "text_block_id"
-    else:  # lines
-        input_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
-        id_col = "line_id"
+    if input_file:
+        # Custom file provided
+        input_path = Path(input_file)
+        id_col = id_column if id_column else detect_id_column(input_path)
+    else:
+        # Auto-detect default file (textblocks preferred)
+        textblocks_path = config.data_dir / "processed" / source / "text" / "textblocks.parquet"
+        lines_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
 
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        if textblocks_path.exists():
+            input_path = textblocks_path
+            id_col = id_column or "text_block_id"
+        elif lines_path.exists():
+            input_path = lines_path
+            id_col = id_column or "line_id"
+        else:
+            raise FileNotFoundError(
+                f"No input file found for source '{source}'. "
+                f"Run parsing first: newspaper-explorer data parse --source {source}"
+            )
 
     return input_path, id_col
 

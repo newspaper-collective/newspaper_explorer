@@ -8,8 +8,8 @@ from newspaper_explorer.cli.utils import errors, output
 from newspaper_explorer.cli.utils.options import (
     force_option,
     max_retries_option,
-    max_workers_option,
     min_image_size_option,
+    num_workers_option,
     source_option,
 )
 from newspaper_explorer.config.base import get_config
@@ -25,7 +25,7 @@ def images_group() -> None:
 
 @images_group.command(name="download")
 @source_option()
-@max_workers_option(default=8)
+@num_workers_option(default=8)
 @max_retries_option(default=3)
 @min_image_size_option(default=1024)
 @click.option(
@@ -34,7 +34,7 @@ def images_group() -> None:
     help="Skip image validation after download",
 )
 def download_images(
-    source: str, *, max_workers: int, max_retries: int, no_validate: bool, min_size: int
+    source: str, *, num_workers: int, max_retries: int, no_validate: bool, min_size: int
 ) -> None:
     """
     Download high-resolution newspaper page images from METS XML.
@@ -65,7 +65,7 @@ def download_images(
 
         # Show configuration
         output.section("CONFIGURATION")
-        output.key_value("Parallel workers", max_workers)
+        output.key_value("Parallel workers", num_workers)
         output.key_value("Max retries", max_retries)
         output.key_value("Validation", "Enabled" if not no_validate else "Disabled")
         if not no_validate:
@@ -74,7 +74,7 @@ def download_images(
         output.section("DOWNLOADING")
         downloader = ImageDownloader(
             source_name=source,
-            max_workers=max_workers,
+            max_workers=num_workers,
             max_retries=max_retries,
             validate=not no_validate,
             min_image_size=min_size,

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.results import (
-    list_analysis_runs,
+    list_analysis_results,
     load_analysis_metadata,
     load_analysis_results,
 )
@@ -37,7 +37,7 @@ async def list_runs(source: str, analysis_type: AnalysisType) -> list[AnalysisRu
     Returns runs sorted chronologically (oldest first).
     """
     try:
-        run_ids = list_analysis_runs(source, analysis_type)
+        run_ids = list_analysis_results(source, analysis_type)
 
         if not run_ids:
             return []
@@ -94,7 +94,7 @@ async def get_metadata(
 async def check_availability(source: str, analysis_type: AnalysisType) -> AnalysisAvailability:
     """Check if any results exist for the given source and analysis type"""
     try:
-        runs = list_analysis_runs(source, analysis_type)
+        runs = list_analysis_results(source, analysis_type)
 
         return AnalysisAvailability(
             available=len(runs) > 0,
@@ -120,7 +120,7 @@ async def get_available_analyses(source: str) -> list[AvailableAnalysis]:
 
         results: list[AvailableAnalysis] = []
         for analysis_type in analysis_types:
-            runs = list_analysis_runs(source, analysis_type)
+            runs = list_analysis_results(source, analysis_type)
             if runs:
                 results.append(
                     AvailableAnalysis(

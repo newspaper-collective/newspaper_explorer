@@ -194,6 +194,184 @@ def batch_size_option(default: int = 32) -> Callable[[F], F]:
     )
 
 
+def min_length_option(default: int = 10) -> Callable[[F], F]:
+    """
+    Standard --min-length option for text filtering.
+
+    Args:
+        default: Default minimum text length in characters (default: 10)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @min_length_option(default=100)
+        def my_command(min_length):
+            pass
+    """
+    return click.option(
+        "--min-length",
+        type=int,
+        default=default,
+        help="Minimum text length in characters",
+        show_default=True,
+    )
+
+
+def max_length_option(default: int = 1000, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --max-length option for text chunking.
+
+    Args:
+        default: Default maximum text length in characters (default: 1000)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @max_length_option(default=8000, help_text="Max chars before chunking")
+        def my_command(max_length):
+            pass
+    """
+    return click.option(
+        "--max-length",
+        type=int,
+        default=default,
+        help=help_text or "Maximum text length in characters",
+        show_default=True,
+    )
+
+
+def threshold_option(default: float = 0.5, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --threshold option for confidence/probability thresholds.
+
+    Args:
+        default: Default threshold value (default: 0.5)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @threshold_option(default=0.2)
+        def my_command(threshold):
+            pass
+    """
+    return click.option(
+        "--threshold",
+        type=float,
+        default=default,
+        help=help_text or "Confidence threshold (0-1)",
+        show_default=True,
+    )
+
+
+def model_option(default: str, help_text: str) -> Callable[[F], F]:
+    """
+    Standard --model option for specifying ML model names.
+
+    Args:
+        default: Default model name or identifier
+        help_text: Help text describing available models
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @model_option(default="gpt-4o-mini", help_text="LLM model to use")
+        def my_command(model):
+            pass
+    """
+    return click.option(
+        "--model",
+        type=str,
+        default=default,
+        help=help_text,
+        show_default=True,
+    )
+
+
+def num_gpus_option(default: int = 1) -> Callable[[F], F]:
+    """
+    Standard --num-gpus option for GPU parallel processing.
+
+    Args:
+        default: Default number of GPUs to use (default: 1)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @num_gpus_option(default=1)
+        def my_command(num_gpus):
+            pass
+    """
+    return click.option(
+        "--num-gpus",
+        type=int,
+        default=default,
+        help="Number of GPUs to use for parallel processing (auto-detects available GPUs)",
+        show_default=True,
+    )
+
+
+def temperature_option(default: float = 0.3) -> Callable[[F], F]:
+    """
+    Standard --temperature option for LLM sampling temperature.
+
+    Args:
+        default: Default temperature value (default: 0.3)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @temperature_option(default=0.5)
+        def my_command(temperature):
+            pass
+    """
+    return click.option(
+        "--temperature",
+        type=float,
+        default=default,
+        help="Sampling temperature (0.0 = deterministic, higher = more random)",
+        show_default=True,
+    )
+
+
+def max_tokens_option(default: int = 2000) -> Callable[[F], F]:
+    """
+    Standard --max-tokens option for LLM maximum output tokens.
+
+    Args:
+        default: Default maximum tokens (default: 2000)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @max_tokens_option(default=4000)
+        def my_command(max_tokens):
+            pass
+    """
+    return click.option(
+        "--max-tokens",
+        type=int,
+        default=default,
+        help="Maximum tokens in LLM response",
+        show_default=True,
+    )
+
+
 def output_path_option(help_text: Optional[str] = None) -> Callable[[F], F]:
     """
     Standard --output option for specifying output file path.
@@ -327,30 +505,44 @@ def model_dir_option(default: str = "models") -> Callable[[F], F]:
     return decorator
 
 
-def max_workers_option(default: int = 8) -> Callable[[F], F]:
+def num_workers_option(
+    default: Optional[int] = None, help_text: Optional[str] = None
+) -> Callable[[F], F]:
     """
-    Standard --max-workers option for parallel processing.
+    Standard --num-workers option for parallel processing.
 
     Args:
-        default: Default number of workers (default: 8)
+        default: Default number of workers (default: None for auto-detection)
+        help_text: Custom help text (default: standard help)
 
     Returns:
         Click option decorator
 
     Example:
         @click.command()
-        @max_workers_option(default=16)
-        def my_command(max_workers):
+        @num_workers_option()  # Auto-detect
+        def my_command(num_workers):
+            pass
+
+        @click.command()
+        @num_workers_option(default=8)  # Fixed default
+        def my_command(num_workers):
             pass
     """
 
     def decorator(func: F) -> F:
+        if default is not None:
+            return click.option(
+                "--num-workers",
+                type=int,
+                default=default,
+                help=help_text or "Number of parallel workers",
+                show_default=True,
+            )(func)
         return click.option(
-            "--max-workers",
+            "--num-workers",
             type=int,
-            default=default,
-            help="Maximum parallel workers",
-            show_default=True,
+            help=help_text or "Number of parallel workers (default: auto-detect)",
         )(func)
 
     return decorator
@@ -409,6 +601,208 @@ def min_image_size_option(default: int = 1024) -> Callable[[F], F]:
             default=default,
             help="Minimum expected image size in bytes",
             show_default=True,
+        )(func)
+
+    return decorator
+
+
+def top_k_option(default: int = 10, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --top-k option for limiting top results.
+
+    Args:
+        default: Default number of top items to return (default: 10)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @top_k_option(default=15)
+        def my_command(top_k):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--top-k",
+            type=int,
+            default=default,
+            help=help_text or "Number of top items to extract",
+            show_default=True,
+        )(func)
+
+    return decorator
+
+
+def group_by_option(help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --group-by option for grouping columns.
+
+    Args:
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @group_by_option()
+        def my_command(group_by):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--group-by",
+            type=str,
+            multiple=True,
+            default=None,
+            help=help_text or "Column(s) to group by (can specify multiple times)",
+        )(func)
+
+    return decorator
+
+
+def device_option(help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --device option for ML device selection.
+
+    Args:
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @device_option()
+        def my_command(device):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--device",
+            type=str,
+            help=help_text or "Device to use ('cuda', 'cpu', or None for auto-detect)",
+        )(func)
+
+    return decorator
+
+
+def use_chunking_option(default: bool = True, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --use-chunking option for text chunking.
+
+    Args:
+        default: Default chunking behavior (default: True)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @use_chunking_option()
+        def my_command(use_chunking):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--use-chunking/--no-chunking",
+            default=default,
+            help=help_text or "Split long texts into chunks",
+            show_default=True,
+        )(func)
+
+    return decorator
+
+
+def chunk_size_option(default: int = 400, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --chunk-size option for text chunk size.
+
+    Args:
+        default: Default chunk size in tokens (default: 400)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @chunk_size_option(default=512)
+        def my_command(chunk_size):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--chunk-size",
+            type=int,
+            default=default,
+            help=help_text or "Token size for each chunk",
+            show_default=True,
+        )(func)
+
+    return decorator
+
+
+def chunk_overlap_option(default: int = 50, help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --chunk-overlap option for chunk overlap.
+
+    Args:
+        default: Default overlap in tokens (default: 50)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @chunk_overlap_option(default=100)
+        def my_command(chunk_overlap):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--chunk-overlap",
+            type=int,
+            default=default,
+            help=help_text or "Overlap between chunks in tokens",
+            show_default=True,
+        )(func)
+
+    return decorator
+
+
+def compile_model_option(help_text: Optional[str] = None) -> Callable[[F], F]:
+    """
+    Standard --compile-model option for PyTorch model compilation.
+
+    Args:
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @compile_model_option()
+        def my_command(compile_model):
+            pass
+    """
+
+    def decorator(func: F) -> F:
+        return click.option(
+            "--compile-model",
+            is_flag=True,
+            help=help_text or "Use torch.compile for model optimization (requires PyTorch 2.0+)",
         )(func)
 
     return decorator

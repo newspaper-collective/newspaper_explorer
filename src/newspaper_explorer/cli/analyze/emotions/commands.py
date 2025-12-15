@@ -18,7 +18,6 @@ from newspaper_explorer.cli.utils.options import (
     input_file_option,
     limit_option,
     model_dir_option,
-    output_name_option,
     source_option,
     text_column_option,
 )
@@ -38,7 +37,6 @@ def emotions_group() -> None:
 @batch_size_option(default=64)
 @limit_option()
 @model_dir_option(default="models/emotions")
-@output_name_option(default="emotion_predictions")
 @click.option(
     "--chunk-size",
     type=int,
@@ -68,7 +66,6 @@ def predict(
     batch_size: int,
     limit: Optional[int],
     model_dir: str,
-    output_name: str,
     chunk_size: int,
     *,
     fp16: bool,
@@ -162,13 +159,11 @@ def predict(
             output_file = predictor.predict(
                 input_file=Path(input_file),
                 text_column=text_column,
-                output_name=output_name,
                 limit=limit,
             )
         else:
             output_file = predictor.predict_from_source(
                 text_column=text_column,
-                output_name=output_name,
                 limit=limit,
             )
 

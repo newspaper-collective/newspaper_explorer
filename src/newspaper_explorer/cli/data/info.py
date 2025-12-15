@@ -66,11 +66,12 @@ def status(source: str) -> None:
         # Load config for metadata
         config = load_source_config(source)
 
+        # Main header
+        output.header(f"SOURCE INFORMATION: {source.upper()}")
+        output.info("Gathering status information...", muted=True)
+
         # Get comprehensive status
         status = get_source_status(source)
-
-        # Main header
-        output.header(f"SOURCE INFORMATION: {status.source_name}")
 
         # Show metadata
         if config.metadata:
@@ -255,8 +256,8 @@ def status(source: str) -> None:
         errors.handle_error(e, show_traceback=True)
 
 
-@info_group.command(name="list")
-def list_sources() -> None:
+@info_group.command(name="list-sources")
+def list_sources_cmd() -> None:
     """
     List all available data sources.
 
@@ -266,7 +267,7 @@ def list_sources() -> None:
 
     \b
     Examples:
-      newspaper-explorer analyze info list
+      newspaper-explorer data info list-sources
     """
 
     sources = list_available_sources()
