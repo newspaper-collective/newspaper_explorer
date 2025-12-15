@@ -3,11 +3,12 @@ METS XML metadata parser for newspaper issues.
 Extracts rich metadata from METS files that describe complete issues.
 """
 
+import contextlib
 from datetime import datetime
 import logging
 from pathlib import Path
 import re
-from typing import Optional
+from typing import ClassVar, Optional
 
 from lxml import etree
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class METSParser:
     """Parser for METS XML metadata files"""
 
-    NAMESPACES = {
+    NAMESPACES: ClassVar[dict[str, str]] = {
         "mets": "http://www.loc.gov/METS/",
         "mods": "http://www.loc.gov/mods/v3",
         "xlink": "http://www.w3.org/1999/xlink",
@@ -30,7 +31,7 @@ class METSParser:
     _ISSUE_NUMBER_RE = re.compile(r"Nr\.\s*(\d+)")
     _PAGE_COUNT_RE = re.compile(r"(\d+)\s*Seiten?")
 
-    def _get_text(self, root, xpath: str) -> Optional[str]:
+    def _get_text(self, root: etree._Element, xpath: str) -> Optional[str]:  # pyright: ignore[reportPrivateUsage]
         """Helper to extract and strip text from an element"""
         elem = root.find(xpath, self.NAMESPACES)
         return elem.text.strip() if elem is not None and elem.text else None
@@ -55,10 +56,8 @@ class METSParser:
             # Extract date
             date_text = self._get_text(root, ".//mods:dateIssued[@encoding='iso8601']")
             if date_text:
-                try:
+                with contextlib.suppress(ValueError):
                     metadata.date = datetime.fromisoformat(date_text)
-                except ValueError:
-                    pass
 
             # Extract issue number and string
             metadata.issue_string = self._get_text(
@@ -101,7 +100,7 @@ class METSParser:
             logger.debug(f"Parsed METS metadata from {filename}")
             return metadata
 
-        except Exception as e:
+        except (etree.XMLSyntaxError, OSError, ValueError) as e:
             logger.error(f"Error parsing METS file {filepath}: {e}")
             return None
 
@@ -133,7 +132,8 @@ class METSParser:
 
                     if mets_file.exists():
                         return mets_file
-        except Exception as e:
+
+        except (AttributeError, OSError, ValueError) as e:
             logger.debug(f"Could not find METS for {alto_path}: {e}")
 
         return None

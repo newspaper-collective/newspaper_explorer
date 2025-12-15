@@ -22,10 +22,10 @@ from gliner2 import GLiNER2
 import polars as pl
 from tqdm import tqdm
 
-from newspaper_explorer.analyze.query.engine import create_result_metadata
 from newspaper_explorer.config import external_tools  # noqa: F401 (sets HF_HOME)
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
+from newspaper_explorer.data.utils.metadata import create_result_metadata
 from newspaper_explorer.data.utils.text import chunk_text
 
 logger = logging.getLogger(__name__)

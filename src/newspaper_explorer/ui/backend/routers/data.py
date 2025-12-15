@@ -3,6 +3,7 @@ Data access endpoints for text, issues, and pages
 """
 
 from datetime import date
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -15,10 +16,6 @@ from newspaper_explorer.models.api.content import Issue, Line, Page, TextBlock
 from newspaper_explorer.models.api.filters import DateFilter, PaginationParams
 
 router = APIRouter()
-
-
-# Note: The /issues endpoint was removed in favor of /browse/issues
-# which provides richer functionality with images and better filtering
 
 
 @router.get("/{source_name}/pages", response_model=list[Page])
@@ -76,8 +73,8 @@ async def get_pages(
         try:
             image_indexer = ImageIndexer(source_name)
             image_index = image_indexer.load_index()
-        except Exception:
-            pass
+        except (FileNotFoundError, ValueError) as e:
+            logging.debug(f"Image index not available for {source_name}: {e}")
 
         # Convert to response model
         pages = []
@@ -769,7 +766,10 @@ async def get_page_analysis(source_name: str, page_id: str):
                             }
                             for row in layout_df.iter_rows(named=True)
                         ]
-                except Exception:
+                except (FileNotFoundError, ValueError, OSError, pl.ComputeError) as e:
+                    logging.warning(
+                        f"Error loading layout from {layout_dir}: {e.__class__.__name__}: {e}"
+                    )
                     continue
 
         # Load entities from all result sets
@@ -782,7 +782,10 @@ async def get_page_analysis(source_name: str, page_id: str):
                     if ent_df.height > 0:
                         result_name = entities_dir.name
                         entities_dict[result_name] = ent_df.to_dicts()
-                except Exception:
+                except (FileNotFoundError, ValueError, OSError, pl.ComputeError) as e:
+                    logging.warning(
+                        f"Error loading entities from {entities_dir}: {e.__class__.__name__}: {e}"
+                    )
                     continue
 
         return {
@@ -793,5 +796,5 @@ async def get_page_analysis(source_name: str, page_id: str):
             "entities": entities_dict,
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except (FileNotFoundError, ValueError, OSError, KeyError) as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e

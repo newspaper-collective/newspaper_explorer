@@ -4,7 +4,6 @@ Prompt template for text quality assessment.
 
 from newspaper_explorer.llm.prompts.base import PromptTemplate
 
-
 TEXT_QUALITY_ASSESSMENT = PromptTemplate(
     system="""You are an expert assessing OCR quality and text coherence in historical documents.""",
     user="""Assess the quality and coherence of this OCR-scanned German newspaper text.

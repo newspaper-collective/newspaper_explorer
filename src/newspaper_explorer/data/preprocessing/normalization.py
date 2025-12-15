@@ -839,6 +839,7 @@ def _dehyphenate_lines(
     y_col: str = "y",
     output_col: Optional[str] = None,
     conjunctions: Optional[set[str]] = None,
+    *,
     use_ocr_suggestions: bool = True,
 ) -> pl.DataFrame:
     """
@@ -931,7 +932,7 @@ def _dehyphenate_lines(
                 .str.contains(rf"{word_char}-$")
                 .fill_null(value=False)
             )
-            .otherwise(pl.lit(False))
+            .otherwise(pl.lit(value=False))
             .alias("_ends_hyphen"),
             pl.when(pl.col("_strategy") == "pattern")
             .then(

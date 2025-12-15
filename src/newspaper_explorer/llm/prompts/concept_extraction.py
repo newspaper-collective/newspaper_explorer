@@ -4,7 +4,6 @@ Prompt template for concept and theme extraction.
 
 from newspaper_explorer.llm.prompts.base import PromptTemplate
 
-
 CONCEPT_EXTRACTION = PromptTemplate(
     system="""You are a historian extracting key concepts from German newspaper texts.
 Identify important ideas, themes, and concepts relevant to the historical period.""",

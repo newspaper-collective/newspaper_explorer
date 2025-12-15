@@ -326,8 +326,8 @@ class LDAExtractor:
             eta: Topic-word density ('auto', 'symmetric', or float)
             limit: Limit number of documents for training
             group_by: Columns to group by before training
-            no_below: Filter tokens appearing in < N documents
-            no_above: Filter tokens appearing in > fraction of documents
+            no_below: Minimum number of documents a term must appear in
+            no_above: Maximum fraction of documents a term can appear in (0.0-1.0)
             keep_n: Keep only top N most frequent tokens
             force_retrain: Force retraining even if model exists
 

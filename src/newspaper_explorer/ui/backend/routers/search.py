@@ -65,7 +65,7 @@ async def search_text(
             return SearchResponse(total=0, results=[], page=page, page_size=page_size)
 
         # Get results
-        rows = qe.search_text_simple(
+        rows = qe.search_text(
             query=query.query,
             limit=page_size,
             offset=offset,

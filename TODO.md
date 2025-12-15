@@ -55,22 +55,26 @@ Consolidate CLI improvements into a cohesive refactoring effort with reusable ut
   - [ ] Apply decorators: source_option, input_file_option, output_name_option, limit_option
   - [ ] Update error handling and output styling
   - [ ] Standardize across lda, bertopic, query commands
-- [x] `cli/analyze/keywords/commands.py` (858 lines) - Keyword extraction - **COMPLETED (CLI improvements)**
-  - [x] **CLI improvements (completed)**:
-    - [x] Apply decorators: source_option, input_file_option, text_column_option, limit_option (tfidf only)
-    - [x] Remove inline imports (4 extractors now imported at top)
-    - [x] Add return type annotations (-> None) to all 4 commands
-    - [x] Remove unused get_config import
-    - [x] Replace click.echo() with output module (header, key_value, success, info, error) - ALL DONE
-    - [x] Replace error handling with output.error() and output.info()
-    - [x] Document stopwords as algorithm-specific (tfidf: --no-stopwords, rake: --use-stopwords/--no-stopwords, yake/keybert: none)
-    - [x] File reduced from 872 to 858 lines (14 line reduction, ~1.6%)
-  - [ ] **Architectural refactoring (future)**:
-    - [ ] Refactor TFIDFExtractor.save_results() to use save_analysis_results() from cli/utils/results.py
-    - [ ] Refactor RAKEExtractor.save_results() to use save_analysis_results()
-    - [ ] Refactor YAKEExtractor.save_results() to use save_analysis_results()
-    - [ ] Refactor KeyBERTExtractor.save_results() to use save_analysis_results()
-    - [ ] After extractor refactoring, remove --output-name from CLI (auto-naming like entities)
+- [x] `cli/analyze/keywords/commands.py` (748 lines) - Keyword extraction - **COMPLETED (Phase 4: 2/5)**
+  - [x] **Fully refactored with decorators and utilities**:
+    - [x] Applied 16 decorator types across 4 commands (tfidf, rake, yake, keybert)
+    - [x] Decorators: source_option, input_file_option, text_column_option, limit_option, top_k_option, group_by_option, output_name_option, batch_size_option, num_workers_option, min_length_option, max_length_option, device_option, use_chunking_option, chunk_size_option, chunk_overlap_option, compile_model_option
+    - [x] Renamed --stopwords to --custom-stopwords in tfidf for clarity
+    - [x] Unified num_workers_option across all CLI commands (replaced max_workers_option)
+    - [x] Replaced 100% of click.echo() calls with output module (header, key_value, success, info, error)
+    - [x] Removed 124 lines (14.2% reduction: 872 → 748 lines)
+    - [x] All algorithm-specific options kept inline (no-stopwords, document_level, min_df, max_df, ngram_range, language, model, diversity, mmr, etc.)
+- [ ] `cli/analyze/topics/commands.py` (1,777 lines) - Topic modeling - **IN PROGRESS (Phase 4: 3/5)**
+  - [ ] **Commands**: lda, mallet, bertopic, fastopic, bertopic_batch
+  - [x] Created analyze/topics/utils.py with 4 helper functions (parsing, formatting)
+  - [x] Started LDA refactoring: Applied decorators (source, input_file, text_column, top_k, limit), renamed --stopwords → --custom-stopwords, partial output module conversion
+  - [ ] Complete LDA refactoring: Convert remaining click.echo() to output module
+  - [ ] Refactor mallet command with same pattern
+  - [ ] Refactor bertopic command with same pattern
+  - [ ] Refactor fastopic command with same pattern
+  - [ ] Refactor bertopic_batch command with same pattern
+  - [ ] Extract more CLI logic to analyze/topics/utils.py (workflow orchestration)
+  - [ ] Target: 10-15% line reduction (similar to keywords)
 - [ ] `cli/analyze/layout/commands.py` (1,447 lines) - YOLO layout detection
   - [ ] Apply decorators where applicable (different pattern - image-focused)
   - [ ] Update error handling and output styling
@@ -259,3 +263,5 @@ emotions cli: use list-models
 keywords commands: tfidf gourp by / document level clarification
 
 keywords commands: tfidf min-df and max-df do what?
+
+topics commands: rework merge-yearly

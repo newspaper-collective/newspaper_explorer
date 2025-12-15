@@ -5,12 +5,14 @@ High-performance data ingester using multiprocessing and Polars for fast process
 Configuration-driven: loads source metadata from JSON files.
 """
 
+from __future__ import annotations
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 import logging
 from multiprocessing import cpu_count
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from pathlib import Path  # noqa: TC003 - Path is used at runtime (glob, exists, mkdir, etc.)
+from typing import TYPE_CHECKING, Any, Optional
 
 from natsort import natsorted
 import polars as pl
@@ -20,7 +22,9 @@ from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.workers import parse_file_worker, parse_mets_worker
 from newspaper_explorer.data.parser.mets import METSParser
 from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
-from newspaper_explorer.models.data.sources import SourceConfig
+
+if TYPE_CHECKING:
+    from newspaper_explorer.models.data.sources import SourceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +106,7 @@ class DataIngester:
 
         logger.debug(f"DataLoader initialized with {max_workers} workers")
 
-    def get_loading_status(self) -> Dict[str, Any]:
+    def get_loading_status(self) -> dict[str, Any]:
         """
         Get loading status for the configured source.
 
@@ -131,7 +135,7 @@ class DataIngester:
             else get_config().default_alto_pattern
         )
 
-        status: Dict[str, Any] = {
+        status: dict[str, Any] = {
             "source_name": self.source_name,
             "raw_dir": str(raw_dir),
             "output_file": str(output_file),
@@ -388,7 +392,7 @@ class DataIngester:
 
         return None
 
-    def _build_mets_cache(self, alto_files: List[Path]) -> Dict[str, Dict]:
+    def _build_mets_cache(self, alto_files: list[Path]) -> dict[str, dict]:
         """
         Pre-parse all unique METS files and build cache in parallel.
 
@@ -431,7 +435,7 @@ class DataIngester:
 
     def load_files(
         self,
-        filepaths: List[Path],
+        filepaths: list[Path],
         output_parquet: Optional[Path] = None,
         source_name: Optional[str] = None,
     ) -> pl.DataFrame:

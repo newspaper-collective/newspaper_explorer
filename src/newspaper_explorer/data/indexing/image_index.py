@@ -17,8 +17,8 @@ from tqdm import tqdm
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.indexing.image_metadata_worker import extract_image_metadata_worker
 from newspaper_explorer.data.parser.mets import METSParser
-from newspaper_explorer.data.utils.ids import extract_edition, generate_issue_id
 from newspaper_explorer.data.utils.files import find_mets_files
+from newspaper_explorer.data.utils.ids import extract_edition, generate_issue_id
 
 logger = logging.getLogger(__name__)
 

@@ -6,23 +6,23 @@ structured response validation and proper result storage following the
 new data architecture pattern.
 """
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Dict, List, Optional
 
 import polars as pl
 from tqdm import tqdm
 
-from newspaper_explorer.data.ingest.loader import DataIngester
-from newspaper_explorer.data.utils.text import chunk_text
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.ingest.loader import DataIngester
+from newspaper_explorer.data.utils.metadata import create_result_metadata
+from newspaper_explorer.data.utils.text import chunk_text
 from newspaper_explorer.llm.client import LLMClient, LLMRetryError, LLMValidationError
 from newspaper_explorer.llm.prompts.entity_extraction import ENTITY_EXTRACTION
 from newspaper_explorer.models.llm.entity_extraction import EntityResponse
-from newspaper_explorer.analyze.query.engine import create_result_metadata
 
 logger = logging.getLogger(__name__)
 

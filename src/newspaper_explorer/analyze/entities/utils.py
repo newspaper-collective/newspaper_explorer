@@ -8,19 +8,19 @@ of different methods (GLiNER, LLM, etc.) using the QueryEngine.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, cast
+from typing import Any
 
 import polars as pl
 
-from newspaper_explorer.config.base import get_config
 from newspaper_explorer.analyze.query.engine import QueryEngine
+from newspaper_explorer.config.base import get_config
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def list_entity_results(source_name: str) -> List[Dict[str, Any]]:
+def list_entity_results(source_name: str) -> list[dict[str, Any]]:
     """
     List all available entity extraction results for a source.
 
@@ -48,7 +48,7 @@ def list_entity_results(source_name: str) -> List[Dict[str, Any]]:
             continue
 
         # Load metadata
-        with open(metadata_path, "r", encoding="utf-8") as f:
+        with metadata_path.open("r", encoding="utf-8") as f:
             metadata = json.load(f)
 
         # Count entities
@@ -70,7 +70,7 @@ def list_entity_results(source_name: str) -> List[Dict[str, Any]]:
     return results
 
 
-def load_result_metadata(source_name: str, method_id: str) -> Dict[str, Any]:
+def load_result_metadata(source_name: str, method_id: str) -> dict[str, Any]:
     """
     Load metadata for a specific entity extraction result.
 
@@ -89,12 +89,13 @@ def load_result_metadata(source_name: str, method_id: str) -> Dict[str, Any]:
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata not found: {metadata_path}")
 
-    with open(metadata_path, "r", encoding="utf-8") as f:
-        return cast(Dict[str, Any], json.load(f))
+    with metadata_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
 
 def compare_existing_results(
     source_name: str, method_id_1: str, method_id_2: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compare two existing entity extraction results without re-running.
 
@@ -146,15 +147,15 @@ def compare_coverage(source_name: str, method_id_1: str, method_id_2: str) -> pl
     path_2 = Path(config.results_dir) / source_name / "entities" / method_id_2 / "entities.parquet"
 
     with QueryEngine(source=source_name) as qe:
-        comparison = qe.query(
-            f"""
+        result: pl.DataFrame = qe.query(
+            """
             WITH method1_lines AS (
-                SELECT DISTINCT source_id 
-                FROM '{path_1}'
+                SELECT DISTINCT source_id
+                FROM read_parquet(?)
             ),
             method2_lines AS (
                 SELECT DISTINCT source_id
-                FROM '{path_2}'
+                FROM read_parquet(?)
             ),
             source_lines AS (
                 SELECT DISTINCT source_id
@@ -164,24 +165,24 @@ def compare_coverage(source_name: str, method_id_1: str, method_id_2: str) -> pl
                 COUNT(DISTINCT s.source_id) as total_lines,
                 COUNT(DISTINCT m1.source_id) as method1_coverage,
                 COUNT(DISTINCT m2.source_id) as method2_coverage,
-                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NOT NULL 
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NOT NULL
                       THEN s.source_id END) as both_methods,
-                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NULL 
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NOT NULL AND m2.source_id IS NULL
                       THEN s.source_id END) as method1_only,
-                COUNT(DISTINCT CASE WHEN m1.source_id IS NULL AND m2.source_id IS NOT NULL 
+                COUNT(DISTINCT CASE WHEN m1.source_id IS NULL AND m2.source_id IS NOT NULL
                       THEN s.source_id END) as method2_only
             FROM source_lines s
             LEFT JOIN method1_lines m1 ON s.source_id = m1.source_id
             LEFT JOIN method2_lines m2 ON s.source_id = m2.source_id
-        """
+            """,
+            params=[str(path_1), str(path_2)],
         )
-
-    return cast(pl.DataFrame, comparison)
+        return result
 
 
 def compare_entities(
     source_name: str, method_id_1: str, method_id_2: str
-) -> Dict[str, pl.DataFrame]:
+) -> dict[str, pl.DataFrame]:
     """
     Compare entities found by two methods.
 
@@ -200,32 +201,33 @@ def compare_entities(
     with QueryEngine(source=source_name) as qe:
         # Overall statistics
         stats = qe.query(
-            f"""
+            """
             SELECT
                 'Method 1' as method,
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT entity_text) as unique_entities,
                 COUNT(DISTINCT source_id) as lines_with_entities
-            FROM '{path_1}'
+            FROM read_parquet(?)
             UNION ALL
             SELECT
                 'Method 2' as method,
                 COUNT(*) as total_entities,
                 COUNT(DISTINCT entity_text) as unique_entities,
                 COUNT(DISTINCT source_id) as lines_with_entities
-            FROM '{path_2}'
-        """
+            FROM read_parquet(?)
+            """,
+            params=[str(path_1), str(path_2)],
         )
 
         # Entity type distribution
         type_dist = qe.query(
-            f"""
+            """
             WITH combined AS (
                 SELECT 'Method 1' as method, entity_type, source_id
-                FROM '{path_1}'
+                FROM read_parquet(?)
                 UNION ALL
                 SELECT 'Method 2' as method, entity_type, source_id
-                FROM '{path_2}'
+                FROM read_parquet(?)
             )
             SELECT
                 method,
@@ -235,25 +237,26 @@ def compare_entities(
             FROM combined
             GROUP BY method, entity_type
             ORDER BY method, count DESC
-        """
+            """,
+            params=[str(path_1), str(path_2)],
         )
 
         # Entities found by both methods (normalized comparison)
         both = qe.query(
-            f"""
+            """
             WITH method1_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text as method1_text
-                FROM '{path_1}'
+                FROM read_parquet(?)
             ),
             method2_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text as method2_text
-                FROM '{path_2}'
+                FROM read_parquet(?)
             )
             SELECT
                 m1.method1_text,
@@ -262,29 +265,30 @@ def compare_entities(
                 COUNT(*) as agreement_count
             FROM method1_entities m1
             INNER JOIN method2_entities m2
-                ON m1.entity_lower = m2.entity_lower 
+                ON m1.entity_lower = m2.entity_lower
                 AND m1.entity_type = m2.entity_type
             GROUP BY m1.method1_text, m2.method2_text, m1.entity_type
             ORDER BY agreement_count DESC
             LIMIT 50
-        """
+            """,
+            params=[str(path_1), str(path_2)],
         )
 
         # Entities unique to each method
         method1_only = qe.query(
-            f"""
+            """
             WITH method1_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text
-                FROM '{path_1}'
+                FROM read_parquet(?)
             ),
             method2_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type
-                FROM '{path_2}'
+                FROM read_parquet(?)
             )
             SELECT
                 m1.entity_text,
@@ -292,29 +296,30 @@ def compare_entities(
                 COUNT(*) as mentions
             FROM method1_entities m1
             LEFT JOIN method2_entities m2
-                ON m1.entity_lower = m2.entity_lower 
+                ON m1.entity_lower = m2.entity_lower
                 AND m1.entity_type = m2.entity_type
             WHERE m2.entity_lower IS NULL
             GROUP BY m1.entity_text, m1.entity_type
             ORDER BY mentions DESC
             LIMIT 25
-        """
+            """,
+            params=[str(path_1), str(path_2)],
         )
 
         method2_only = qe.query(
-            f"""
+            """
             WITH method1_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type
-                FROM '{path_1}'
+                FROM read_parquet(?)
             ),
             method2_entities AS (
-                SELECT DISTINCT 
+                SELECT DISTINCT
                     LOWER(TRIM(entity_text)) as entity_lower,
                     entity_type,
                     entity_text
-                FROM '{path_2}'
+                FROM read_parquet(?)
             )
             SELECT
                 m2.entity_text,
@@ -322,13 +327,14 @@ def compare_entities(
                 COUNT(*) as mentions
             FROM method2_entities m2
             LEFT JOIN method1_entities m1
-                ON m2.entity_lower = m1.entity_lower 
+                ON m2.entity_lower = m1.entity_lower
                 AND m2.entity_type = m1.entity_type
             WHERE m1.entity_lower IS NULL
             GROUP BY m2.entity_text, m2.entity_type
             ORDER BY mentions DESC
             LIMIT 25
-        """
+            """,
+            params=[str(path_1), str(path_2)],
         )
 
     return {
@@ -340,55 +346,55 @@ def compare_entities(
     }
 
 
-def print_comparison_report(comparison_data: Dict[str, Any]):
+def print_comparison_report(comparison_data: dict[str, Any]) -> None:
     """
     Print a formatted comparison report for any two methods.
 
     Args:
         comparison_data: Output from compare_existing_results()
     """
-    results = comparison_data["results"]
-    comparisons = comparison_data["comparisons"]
+    results: dict[str, dict[str, Any]] = comparison_data["results"]
+    comparisons: dict[str, pl.DataFrame] = comparison_data["comparisons"]
 
-    method_1 = results["method_1"]["metadata"]
-    method_2 = results["method_2"]["metadata"]
+    method_1: dict[str, Any] = results["method_1"]["metadata"]
+    method_2: dict[str, Any] = results["method_2"]["metadata"]
 
-    print("\n" + "=" * 80)
-    print("ENTITY EXTRACTION METHOD COMPARISON")
-    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info("ENTITY EXTRACTION METHOD COMPARISON")
+    logger.info("=" * 80)
 
     # Execution metadata
-    print("\n### Method 1 ###\n")
-    print(f"Method ID:    {method_1['analysis_id']}")
-    print(f"Method Type:  {method_1.get('method_type', 'unknown')}")
-    print(f"Model:        {method_1.get('parameters', {}).get('model', 'unknown')}")
-    print(f"Duration:     {method_1.get('duration_seconds', 0):.1f}s")
-    print(f"Line Count:   {method_1.get('line_count', 0)}")
+    logger.info("\n### Method 1 ###\n")
+    logger.info(f"Method ID:    {method_1['analysis_id']}")
+    logger.info(f"Method Type:  {method_1.get('method_type', 'unknown')}")
+    logger.info(f"Model:        {method_1.get('parameters', {}).get('model', 'unknown')}")
+    logger.info(f"Duration:     {method_1.get('duration_seconds', 0):.1f}s")
+    logger.info(f"Line Count:   {method_1.get('line_count', 0)}")
 
-    print("\n### Method 2 ###\n")
-    print(f"Method ID:    {method_2['analysis_id']}")
-    print(f"Method Type:  {method_2.get('method_type', 'unknown')}")
-    print(f"Model:        {method_2.get('parameters', {}).get('model', 'unknown')}")
-    print(f"Duration:     {method_2.get('duration_seconds', 0):.1f}s")
-    print(f"Line Count:   {method_2.get('line_count', 0)}")
+    logger.info("\n### Method 2 ###\n")
+    logger.info(f"Method ID:    {method_2['analysis_id']}")
+    logger.info(f"Method Type:  {method_2.get('method_type', 'unknown')}")
+    logger.info(f"Model:        {method_2.get('parameters', {}).get('model', 'unknown')}")
+    logger.info(f"Duration:     {method_2.get('duration_seconds', 0):.1f}s")
+    logger.info(f"Line Count:   {method_2.get('line_count', 0)}")
 
     # Overall statistics
-    print("\n### Overall Statistics ###\n")
-    print(comparisons["statistics"])
+    logger.info("\n### Overall Statistics ###\n")
+    logger.info(str(comparisons["statistics"]))
 
     # Entity type distribution
-    print("\n### Entity Type Distribution ###\n")
-    print(comparisons["type_distribution"])
+    logger.info("\n### Entity Type Distribution ###\n")
+    logger.info(str(comparisons["type_distribution"]))
 
     # Agreement
-    print("\n### Top Entities Found by Both Methods ###\n")
-    print(comparisons["agreement"].head(10))
+    logger.info("\n### Top Entities Found by Both Methods ###\n")
+    logger.info(str(comparisons["agreement"].head(10)))
 
     # Method-specific entities
-    print("\n### Entities Unique to Method 1 ###\n")
-    print(comparisons["method1_only"].head(10))
+    logger.info("\n### Entities Unique to Method 1 ###\n")
+    logger.info(str(comparisons["method1_only"].head(10)))
 
-    print("\n### Entities Unique to Method 2 ###\n")
-    print(comparisons["method2_only"].head(10))
+    logger.info("\n### Entities Unique to Method 2 ###\n")
+    logger.info(str(comparisons["method2_only"].head(10)))
 
-    print("\n" + "=" * 80)
+    logger.info("\n" + "=" * 80)

@@ -4,7 +4,6 @@ Prompt template for text summarization.
 
 from newspaper_explorer.llm.prompts.base import PromptTemplate
 
-
 SUMMARIZATION = PromptTemplate(
     system="""You are a historian creating concise summaries of German newspaper articles.
 Preserve key facts, dates, and names while maintaining historical accuracy.""",

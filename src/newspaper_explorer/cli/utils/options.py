@@ -322,6 +322,34 @@ def num_gpus_option(default: int = 1) -> Callable[[F], F]:
     )
 
 
+def num_topics_option(
+    default: Optional[int] = None, help_text: Optional[str] = None
+) -> Callable[[F], F]:
+    """
+    Standard --num-topics option for topic modeling.
+
+    Args:
+        default: Default number of topics (default: None for automatic)
+        help_text: Custom help text (default: standard help)
+
+    Returns:
+        Click option decorator
+
+    Example:
+        @click.command()
+        @num_topics_option(default=20)
+        def my_command(num_topics):
+            pass
+    """
+    return click.option(
+        "--num-topics",
+        type=int,
+        default=default,
+        help=help_text or "Number of topics to extract",
+        show_default=bool(default),
+    )
+
+
 def temperature_option(default: float = 0.3) -> Callable[[F], F]:
     """
     Standard --temperature option for LLM sampling temperature.
@@ -692,7 +720,9 @@ def device_option(help_text: Optional[str] = None) -> Callable[[F], F]:
     return decorator
 
 
-def use_chunking_option(default: bool = True, help_text: Optional[str] = None) -> Callable[[F], F]:
+def use_chunking_option(
+    *, default: bool = True, help_text: Optional[str] = None
+) -> Callable[[F], F]:
     """
     Standard --use-chunking option for text chunking.
 

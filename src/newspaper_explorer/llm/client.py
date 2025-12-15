@@ -5,12 +5,14 @@ Provides a flexible HTTP-based client for interacting with LLM APIs (OpenAI-comp
 Supports retry logic, response validation against Pydantic schemas, and centralized configuration.
 """
 
+import json
 import logging
 import time
-from typing import Any, Optional, Type, TypeVar, Union
+from types import TracebackType
+from typing import Any, Optional, TypeVar, Union
 
-import requests
 from pydantic import BaseModel, ValidationError
+import requests
 
 from newspaper_explorer.config.base import get_config
 
@@ -76,7 +78,7 @@ class LLMClient:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         timeout: float = 30.0,
-    ):
+    ) -> None:
         """
         Initialize LLM client.
 
@@ -123,7 +125,7 @@ class LLMClient:
     def complete(
         self,
         prompt: str,
-        response_schema: Optional[Type[T]] = None,
+        response_schema: Optional[type[T]] = None,
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
@@ -150,7 +152,7 @@ class LLMClient:
         """
         messages = self._build_messages(system_prompt, prompt)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature if temperature is not None else self.temperature,
@@ -172,9 +174,9 @@ class LLMClient:
 
     def _build_messages(
         self, system_prompt: Optional[str], user_prompt: str
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """Build messages array for chat completion."""
-        messages = []
+        messages: list[dict[str, str]] = []
 
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -183,7 +185,7 @@ class LLMClient:
 
         return messages
 
-    def _request_with_retry(self, payload: Dict[str, Any]) -> str:
+    def _request_with_retry(self, payload: dict[str, Any]) -> str:
         """
         Execute API request with exponential backoff retry logic.
 
@@ -221,14 +223,17 @@ class LLMClient:
 
             except requests.exceptions.HTTPError as e:
                 logger.warning(f"HTTP error on attempt {attempt + 1}: {e}")
-                if response and response.status_code in (429, 500, 502, 503, 504):
-                    # Retry on rate limit or server errors
-                    if attempt < self.max_retries - 1:
-                        delay = self.retry_delay * (2**attempt)
-                        logger.info(f"Retrying in {delay}s...")
-                        time.sleep(delay)
-                        continue
-                raise LLMRetryError(f"HTTP error after {attempt + 1} attempts: {e}")
+                # Retry on rate limit or server errors
+                if (
+                    response
+                    and response.status_code in (429, 500, 502, 503, 504)
+                    and attempt < self.max_retries - 1
+                ):
+                    delay = self.retry_delay * (2**attempt)
+                    logger.info(f"Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                raise LLMRetryError(f"HTTP error after {attempt + 1} attempts: {e}") from e
 
             except requests.exceptions.Timeout as e:
                 logger.warning(f"Timeout on attempt {attempt + 1}: {e}")
@@ -237,7 +242,7 @@ class LLMClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                     continue
-                raise LLMRetryError(f"Timeout after {attempt + 1} attempts: {e}")
+                raise LLMRetryError(f"Timeout after {attempt + 1} attempts: {e}") from e
 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Request exception on attempt {attempt + 1}: {e}")
@@ -246,16 +251,16 @@ class LLMClient:
                     logger.info(f"Retrying in {delay}s...")
                     time.sleep(delay)
                     continue
-                raise LLMRetryError(f"Request failed after {attempt + 1} attempts: {e}")
+                raise LLMRetryError(f"Request failed after {attempt + 1} attempts: {e}") from e
 
             except (KeyError, ValueError) as e:
                 # Response parsing errors - don't retry
                 logger.error(f"Failed to parse API response: {e}")
-                raise LLMError(f"Invalid API response format: {e}")
+                raise LLMError(f"Invalid API response format: {e}") from e
 
         raise LLMRetryError(f"All {self.max_retries} retry attempts exhausted")
 
-    def _validate_response(self, response_text: str, schema: Type[T]) -> T:
+    def _validate_response(self, response_text: str, schema: type[T]) -> T:
         """
         Validate response text against Pydantic schema.
 
@@ -269,7 +274,6 @@ class LLMClient:
         Raises:
             LLMValidationError: If validation fails.
         """
-        import json
 
         try:
             data = json.loads(response_text)
@@ -279,20 +283,25 @@ class LLMClient:
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in response: {e}")
-            raise LLMValidationError(f"Response is not valid JSON: {e}")
+            raise LLMValidationError(f"Response is not valid JSON: {e}") from e
 
         except ValidationError as e:
             logger.error(f"Schema validation failed: {e}")
-            raise LLMValidationError(f"Response does not match schema: {e}")
+            raise LLMValidationError(f"Response does not match schema: {e}") from e
 
-    def close(self):
+    def close(self) -> None:
         """Close the underlying session."""
         self.session.close()
 
-    def __enter__(self):
+    def __enter__(self) -> "LLMClient":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Context manager exit."""
         self.close()

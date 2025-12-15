@@ -10,6 +10,28 @@ from pathlib import Path
 
 import click
 
+from newspaper_explorer.analyze.topics.bertopic import BERTopicExtractor
+from newspaper_explorer.analyze.topics.fastopic import FASTopicExtractor
+from newspaper_explorer.analyze.topics.lda import LDAExtractor
+from newspaper_explorer.analyze.topics.mallet import MALLETExtractor, MALLETNotFoundError
+from newspaper_explorer.analyze.topics.utils import (
+    generate_topic_visualizations,
+    merge_yearly_topics,
+    parse_group_by,
+    parse_stopwords,
+)
+from newspaper_explorer.cli.utils import output
+from newspaper_explorer.cli.utils.options import (
+    batch_size_option,
+    input_file_option,
+    limit_option,
+    min_length_option,
+    num_gpus_option,
+    num_topics_option,
+    source_option,
+    text_column_option,
+    top_k_option,
+)
 from newspaper_explorer.config.base import get_config
 
 
@@ -20,19 +42,11 @@ def topics_group() -> None:
 
 
 @topics_group.command(name="lda")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@text_column_option()
 @click.option(
     "--mode",
     type=click.Choice(["train", "topics", "documents"], case_sensitive=False),
@@ -40,20 +54,11 @@ def topics_group() -> None:
     help="Operation: train model, extract topic terms, or assign to documents",
     show_default=True,
 )
-@click.option(
-    "--num-topics",
-    type=int,
+@num_topics_option(
     default=10,
-    help="Number of topics to discover/use",
-    show_default=True,
+    help_text="Number of topics to discover/use",
 )
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of terms per topic/document",
-    show_default=True,
-)
+@top_k_option(help_text="Number of terms per topic/document")
 @click.option(
     "--passes",
     type=int,
@@ -76,17 +81,17 @@ def topics_group() -> None:
     show_default=True,
 )
 @click.option(
-    "--no-below",
+    "--min-doc-count",
     type=int,
     default=5,
-    help="Filter tokens appearing in < N documents",
+    help="Minimum number of documents a term must appear in",
     show_default=True,
 )
 @click.option(
-    "--no-above",
+    "--max-doc-fraction",
     type=float,
     default=0.5,
-    help="Filter tokens appearing in > fraction of documents",
+    help="Maximum fraction of documents a term can appear in (0.0-1.0)",
     show_default=True,
 )
 @click.option(
@@ -100,7 +105,7 @@ def topics_group() -> None:
     help="Disable stopword removal",
 )
 @click.option(
-    "--stopwords",
+    "--custom-stopwords",
     type=str,
     help="Additional stopwords (comma-separated)",
 )
@@ -114,7 +119,7 @@ def topics_group() -> None:
     type=str,
     help="Base name for output file (default: lda_topics or lda_documents)",
 )
-@click.option("--limit", type=int, help="Limit number of rows to process (for testing)")
+@limit_option()
 def lda(
     source: str,
     input_file: str,
@@ -125,15 +130,16 @@ def lda(
     passes: int,
     iterations: int,
     min_topic_prob: float,
-    no_below: int,
-    no_above: float,
+    min_doc_count: int,
+    max_doc_fraction: float,
     group_by: str,
+    *,
     no_stopwords: bool,
-    stopwords: str,
+    custom_stopwords: str,
     force_retrain: bool,
     output_name: str,
     limit: int,
-):
+) -> None:
     """
     Discover topics using LDA (Latent Dirichlet Allocation).
 
@@ -185,7 +191,6 @@ def lda(
         Models: results/{source}/topics/models/lda_{num_topics}topics.model
         Results: results/{source}/topics/{output_name}.parquet
     """
-    from newspaper_explorer.analyze.topics.lda import LDAExtractor
 
     # Setup logging
     logging.basicConfig(
@@ -193,39 +198,34 @@ def lda(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"LDA Topic Modeling")
-    click.echo(f"{'=' * 80}\n")
+    output.header("LDA Topic Modeling")
 
-    click.echo(f"Source: {source}")
-    click.echo(f"Mode: {mode.upper()}")
+    output.key_value("Source", source)
+    output.key_value("Mode", mode.upper())
     if input_file:
-        click.echo(f"Input file: {input_file}")
-    click.echo(f"Text column: {text_column}")
-    click.echo(f"Number of topics: {num_topics}")
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Number of topics", num_topics)
 
-    # Parse group_by
-    group_by_list = None
-    if group_by:
-        group_by_list = [g.strip() for g in group_by.split(",")]
-        click.echo(f"Grouping: {', '.join(group_by_list)}")
+    # Parse arguments using utility functions
+    group_by_list = parse_group_by(group_by)
+    if group_by_list:
+        output.key_value("Grouping", ", ".join(group_by_list))
 
-    # Parse custom stopwords
-    custom_stopwords = None
-    if stopwords:
-        custom_stopwords = [w.strip() for w in stopwords.split(",")]
-        click.echo(f"Custom stopwords: {len(custom_stopwords)}")
+    custom_stopwords_list = parse_stopwords(custom_stopwords)
+    if custom_stopwords_list:
+        output.key_value("Custom stopwords", len(custom_stopwords_list))
 
     use_stopwords = not no_stopwords
     if no_stopwords:
-        click.echo("Stopwords: disabled")
+        output.key_value("Stopwords", "disabled")
     else:
-        click.echo("Stopwords: enabled (German + English)")
+        output.key_value("Stopwords", "enabled (German + English)")
 
     if limit:
-        click.echo(f"Limit: {limit:,} rows")
+        output.key_value("Limit", f"{limit:,} rows")
 
-    click.echo()
+    output.info("")
 
     try:
         # Initialize extractor
@@ -239,14 +239,15 @@ def lda(
 
         # Execute based on mode
         if mode == "train":
-            click.echo("Training LDA model...\n")
-            click.echo(f"Parameters:")
-            click.echo(f"  - Topics: {num_topics}")
-            click.echo(f"  - Passes: {passes}")
-            click.echo(f"  - Iterations: {iterations}")
-            click.echo(f"  - Min document freq: {no_below}")
-            click.echo(f"  - Max document freq: {no_above}")
-            click.echo()
+            output.info("Training LDA model...")
+            output.info("")
+            output.section("Parameters")
+            output.key_value("Topics", num_topics)
+            output.key_value("Passes", passes)
+            output.key_value("Iterations", iterations)
+            output.key_value("Min doc count", min_doc_count)
+            output.key_value("Max doc fraction", f"{max_doc_fraction:.1%}")
+            output.info("")
 
             model_info = extractor.train_model(
                 num_topics=num_topics,
@@ -254,24 +255,23 @@ def lda(
                 iterations=iterations,
                 limit=limit,
                 group_by=group_by_list,
-                no_below=no_below,
-                no_above=no_above,
+                no_below=min_doc_count,
+                no_above=max_doc_fraction,
                 force_retrain=force_retrain,
             )
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Model training complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Status: {model_info['status']}")
-            click.echo(f"Model saved to: {model_info['model_path']}")
+            output.success("Model training complete!")
+            output.key_value("Status", model_info["status"])
+            output.key_value("Model saved to", model_info["model_path"])
             if model_info["status"] == "trained":
-                click.echo(f"Documents: {model_info['num_documents']:,}")
-                click.echo(f"Vocabulary size: {model_info['vocabulary_size']:,}")
-                click.echo(f"Perplexity: {model_info['perplexity']:.4f}")
-            click.echo(f"\n{'=' * 80}\n")
+                output.key_value("Documents", f"{model_info['num_documents']:,}")
+                output.key_value("Vocabulary size", f"{model_info['vocabulary_size']:,}")
+                output.key_value("Perplexity", f"{model_info['perplexity']:.4f}")
+            output.info("")
 
         elif mode == "topics":
-            click.echo(f"Extracting representative terms for {num_topics} topics...\n")
+            output.info(f"Extracting representative terms for {num_topics} topics...")
+            output.info("")
 
             results_df = extractor.get_topic_terms(
                 top_k=top_k,
@@ -283,35 +283,33 @@ def lda(
                 output_name = f"lda_topics_{num_topics}"
             output_file = extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Topic term extraction complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Results saved to: {output_file}")
-            click.echo(f"Total topics: {len(results_df)}")
+            output.success("Topic term extraction complete!")
+            output.key_value("Results saved to", str(output_file))
+            output.key_value("Total topics", len(results_df))
 
             # Show all topics
-            click.echo(f"\nTopic terms:")
-            click.echo("-" * 80)
+            output.info("")
+            output.section("Topic Terms")
             for row in results_df.iter_rows(named=True):
                 topic_id = row["topic_id"]
                 topic_terms = row["topic_terms"][:top_k]
                 scores = row["scores"][:top_k]
 
-                click.echo(f"\nTopic {topic_id}:")
                 terms_str = ", ".join(
                     [f"{term}({s:.3f})" for term, s in zip(topic_terms[:10], scores[:10])]
                 )
-                click.echo(f"  {terms_str}")
+                output.info(f"Topic {topic_id}: {terms_str}")
 
-            click.echo(f"\n{'=' * 80}\n")
+            output.info("")
 
         elif mode == "documents":
-            click.echo(f"Assigning topics to documents...\n")
-            click.echo(f"Parameters:")
-            click.echo(f"  - Topics: {num_topics}")
-            click.echo(f"  - Terms per doc: {top_k}")
-            click.echo(f"  - Min topic prob: {min_topic_prob}")
-            click.echo()
+            output.info("Assigning topics to documents...")
+            output.info("")
+            output.section("Parameters")
+            output.key_value("Topics", num_topics)
+            output.key_value("Terms per doc", top_k)
+            output.key_value("Min topic prob", f"{min_topic_prob:.1%}")
+            output.info("")
 
             results_df = extractor.extract_topic_based_document_terms(
                 top_k=top_k,
@@ -326,16 +324,14 @@ def lda(
                 output_name = f"lda_documents_{num_topics}topics"
             output_file = extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Topic assignment complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Results saved to: {output_file}")
-            click.echo(f"Total documents: {len(results_df):,}")
+            output.success("Topic assignment complete!")
+            output.key_value("Results saved to", str(output_file))
+            output.key_value("Total documents", f"{len(results_df):,}")
 
             # Show sample
             if len(results_df) > 0:
-                click.echo(f"\nSample document topics (first 3):")
-                click.echo("-" * 80)
+                output.info("")
+                output.section("Sample Document Topics (first 3)")
                 sample = results_df.head(3)
                 for row in sample.iter_rows(named=True):
                     doc_id = row["doc_id"]
@@ -344,47 +340,38 @@ def lda(
                     topics = row.get("topics", [])
                     topic_probs = row.get("topic_probs", [])
 
-                    click.echo(f"\nDocument: {doc_id}")
+                    output.info(f"Document: {doc_id}")
                     if topics:
                         topic_info = ", ".join(
                             [f"T{t}({p:.2f})" for t, p in zip(topics[:3], topic_probs[:3])]
                         )
-                        click.echo(f"  Main topics: {topic_info}")
-                    click.echo(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
+                        output.info(f"  Main topics: {topic_info}")
+                    output.info(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
 
-            click.echo(f"\n{'=' * 80}\n")
+            output.info("")
 
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo("\nTroubleshooting:", err=True)
+        output.error(f"Error: {e}")
+        output.info("")
+        output.info("Troubleshooting:")
         if "Model not found" in str(e):
-            click.echo(f"  Train model first: newspaper-explorer analyze topics lda \\", err=True)
-            click.echo(f"      --source {source} --mode train --num-topics {num_topics}", err=True)
+            output.info("  Train model first: newspaper-explorer analyze topics lda \\")
+            output.info(f"      --source {source} --mode train --num-topics {num_topics}")
         else:
-            click.echo(
-                f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-            )
+            output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during LDA processing: {e}", err=True)
+        output.error(f"Error during LDA processing: {e}")
         logging.exception("Full error details:")
         return
 
 
 @topics_group.command(name="mallet")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@text_column_option()
 @click.option(
     "--mode",
     type=click.Choice(["train", "topics", "documents"], case_sensitive=False),
@@ -392,20 +379,11 @@ def lda(
     help="Operation: train model, extract topic terms, or assign to documents",
     show_default=True,
 )
-@click.option(
-    "--num-topics",
-    type=int,
+@num_topics_option(
     default=20,
-    help="Number of topics to discover",
-    show_default=True,
+    help_text="Number of topics to discover",
 )
-@click.option(
-    "--top-k",
-    type=int,
-    default=10,
-    help="Number of terms per topic/document",
-    show_default=True,
-)
+@top_k_option(help_text="Number of terms per topic/document")
 @click.option(
     "--iterations",
     type=int,
@@ -459,7 +437,7 @@ def lda(
     help="Disable stopword removal",
 )
 @click.option(
-    "--stopwords",
+    "--custom-stopwords",
     type=str,
     help="Additional stopwords (comma-separated)",
 )
@@ -478,7 +456,7 @@ def lda(
     type=str,
     help="Base name for output file (default: mallet_topics or mallet_documents)",
 )
-@click.option("--limit", type=int, help="Limit number of rows to process (for testing)")
+@limit_option()
 @click.option(
     "--memory",
     type=int,
@@ -500,14 +478,15 @@ def mallet(
     beta: float,
     min_topic_prob: float,
     group_by: str,
+    *,
     no_stopwords: bool,
-    stopwords: str,
+    custom_stopwords: str,
     mallet_path: str,
     force_retrain: bool,
     output_name: str,
     limit: int,
     memory: int,
-):
+) -> None:
     """
     Discover topics using MALLET (MAchine Learning for LanguagE Toolkit).
 
@@ -565,47 +544,40 @@ def mallet(
         Models: results/{source}/topics/models/mallet_{num_topics}topics*
         Results: results/{source}/topics/{output_name}.parquet
     """
-    from newspaper_explorer.analyze.topics.mallet import MALLETExtractor, MALLETNotFoundError
-
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"MALLET Topic Modeling")
-    click.echo(f"{'=' * 80}\n")
+    output.header("MALLET Topic Modeling")
 
-    click.echo(f"Source: {source}")
-    click.echo(f"Mode: {mode.upper()}")
+    output.key_value("Source", source)
+    output.key_value("Mode", mode.upper())
     if input_file:
-        click.echo(f"Input file: {input_file}")
-    click.echo(f"Text column: {text_column}")
-    click.echo(f"Number of topics: {num_topics}")
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Number of topics", num_topics)
 
-    # Parse group_by
-    group_by_list = None
-    if group_by:
-        group_by_list = [g.strip() for g in group_by.split(",")]
-        click.echo(f"Grouping: {', '.join(group_by_list)}")
+    # Parse arguments using utility functions
+    group_by_list = parse_group_by(group_by)
+    if group_by_list:
+        output.key_value("Grouping", ", ".join(group_by_list))
 
-    # Parse custom stopwords
-    custom_stopwords = None
-    if stopwords:
-        custom_stopwords = [w.strip() for w in stopwords.split(",")]
-        click.echo(f"Custom stopwords: {len(custom_stopwords)}")
+    custom_stopwords_list = parse_stopwords(custom_stopwords)
+    if custom_stopwords_list:
+        output.key_value("Custom stopwords", len(custom_stopwords_list))
 
     use_stopwords = not no_stopwords
     if no_stopwords:
-        click.echo("Stopwords: disabled")
+        output.key_value("Stopwords", "disabled")
     else:
-        click.echo("Stopwords: enabled (German + English)")
+        output.key_value("Stopwords", "enabled (German + English)")
 
     if limit:
-        click.echo(f"Limit: {limit:,} rows")
+        output.key_value("Limit", f"{limit:,} rows")
 
-    click.echo()
+    output.info("")
 
     try:
         # Initialize extractor
@@ -615,21 +587,22 @@ def mallet(
             text_column=text_column,
             mallet_path=Path(mallet_path) if mallet_path else None,
             use_stopwords=use_stopwords,
-            custom_stopwords=custom_stopwords,
+            custom_stopwords=custom_stopwords_list,
         )
 
         # Execute based on mode
         if mode == "train":
-            click.echo("Training MALLET model...\n")
-            click.echo(f"Parameters:")
-            click.echo(f"  - Topics: {num_topics}")
-            click.echo(f"  - Iterations: {iterations}")
-            click.echo(f"  - Threads: {num_threads}")
-            click.echo(f"  - Alpha: {alpha}")
-            click.echo(f"  - Beta: {beta}")
-            click.echo(f"  - Optimize interval: {optimize_interval}")
-            click.echo(f"  - Memory: {memory}GB")
-            click.echo()
+            output.info("Training MALLET model...")
+            output.info("")
+            output.section("Parameters")
+            output.key_value("Topics", num_topics)
+            output.key_value("Iterations", iterations)
+            output.key_value("Threads", num_threads)
+            output.key_value("Alpha", f"{alpha:.2f}")
+            output.key_value("Beta", f"{beta:.3f}")
+            output.key_value("Optimize interval", optimize_interval)
+            output.key_value("Memory", f"{memory}GB")
+            output.info("")
 
             model_info = extractor.train_model(
                 num_topics=num_topics,
@@ -644,19 +617,18 @@ def mallet(
                 memory_gb=memory,
             )
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Model training complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Status: {model_info['status']}")
+            output.success("Model training complete!")
+            output.key_value("Status", model_info["status"])
             if model_info["status"] == "trained":
-                click.echo(f"Documents: {model_info['num_documents']:,}")
-                click.echo(f"Topic keys: {model_info['topic_keys_file']}")
-                click.echo(f"Doc topics: {model_info['doc_topics_file']}")
-                click.echo(f"Training time: {model_info['training_time_seconds']:.1f}s")
-            click.echo(f"\n{'=' * 80}\n")
+                output.key_value("Documents", f"{model_info['num_documents']:,}")
+                output.key_value("Topic keys", model_info["topic_keys_file"])
+                output.key_value("Doc topics", model_info["doc_topics_file"])
+                output.key_value("Training time", f"{model_info['training_time_seconds']:.1f}s")
+            output.info("")
 
         elif mode == "topics":
-            click.echo(f"Extracting representative terms for {num_topics} topics...\n")
+            output.info(f"Extracting representative terms for {num_topics} topics...")
+            output.info("")
 
             results_df = extractor.get_topic_terms(
                 top_k=top_k,
@@ -668,32 +640,32 @@ def mallet(
                 output_name = f"mallet_topics_{num_topics}"
             output_file = extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Topic term extraction complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Results saved to: {output_file}")
-            click.echo(f"Total topics: {len(results_df)}")
+            output.success("Topic term extraction complete!")
+            output.key_value("Results saved to", str(output_file))
+            output.key_value("Total topics", len(results_df))
 
             # Show all topics
-            click.echo(f"\nTopic terms:")
-            click.echo("-" * 80)
+            output.info("")
+            output.section("Topic Terms")
             for row in results_df.iter_rows(named=True):
                 topic_id = row["topic_id"]
                 topic_terms = row["topic_terms"][:top_k]
                 alpha_val = row.get("alpha", 0)
 
-                click.echo(f"\nTopic {topic_id} (alpha={alpha_val:.4f}):")
-                click.echo(f"  {', '.join(topic_terms[:10])}")
+                output.info(
+                    f"Topic {topic_id} (alpha={alpha_val:.4f}): {', '.join(topic_terms[:10])}"
+                )
 
-            click.echo(f"\n{'=' * 80}\n")
+            output.info("")
 
         elif mode == "documents":
-            click.echo(f"Assigning topics to documents...\n")
-            click.echo(f"Parameters:")
-            click.echo(f"  - Topics: {num_topics}")
-            click.echo(f"  - Terms per doc: {top_k}")
-            click.echo(f"  - Min topic prob: {min_topic_prob}")
-            click.echo()
+            output.info("Assigning topics to documents...")
+            output.info("")
+            output.section("Parameters")
+            output.key_value("Topics", num_topics)
+            output.key_value("Terms per doc", top_k)
+            output.key_value("Min topic prob", f"{min_topic_prob:.1%}")
+            output.info("")
 
             results_df = extractor.extract_document_topics(
                 top_k=top_k,
@@ -706,16 +678,14 @@ def mallet(
                 output_name = f"mallet_documents_{num_topics}topics"
             output_file = extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"\n{'=' * 80}")
-            click.echo(f"[OK] Topic assignment complete!")
-            click.echo(f"{'=' * 80}\n")
-            click.echo(f"Results saved to: {output_file}")
-            click.echo(f"Total documents: {len(results_df):,}")
+            output.success("Topic assignment complete!")
+            output.key_value("Results saved to", str(output_file))
+            output.key_value("Total documents", f"{len(results_df):,}")
 
             # Show sample
             if len(results_df) > 0:
-                click.echo(f"\nSample document topics (first 3):")
-                click.echo("-" * 80)
+                output.info("")
+                output.section("Sample Document Topics (first 3)")
                 sample = results_df.head(3)
                 for row in sample.iter_rows(named=True):
                     doc_id = row["doc_id"]
@@ -723,66 +693,52 @@ def mallet(
                     topics = row.get("topics", [])
                     topic_probs = row.get("topic_probs", [])
 
-                    click.echo(f"\nDocument: {doc_id}")
+                    output.info(f"Document: {doc_id}")
                     if topics:
                         topic_info = ", ".join(
                             [f"T{t}({p:.2f})" for t, p in zip(topics[:3], topic_probs[:3])]
                         )
-                        click.echo(f"  Main topics: {topic_info}")
-                    click.echo(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
+                        output.info(f"  Main topics: {topic_info}")
+                    output.info(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
 
-            click.echo(f"\n{'=' * 80}\n")
+            output.info("")
 
     except MALLETNotFoundError as e:
-        click.echo(f"\nMALLET Installation Error: {e}", err=True)
-        click.echo("\nTo install Java:", err=True)
-        click.echo("  Ubuntu/Debian: sudo apt install default-jre", err=True)
-        click.echo("  macOS: brew install openjdk", err=True)
-        click.echo("  Windows: Download from https://adoptium.net/", err=True)
+        output.error(f"MALLET Installation Error: {e}")
+        output.info("")
+        output.info("To install Java:")
+        output.info("  Ubuntu/Debian: sudo apt install default-jre")
+        output.info("  macOS: brew install openjdk")
+        output.info("  Windows: Download from https://adoptium.net/")
         return
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo("\nTroubleshooting:", err=True)
+        output.error(f"Error: {e}")
+        output.info("")
+        output.info("Troubleshooting:")
         if "Model not found" in str(e):
-            click.echo(
-                f"  Train model first: newspaper-explorer analyze topics mallet \\", err=True
-            )
-            click.echo(f"      --source {source} --mode train --num-topics {num_topics}", err=True)
+            output.info("  Train model first: newspaper-explorer analyze topics mallet \\")
+            output.info(f"      --source {source} --mode train --num-topics {num_topics}")
         else:
-            click.echo(
-                f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-            )
+            output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during MALLET processing: {e}", err=True)
+        output.error(f"Error during MALLET processing: {e}")
         logging.exception("Full error details:")
         return
 
 
 @topics_group.command(name="bertopic")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
-)
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@source_option()
+@input_file_option(help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)")
+@text_column_option()
 @click.option(
     "--group-by",
     type=str,
     help="Grouping column(s), comma-separated (e.g., 'page_id', 'date', 'year,month')",
 )
-@click.option(
-    "--n-topics",
-    type=int,
+@num_topics_option(
     default=None,
-    help="Target number of topics (None = automatic discovery)",
+    help_text="Target number of topics (None = automatic discovery)",
 )
 @click.option(
     "--min-cluster-size",
@@ -791,19 +747,12 @@ def mallet(
     help="Minimum chunks per topic cluster",
     show_default=True,
 )
-@click.option(
-    "--top-k",
-    type=int,
+@top_k_option(
     default=5,
-    help="Number of topic terms per document",
-    show_default=True,
+    help_text="Number of topic terms per document",
 )
-@click.option(
-    "--batch-size",
-    type=int,
+@batch_size_option(
     default=32,
-    help="Batch size for embedding generation",
-    show_default=True,
 )
 @click.option(
     "--embedding-model",
@@ -812,12 +761,8 @@ def mallet(
     help="SentenceTransformer model for embeddings",
     show_default=True,
 )
-@click.option(
-    "--min-text-length",
-    type=int,
+@min_length_option(
     default=100,
-    help="Minimum text length in characters",
-    show_default=True,
 )
 @click.option(
     "--chunk-sentences",
@@ -831,12 +776,8 @@ def mallet(
     is_flag=True,
     help="Disable German stopword removal",
 )
-@click.option(
-    "--num-gpus",
-    type=int,
+@num_gpus_option(
     default=1,
-    help="Number of GPUs to use for embedding (1=single, >1=multi-GPU parallel)",
-    show_default=True,
 )
 @click.option(
     "--umap-sample-pages",
@@ -876,23 +817,20 @@ def mallet(
     help="Output filename (without extension)",
     show_default=True,
 )
-@click.option(
-    "--limit",
-    type=int,
-    help="Limit input rows (for testing)",
-)
+@limit_option()
 def bertopic(
     source: str,
     input_file: str,
     text_column: str,
     group_by: str,
-    n_topics: int,
+    num_topics: int,
     min_cluster_size: int,
     top_k: int,
     batch_size: int,
     embedding_model: str,
-    min_text_length: int,
+    min_length: int,
     chunk_sentences: int,
+    *,
     no_stopwords: bool,
     num_gpus: int,
     umap_sample_pages: int,
@@ -977,62 +915,56 @@ def bertopic(
         results/{source}/topics/{output_name}.parquet
         results/{source}/topics/{output_name}.json
     """
-    from newspaper_explorer.analyze.topics.bertopic import BERTopicExtractor
-
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(message)s",
     )
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"BERTopic Global Topic Modeling")
-    click.echo(f"{'=' * 80}\n")
+    output.header("BERTopic Global Topic Modeling")
 
-    click.echo(f"Parameters:")
-    click.echo(f"  - Source: {source}")
+    output.section("Parameters")
+    output.key_value("Source", source)
     if input_file:
-        click.echo(f"  - Input file: {input_file}")
-    click.echo(f"  - Text column: {text_column}")
-    click.echo(f"  - Embedding model: {embedding_model}")
-    click.echo(f"  - Target topics: {n_topics or 'automatic discovery'}")
-    click.echo(f"  - Min cluster size: {min_cluster_size}")
-    click.echo(f"  - Terms per document: {top_k}")
-    click.echo(f"  - Batch size: {batch_size}")
-    click.echo(f"  - Chunk sentences: {chunk_sentences}")
-    click.echo(f"  - Min text length: {min_text_length} chars")
-    click.echo(f"  - Stopwords: {'disabled' if no_stopwords else 'enabled (German)'}")
-    click.echo(f"  - GPUs: {num_gpus} ({'multi-GPU' if num_gpus > 1 else 'single GPU'})")
+        output.key_value("Input file", input_file)
+    output.key_value("Text column", text_column)
+    output.key_value("Embedding model", embedding_model)
+    output.key_value("Target topics", num_topics or "automatic discovery")
+    output.key_value("Min cluster size", min_cluster_size)
+    output.key_value("Terms per document", top_k)
+    output.key_value("Batch size", batch_size)
+    output.key_value("Chunk sentences", chunk_sentences)
+    output.key_value("Min text length", f"{min_length} chars")
+    output.key_value("Stopwords", "disabled" if no_stopwords else "enabled (German)")
+    gpu_mode = "multi-GPU" if num_gpus > 1 else "single GPU"
+    output.key_value("GPUs", f"{num_gpus} ({gpu_mode})")
 
     # Parse filtering options
     filter_pages_list = None
     if filter_pages:
         filter_pages_list = [int(p.strip()) for p in filter_pages.split(",")]
-        click.echo(f"  - Page filter: {filter_pages_list} (only these pages)")
+        output.key_value("Page filter", f"{filter_pages_list} (only these pages)")
 
     years_list = None
     if years:
         years_list = [int(y.strip()) for y in years.split(",")]
-        click.echo(f"  - Year filter: {years_list} (only these years)")
+        output.key_value("Year filter", f"{years_list} (only these years)")
 
     if sample_size:
-        click.echo(f"  - Random sampling: {sample_size:,} documents (seed={random_seed})")
+        output.key_value("Random sampling", f"{sample_size:,} documents (seed={random_seed})")
 
     if umap_sample_pages:
-        click.echo(
-            f"  - UMAP sampling: first {umap_sample_pages} pages/issue (memory optimization)"
+        output.key_value(
+            "UMAP sampling", f"first {umap_sample_pages} pages/issue (memory optimization)"
         )
 
     # Parse group_by
-    group_by_list = None
-    if group_by:
-        group_by_list = [g.strip() for g in group_by.split(",")]
-        click.echo(f"  - Group by: {', '.join(group_by_list)}")
+    group_by_list = parse_group_by(group_by)
+    if group_by_list:
+        output.key_value("Group by", ", ".join(group_by_list))
 
     if limit:
-        click.echo(f"  - Limit: {limit:,} rows")
-
-    click.echo()
+        output.key_value("Limit", f"{limit:,} rows")
 
     try:
         # Initialize extractor
@@ -1041,18 +973,18 @@ def bertopic(
             input_file=Path(input_file) if input_file else None,
             text_column=text_column,
             embedding_model=embedding_model,
-            min_text_length=min_text_length,
+            min_text_length=min_length,
             chunk_sentences=chunk_sentences,
             use_stopwords=not no_stopwords,
             num_gpus=num_gpus,
         )
 
         # Extract topics
-        click.echo("Extracting topics...\n")
+        output.info("Extracting topics...")
 
         results_df = extractor.extract_topics(
             group_by=group_by_list,
-            n_topics=n_topics,
+            n_topics=num_topics,
             min_cluster_size=min_cluster_size,
             top_k=top_k,
             limit=limit,
@@ -1065,26 +997,23 @@ def bertopic(
         )
 
         if len(results_df) == 0:
-            click.echo("\nNo results generated - check logs for details", err=True)
+            output.error("No results generated - check logs for details")
             return
 
         # Save results
         output_file = extractor.save_results(results_df, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n{'=' * 80}")
-        click.echo(f"[OK] Topic extraction complete!")
-        click.echo(f"{'=' * 80}\n")
-        click.echo(f"Results saved to: {output_file}")
+        output.success("Topic extraction complete!")
+        output.key_value("Results saved to", str(output_file))
 
         # Get metadata file path
         metadata_file = str(output_file).replace(".parquet", ".json")
-        click.echo(f"Metadata saved to: {metadata_file}")
-        click.echo(f"Total documents: {len(results_df):,}")
+        output.key_value("Metadata saved to", metadata_file)
+        output.key_value("Total documents", f"{len(results_df):,}")
 
         # Show sample
         if len(results_df) > 0:
-            click.echo(f"\nSample document topics (first 3):")
-            click.echo("-" * 80)
+            output.section("Sample document topics (first 3)")
             sample = results_df.head(3)
             for row in sample.iter_rows(named=True):
                 doc_id = row["doc_id"]
@@ -1095,61 +1024,43 @@ def bertopic(
                 topic_info = ", ".join(
                     [f"T{t}({p:.2f})" for t, p in zip(topics[:3], topic_probs[:3])]
                 )
-                click.echo(f"\nDocument: {doc_id}")
-                click.echo(f"  Main topics: {topic_info}")
-                click.echo(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
+                output.info(f"\nDocument: {doc_id}")
+                output.info(f"  Main topics: {topic_info}")
+                output.info(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
                 if len(row["scores"]) > 0:
-                    click.echo(
+                    output.info(
                         f"  Scores: {', '.join([f'{s:.3f}' for s in row['scores'][:top_k]])}"
                     )
 
-        click.echo(f"\n{'=' * 80}\n")
-
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(f"\nTroubleshooting:", err=True)
-        click.echo(
-            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
+        output.error(str(e))
+        output.info("Troubleshooting:")
+        output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except Exception as e:
-        click.echo(f"\nError during BERTopic processing: {e}", err=True)
+        output.error(f"Error during BERTopic processing: {e}")
         logging.exception("Full error details:")
         return
 
 
 @topics_group.command(name="fastopic")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
-@click.option(
-    "--input-file",
-    type=click.Path(exists=True),
-    help="Custom input parquet file (default: textblocks.parquet or lines.parquet)",
+@source_option()
+@input_file_option(
+    help_text="Custom input parquet file (default: textblocks.parquet or lines.parquet)"
 )
-@click.option(
-    "--text-column",
-    type=str,
-    default="text",
-    help="Name of text column to process",
-    show_default=True,
-)
+@text_column_option()
 @click.option(
     "--group-by",
     type=str,
     help="Grouping column(s) for aggregation, comma-separated (e.g., 'page_id')",
 )
-@click.option(
-    "--n-topics",
-    type=int,
+@num_topics_option(
     default=50,
-    help="Number of topics to discover",
-    show_default=True,
+    help_text="Number of topics to discover",
 )
-@click.option(
-    "--top-k",
-    type=int,
+@top_k_option(
     default=10,
-    help="Number of topic terms per document",
-    show_default=True,
+    help_text="Number of topic terms per document",
 )
 @click.option(
     "--doc-embed-model",
@@ -1165,12 +1076,8 @@ def bertopic(
     help="Maximum vocabulary size",
     show_default=True,
 )
-@click.option(
-    "--min-text-length",
-    type=int,
+@min_length_option(
     default=100,
-    help="Minimum text length in characters",
-    show_default=True,
 )
 @click.option(
     "--no-stopwords",
@@ -1184,25 +1091,22 @@ def bertopic(
     help="Output filename (without extension)",
     show_default=True,
 )
-@click.option(
-    "--limit",
-    type=int,
-    help="Limit input rows (for testing)",
-)
+@limit_option()
 def fastopic(
     source: str,
     input_file: str,
     text_column: str,
     group_by: str,
-    n_topics: int,
+    num_topics: int,
     top_k: int,
     doc_embed_model: str,
     vocab_size: int,
-    min_text_length: int,
+    min_length: int,
+    *,
     no_stopwords: bool,
     output_name: str,
     limit: int,
-):
+) -> None:
     """
     Discover topics using FASTopic (Fast, Adaptive, Stable, Transferable).
 
@@ -1219,7 +1123,7 @@ def fastopic(
     - 2-3x faster training
     - Deterministic results (no randomness in clustering)
     - Better for smaller datasets (works well with <10k documents)
-    - Simpler parameter tuning (just set n_topics)
+    - Simpler parameter tuning (just set num_topics)
 
     **Workflow**:
     1. Load and aggregate documents
@@ -1247,28 +1151,23 @@ def fastopic(
             --limit 5000 --n-topics 20
 
     Output:
-        results/{source}/topics/fastopic_{n_topics}topics_*/
+        results/{source}/topics/fastopic_{num_topics}topics_*/
             ├── topics.parquet
             └── topics.json
     """
-    from newspaper_explorer.analyze.topics.fastopic import FASTopicExtractor
-
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(message)s",
     )
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"FASTopic Topic Modeling")
-    click.echo(f"{'=' * 80}\n")
-    click.echo(f"Source: {source}")
-    click.echo(f"N topics: {n_topics}")
-    click.echo(f"Group by: {group_by or 'None (sequential docs)'}")
-    click.echo(f"Model: {doc_embed_model}")
+    output.header("FASTopic Topic Modeling")
+    output.key_value("Source", source)
+    output.key_value("N topics", str(num_topics))
+    output.key_value("Group by", group_by or "None (sequential docs)")
+    output.key_value("Model", doc_embed_model)
     if limit:
-        click.echo(f"Limit: {limit:,} rows")
-    click.echo(f"\n{'=' * 80}\n")
+        output.key_value("Limit", f"{limit:,} rows")
 
     try:
         # Parse group_by
@@ -1281,36 +1180,34 @@ def fastopic(
             text_column=text_column,
             doc_embed_model=doc_embed_model,
             vocab_size=vocab_size,
-            min_text_length=min_text_length,
+            min_text_length=min_length,
             use_stopwords=not no_stopwords,
         )
 
         # Extract topics
-        click.echo("Extracting topics...\n")
+        output.section("Extracting topics")
 
         results_df = extractor.extract_topics(
             group_by=group_by_list,
-            n_topics=n_topics,
+            n_topics=num_topics,
             top_k=top_k,
             limit=limit,
         )
 
         if len(results_df) == 0:
-            click.echo("\nNo results generated - check logs for details", err=True)
+            output.error("No results generated - check logs for details")
             return
 
         # Save results
         output_file = extractor.save_results(results_df, output_name=output_name, top_k=top_k)
 
-        click.echo(f"\n{'=' * 80}")
-        click.echo(f"[OK] Topic extraction complete!")
-        click.echo(f"{'=' * 80}\n")
-        click.echo(f"Results saved to: {output_file}")
+        output.section("Results")
+        output.success("Topic extraction complete")
+        output.key_value("Saved to", str(output_file))
 
         # Show sample
         if len(results_df) > 0:
-            click.echo(f"\nSample document topics (first 3):")
-            click.echo("-" * 80)
+            output.section("Sample document topics (first 3)")
             sample = results_df.head(3)
             for row in sample.iter_rows(named=True):
                 doc_id = row["doc_id"]
@@ -1321,37 +1218,33 @@ def fastopic(
                 topic_info = ", ".join(
                     [f"T{t}({p:.2f})" for t, p in zip(topics[:3], topic_probs[:3])]
                 )
-                click.echo(f"\nDocument: {doc_id}")
-                click.echo(f"  Main topics: {topic_info}")
-                click.echo(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
+                output.info(f"\nDocument: {doc_id}")
+                output.info(f"  Main topics: {topic_info}")
+                output.info(f"  Topic terms: {', '.join(topic_terms[:top_k])}")
                 if len(row["scores"]) > 0:
-                    click.echo(
+                    output.info(
                         f"  Scores: {', '.join([f'{s:.3f}' for s in row['scores'][:top_k]])}"
                     )
 
-        click.echo(f"\n{'=' * 80}\n")
-
     except FileNotFoundError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(f"\nTroubleshooting:", err=True)
-        click.echo(
-            f"  Run parsing first: newspaper-explorer data parse --source {source}", err=True
-        )
+        output.error(str(e))
+        output.info("\nTroubleshooting:")
+        output.info(f"  Run parsing first: newspaper-explorer data parse --source {source}")
         return
     except ImportError as e:
-        click.echo(f"\nError: {e}", err=True)
-        click.echo(f"\nInstall FASTopic:", err=True)
-        click.echo(f"  pip install fastopic", err=True)
-        click.echo(f"  python -m spacy download de_core_news_sm", err=True)
+        output.error(str(e))
+        output.info("\nInstall FASTopic:")
+        output.info("  pip install fastopic")
+        output.info("  python -m spacy download de_core_news_sm")
         return
-    except Exception as e:
-        click.echo(f"\nError during FASTopic processing: {e}", err=True)
+    except (OSError, RuntimeError) as e:
+        output.error(f"Error during FASTopic processing: {e}")
         logging.exception("Full error details:")
         return
 
 
 @topics_group.command(name="bertopic-batch")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@source_option()
 @click.option("--start-year", type=int, required=True, help="First year to process")
 @click.option("--end-year", type=int, required=True, help="Last year to process")
 @click.option(
@@ -1375,19 +1268,11 @@ def fastopic(
     help="Minimum chunks per topic cluster",
     show_default=True,
 )
-@click.option(
-    "--batch-size",
-    type=int,
+@batch_size_option(
     default=64,
-    help="Batch size for embedding generation",
-    show_default=True,
 )
-@click.option(
-    "--num-gpus",
-    type=int,
+@num_gpus_option(
     default=1,
-    help="Number of GPUs to use",
-    show_default=True,
 )
 @click.option(
     "--skip-existing",
@@ -1408,9 +1293,10 @@ def bertopic_batch(
     min_cluster_size: int,
     batch_size: int,
     num_gpus: int,
+    *,
     skip_existing: bool,
     stop_on_error: bool,
-):
+) -> None:
     """
     Process BERTopic year-by-year for large corpora.
 
@@ -1452,7 +1338,6 @@ def bertopic_batch(
 
     After completion, use 'merge-yearly' to combine results.
     """
-    from newspaper_explorer.analyze.topics.bertopic import BERTopicExtractor
 
     # Setup logging
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -1469,19 +1354,16 @@ def bertopic_batch(
     failed = 0
     skipped = 0
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"BERTopic Year-by-Year Batch Processing")
-    click.echo(f"{'=' * 80}\n")
-    click.echo(f"Source: {source}")
-    click.echo(f"Years: {start_year} - {end_year} ({total_years} years)")
-    click.echo(f"Filter pages: {filter_pages_list}")
-    click.echo(f"UMAP sampling: First {umap_sample_pages} pages/issue")
-    click.echo(f"Min cluster size: {min_cluster_size}")
-    click.echo(f"Batch size: {batch_size}")
-    click.echo(f"GPUs: {num_gpus}")
-    click.echo(f"Skip existing: {skip_existing}")
-    click.echo(f"Stop on error: {stop_on_error}")
-    click.echo(f"{'=' * 80}\n")
+    output.header("BERTopic Year-by-Year Batch Processing")
+    output.key_value("Source", source)
+    output.key_value("Years", f"{start_year} - {end_year} ({total_years} years)")
+    output.key_value("Filter pages", str(filter_pages_list))
+    output.key_value("UMAP sampling", f"First {umap_sample_pages} pages/issue")
+    output.key_value("Min cluster size", str(min_cluster_size))
+    output.key_value("Batch size", str(batch_size))
+    output.key_value("GPUs", str(num_gpus))
+    output.key_value("Skip existing", str(skip_existing))
+    output.key_value("Stop on error", str(stop_on_error))
 
     for year in range(start_year, end_year + 1):
         output_name = f"topics_{year}"
@@ -1489,11 +1371,11 @@ def bertopic_batch(
 
         # Check if already exists
         if skip_existing and output_file.exists():
-            click.echo(f"[{year}] ⊙ Skipping (already exists): {output_file}")
+            output.info(f"[{year}] ⊙ Skipping (already exists): {output_file}")
             skipped += 1
             continue
 
-        click.echo(f"\n[{year}/{end_year}] Processing year {year}...")
+        output.section(f"[{year}/{end_year}] Processing year {year}")
 
         try:
             # Initialize extractor
@@ -1513,65 +1395,65 @@ def bertopic_batch(
             )
 
             if len(results_df) == 0:
-                click.echo(f"  [WARNING] No results for year {year} - skipping", err=True)
+                output.info(f"  [WARNING] No results for year {year} - skipping")
                 failed += 1
                 if stop_on_error:
-                    click.echo("\nStopping due to error (--stop-on-error)", err=True)
+                    output.error("Stopping due to error (--stop-on-error)")
                     break
                 continue
 
             # Save results
             extractor.save_results(results_df, output_name=output_name)
 
-            click.echo(f"  [OK] Year {year} completed: {len(results_df):,} documents")
-            click.echo(f"  → {output_file}")
+            output.success(f"Year {year} completed: {len(results_df):,} documents")
+            output.info(f"  → {output_file}")
             completed += 1
 
-        except Exception as e:
-            click.echo(f"  [ERROR] Year {year} failed: {e}", err=True)
+        except (OSError, RuntimeError) as e:
+            output.error(f"Year {year} failed: {e}")
             failed += 1
             if stop_on_error:
-                click.echo("\nStopping due to error (--stop-on-error)", err=True)
+                output.error("Stopping due to error (--stop-on-error)")
                 logging.exception("Full error details:")
                 break
-            else:
-                click.echo("  Continuing with next year...")
+            output.info("  Continuing with next year...")
 
     # Final summary
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"Batch Processing Complete")
-    click.echo(f"{'=' * 80}")
-    click.echo(f"Total years: {total_years}")
-    click.echo(f"Completed: {completed}")
-    click.echo(f"Skipped: {skipped}")
-    click.echo(f"Failed: {failed}")
-    click.echo(f"{'=' * 80}\n")
+    output.header("Batch Processing Complete")
+    output.key_value("Total years", str(total_years))
+    output.key_value("Completed", str(completed))
+    output.key_value("Skipped", str(skipped))
+    output.key_value("Failed", str(failed))
 
     if completed > 0:
-        click.echo("[OK] Results saved to:")
-        click.echo(f"  {results_dir}/topics_*.parquet")
-        click.echo("\nNext step: Merge yearly results")
-        click.echo(f"  newspaper-explorer analyze topics merge-yearly \\")
-        click.echo(f"    --source {source} --start-year {start_year} --end-year {end_year}")
+        output.success("Results saved to:")
+        output.info(f"  {results_dir}/topics_*.parquet")
+        output.info("\nNext step: Merge yearly results")
+        output.info("  newspaper-explorer analyze topics merge-yearly \\")
+        output.info(f"    --source {source} --start-year {start_year} --end-year {end_year}")
 
 
 @topics_group.command(name="merge-yearly")
-@click.option("--source", type=str, required=True, help="Source name (e.g., der_tag)")
+@source_option()
 @click.option("--start-year", type=int, required=True, help="First year to merge")
 @click.option("--end-year", type=int, required=True, help="Last year to merge")
-@click.option(
-    "--top-n",
-    type=int,
+@top_k_option(
     default=10,
-    help="Number of top topics per year for analysis",
-    show_default=True,
+    help_text="Number of top topics per year for analysis",
 )
 @click.option(
     "--visualize",
     is_flag=True,
     help="Generate visualizations (requires matplotlib)",
 )
-def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visualize: bool):
+def merge_yearly(
+    source: str,
+    start_year: int,
+    end_year: int,
+    top_k: int,
+    *,
+    visualize: bool,
+) -> None:
     """
     Merge and analyze yearly BERTopic results.
 
@@ -1601,7 +1483,7 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
     Track more topics:
         newspaper-explorer analyze topics merge-yearly \\
             --source der_tag --start-year 1900 --end-year 1920 \\
-            --top-n 20
+            --top-k 20
 
     Output:
         results/{source}/topics/analysis/{source}_topics_all_years.parquet
@@ -1610,178 +1492,95 @@ def merge_yearly(source: str, start_year: int, end_year: int, top_n: int, visual
         results/{source}/topics/analysis/{source}_topic_heatmap.png (if --visualize)
         results/{source}/topics/analysis/{source}_topic_trends.png (if --visualize)
     """
-    import polars as pl
-
-    # Setup logging
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-
     config = get_config()
     results_dir = config.results_dir / source / "topics"
     output_dir = results_dir / "analysis"
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo(f"Merging Yearly BERTopic Results")
-    click.echo(f"{'=' * 80}\n")
-    click.echo(f"Source: {source}")
-    click.echo(f"Years: {start_year} - {end_year}")
-    click.echo(f"Results dir: {results_dir}")
-    click.echo(f"Output dir: {output_dir}")
-    click.echo(f"{'=' * 80}\n")
+    output.header("Merging Yearly BERTopic Results")
+    output.key_value("Source", source)
+    output.key_value("Years", f"{start_year} - {end_year}")
+    output.key_value("Results dir", str(results_dir))
+    output.key_value("Output dir", str(output_dir))
 
-    # Load yearly files
-    yearly_files = []
-    missing_years = []
-
-    for year in range(start_year, end_year + 1):
-        file_path = results_dir / f"topics_{year}.parquet"
-        if file_path.exists():
-            yearly_files.append((year, file_path))
-        else:
-            missing_years.append(year)
-
-    if not yearly_files:
-        click.echo(f"[ERROR] No yearly results found in {results_dir}", err=True)
-        click.echo(f"\nRun bertopic-batch first:", err=True)
-        click.echo(
+    # Merge yearly topics using utility function
+    try:
+        result = merge_yearly_topics(
+            source=source,
+            start_year=start_year,
+            end_year=end_year,
+            results_dir=results_dir,
+            output_dir=output_dir,
+            top_n=top_k,
+        )
+    except FileNotFoundError as e:
+        output.error(str(e))
+        output.info("\nRun bertopic-batch first:")
+        output.info(
             f"  newspaper-explorer analyze topics bertopic-batch "
-            f"--source {source} --start-year {start_year} --end-year {end_year}",
-            err=True,
+            f"--source {source} --start-year {start_year} --end-year {end_year}"
         )
         return
 
-    if missing_years:
-        click.echo(f"[WARNING] Missing {len(missing_years)} years: {missing_years}\n")
+    # Display warnings for missing years
+    if result["missing_years"]:
+        output.info(f"Missing {len(result['missing_years'])} years: {result['missing_years']}")
 
-    click.echo(f"Loading {len(yearly_files)} yearly files...")
+    # Show loading status
+    max_years_to_display = 5
+    output.section(f"Loading {len(result['yearly_files'])} yearly files")
+    for year, _file_path in result["yearly_files"]:
+        count = len(result["combined"].filter(result["combined"]["year"] == year))
+        output.info(f"  [{year}] {count:,} documents")
 
-    # Load and combine
-    dfs = []
-    for year, file_path in yearly_files:
-        df = pl.read_parquet(file_path)
-        df = df.with_columns(pl.lit(year).alias("year"))
-        dfs.append(df)
-        click.echo(f"  [{year}] {len(df):,} documents")
-
-    combined = pl.concat(dfs)
-    click.echo(f"\n[OK] Combined: {len(combined):,} documents across {len(yearly_files)} years\n")
-
-    # Analyze topic evolution
-    click.echo("Analyzing topic evolution...")
-    df_exploded = combined.select(["year", "doc_id", "topic_terms", "scores"]).explode(
-        ["topic_terms", "scores"]
+    combined_count = len(result["combined"])
+    output.success(
+        f"Combined: {combined_count:,} documents across {len(result['yearly_files'])} years"
     )
 
-    topic_evolution = (
-        df_exploded.group_by(["year", "topic_terms"])
-        .agg(
-            [
-                pl.count().alias("frequency"),
-                pl.col("scores").mean().alias("avg_score"),
-                pl.col("scores").std().alias("std_score"),
-            ]
-        )
-        .sort(["year", "frequency"], descending=[False, True])
-    )
+    # Show sample topic evolution
+    topic_evolution = result["topic_evolution"]
+    years = sorted(result["combined"]["year"].unique().to_list())
 
-    # Get top topics per year
-    years = sorted(combined["year"].unique().to_list())
-
-    click.echo(f"\nTop {top_n} topics per year (sample):")
-    click.echo("=" * 80)
-
-    for year in years[:5]:  # Show first 5 years
-        year_topics = topic_evolution.filter(pl.col("year") == year).head(top_n)
-        click.echo(f"\n{year}:")
-        click.echo("-" * 40)
+    output.section(f"Top {top_k} topics per year (sample)")
+    for year in years[:max_years_to_display]:
+        year_topics = topic_evolution.filter(topic_evolution["year"] == year).head(top_k)
+        output.info(f"\n{year}:")
+        output.info("-" * 40)
         for row in year_topics.iter_rows(named=True):
             term = row["topic_terms"]
             freq = row["frequency"]
             score = row["avg_score"]
-            click.echo(f"  {term:20s} | freq: {freq:5d} | score: {score:.3f}")
+            output.info(f"  {term:20s} | freq: {freq:5d} | score: {score:.3f}")
 
-    if len(years) > 5:
-        click.echo(f"\n... and {len(years) - 5} more years (see output files)")
+    if len(years) > max_years_to_display:
+        output.info(f"\n... and {len(years) - max_years_to_display} more years (see output files)")
 
-    # Save results
-    click.echo(f"\n{'=' * 80}")
-    click.echo("Saving results...")
-    click.echo(f"{'=' * 80}\n")
+    # Show saved files
+    output.section("Saved Results")
+    output.key_value("Combined data", str(result["output_files"]["combined"]))
+    output.key_value("Topic evolution", str(result["output_files"]["evolution"]))
+    output.key_value("Evolution CSV", str(result["output_files"]["evolution_csv"]))
 
-    combined_file = output_dir / f"{source}_topics_all_years.parquet"
-    combined.write_parquet(combined_file)
-    click.echo(f"[OK] Combined data: {combined_file}")
-
-    evolution_file = output_dir / f"{source}_topic_evolution.parquet"
-    topic_evolution.write_parquet(evolution_file)
-    click.echo(f"[OK] Topic evolution: {evolution_file}")
-
-    evolution_csv = output_dir / f"{source}_topic_evolution.csv"
-    topic_evolution.write_csv(evolution_csv)
-    click.echo(f"[OK] Topic evolution CSV: {evolution_csv}")
-
-    # Generate visualizations
+    # Generate visualizations if requested
     if visualize:
-        click.echo("\nGenerating visualizations...")
+        output.section("Generating visualizations")
         try:
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-
-            # Get top terms overall
-            top_overall = (
-                topic_evolution.group_by("topic_terms")
-                .agg(pl.col("frequency").sum().alias("total_frequency"))
-                .sort("total_frequency", descending=True)
-                .head(20)
+            viz_result = generate_topic_visualizations(
+                topic_evolution=topic_evolution,
+                source=source,
+                output_dir=output_dir,
+                top_n_terms=20,
             )
-            top_terms = top_overall["topic_terms"].to_list()
-
-            df_filtered = topic_evolution.filter(pl.col("topic_terms").is_in(top_terms))
-            df_pd = df_filtered.to_pandas()
-
-            # Heatmap
-            fig, ax = plt.subplots(figsize=(16, 10))
-            pivot = df_pd.pivot(index="topic_terms", columns="year", values="frequency").fillna(0)
-            sns.heatmap(
-                pivot,
-                cmap="YlOrRd",
-                cbar_kws={"label": "Document Frequency"},
-                linewidths=0.5,
-                ax=ax,
-            )
-            ax.set_title(f"Topic Evolution - {source.upper()}", fontsize=16, pad=20)
-            plt.tight_layout()
-
-            heatmap_file = output_dir / f"{source}_topic_heatmap.png"
-            plt.savefig(heatmap_file, dpi=300, bbox_inches="tight")
-            click.echo(f"[OK] Heatmap: {heatmap_file}")
-            plt.close()
-
-            # Line plot
-            fig, ax = plt.subplots(figsize=(14, 8))
-            for term in top_terms[:10]:
-                term_data = df_pd[df_pd["topic_terms"] == term]
-                ax.plot(term_data["year"], term_data["frequency"], marker="o", label=term)
-            ax.set_xlabel("Year", fontsize=12)
-            ax.set_ylabel("Document Frequency", fontsize=12)
-            ax.set_title(f"Top 10 Topics Over Time - {source.upper()}", fontsize=16, pad=20)
-            ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-            ax.grid(True, alpha=0.3)
-            plt.tight_layout()
-
-            trends_file = output_dir / f"{source}_topic_trends.png"
-            plt.savefig(trends_file, dpi=300, bbox_inches="tight")
-            click.echo(f"[OK] Trends plot: {trends_file}")
-            plt.close()
-
+            output.key_value("Heatmap", str(viz_result["heatmap"]))
+            output.key_value("Trends plot", str(viz_result["trends"]))
         except ImportError:
-            click.echo("[WARNING] matplotlib not installed - skipping visualizations", err=True)
-        except Exception as e:
-            click.echo(f"[WARNING] Error generating visualizations: {e}", err=True)
+            output.info("matplotlib not installed - skipping visualizations")
+        except (OSError, RuntimeError) as e:
+            output.info(f"Error generating visualizations: {e}")
 
-    click.echo(f"\n{'=' * 80}")
-    click.echo("[OK] Merge complete!")
-    click.echo(f"{'=' * 80}\n")
-    click.echo(f"Results in: {output_dir}")
-    click.echo(f"Total documents: {len(combined):,}")
-    click.echo(f"Years covered: {len(yearly_files)}")
+    # Final summary
+    output.header("Merge Complete")
+    output.key_value("Results in", str(output_dir))
+    output.key_value("Total documents", f"{combined_count:,}")
+    output.key_value("Years covered", str(len(result["yearly_files"])))

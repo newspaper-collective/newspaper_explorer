@@ -4,14 +4,17 @@ Extracts text lines with coordinates and metadata from ALTO format.
 Integrates with METS metadata for rich issue-level information.
 """
 
-from datetime import datetime
+from __future__ import annotations
+
 import logging
-from pathlib import Path
 import re
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from datetime import datetime
+    from pathlib import Path
 
 from lxml import etree
-from lxml.etree import _Element
 
 from newspaper_explorer.data.utils.ids import (
     generate_issue_id,
@@ -24,6 +27,8 @@ from newspaper_explorer.data.utils.ids import (
 from newspaper_explorer.models.data.content import TextLine
 
 logger = logging.getLogger(__name__)
+# Type alias to avoid using private _Element
+ElementType = Any  # lxml.etree._Element
 
 
 class ALTOParser:
@@ -33,9 +38,9 @@ class ALTOParser:
     """
 
     def __init__(self) -> None:
-        self.namespace_cache: dict[str, Optional[dict[str, str]]] = {}
+        self.namespace_cache: dict[str, dict[str, str] | None] = {}
 
-    def _detect_namespace(self, root: _Element) -> Optional[dict[str, str]]:
+    def _detect_namespace(self, root: ElementType) -> dict[str, str] | None:
         """
         Detect ALTO namespace from root element with caching.
 
@@ -63,10 +68,10 @@ class ALTOParser:
     def _parse_filename(
         self, filename: str
     ) -> tuple[
-        Optional["datetime"],  # date
-        Optional[int],  # issue_number
-        Optional[int],  # edition
-        Optional[int],  # page_number
+        datetime | None,  # date
+        int | None,  # issue_number
+        int | None,  # edition
+        int | None,  # page_number
     ]:
         """
         Parse all metadata from ALTO filename in a single pass.
@@ -93,7 +98,7 @@ class ALTOParser:
         self,
         filepath: Path,
         source_name: str,
-        mets_metadata: Optional[dict[str, Union[str, int, None]]] = None,
+        mets_metadata: dict[str, str | int | None] | None = None,
     ) -> list[TextLine]:
         """
         Parse a single ALTO XML file and extract all text lines.
@@ -122,12 +127,20 @@ class ALTOParser:
                 page_number,
             ) = self._parse_filename(filename)
 
-            # Extract METS metadata if provided
-            year_volume = mets_metadata.get("year_volume") if mets_metadata else None
-            page_count = mets_metadata.get("page_count") if mets_metadata else None
-            newspaper_title = mets_metadata.get("newspaper_title") if mets_metadata else None
+            # Extract and normalize METS metadata types
+            year_volume: str | None = None
+            page_count: int | None = None
+            newspaper_title: str | None = None
 
-            lines = []
+            if mets_metadata:
+                if val := mets_metadata.get("year_volume"):
+                    year_volume = str(val)
+                if val := mets_metadata.get("page_count"):
+                    page_count = int(val)
+                if val := mets_metadata.get("newspaper_title"):
+                    newspaper_title = str(val)
+
+            lines: list[TextLine] = []
 
             # Generate source_id
             source_id_str = generate_source_id(source_name)
@@ -168,8 +181,8 @@ class ALTOParser:
 
                     # Extract text from String and HYP elements
                     # Use CONTENT (raw/fragmented) as primary, SUBS_CONTENT for dehyphenation
-                    words = []
-                    dehyphenated_words = []
+                    words: list[str] = []
+                    dehyphenated_words: list[str] = []
 
                     # Process all child elements in order (String and HYP)
                     for child_elem in text_line_elem:
@@ -226,7 +239,7 @@ class ALTOParser:
                     unique_line_id = generate_line_id(unique_text_block_id, alto_line_id)
 
                     # Helper function to safely convert coordinates (handles scientific notation)
-                    def safe_int(value: Optional[str]) -> Optional[int]:
+                    def safe_int(value: str | None) -> int | None:
                         if not value:
                             return None
                         try:

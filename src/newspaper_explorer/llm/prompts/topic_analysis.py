@@ -4,7 +4,6 @@ Prompt templates for topic analysis and classification.
 
 from newspaper_explorer.llm.prompts.base import PromptTemplate
 
-
 TOPIC_CLASSIFICATION = PromptTemplate(
     system="""You are a historian specializing in early 20th century German newspaper content.
 Classify articles into historical topics considering the time period and cultural context.""",

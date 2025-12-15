@@ -13,11 +13,18 @@ Quality metrics include:
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
 
 logger = logging.getLogger(__name__)
+
+# Quality thresholds based on normalize.md research
+OOV_RATE_GOOD_THRESHOLD = 0.05  # <5% OOV indicates good quality
+OOV_RATE_REVIEW_THRESHOLD = 0.15  # 5-15% OOV needs review
+CHAR_TOKEN_RATIO_GOOD_THRESHOLD = 7.0  # ≤7 chars/token is good
+CHAR_TOKEN_RATIO_REVIEW_THRESHOLD = 8.0  # 7-8 chars/token needs review
 
 
 def calculate_quality_metrics(
@@ -69,8 +76,8 @@ def calculate_quality_metrics(
     vocab = None
     if german_wordlist_path:
         try:
-            with open(german_wordlist_path, "r", encoding="utf-8") as f:
-                vocab = set(line.strip().lower() for line in f if line.strip())
+            with Path(german_wordlist_path).open("r", encoding="utf-8") as f:
+                vocab = {line.strip().lower() for line in f if line.strip()}
             logger.info(f"Loaded {len(vocab):,} words from German wordlist")
         except FileNotFoundError:
             logger.warning(f"German wordlist not found: {german_wordlist_path}")
@@ -83,7 +90,7 @@ def calculate_quality_metrics(
                 "char_token_ratio": 0.0,
                 "oov_rate": 0.0,
                 "proper_noun_density": 0.0,
-                "quality": "poor",
+                "quality": 0.0,
             }
 
         tokens = text.split()
@@ -118,17 +125,17 @@ def calculate_quality_metrics(
         # Based on normalize.md thresholds
         if vocab:
             # Use OOV rate as primary indicator when available
-            if oov_rate < 0.05:
+            if oov_rate < OOV_RATE_GOOD_THRESHOLD:
                 quality = "good"
-            elif oov_rate < 0.15:
+            elif oov_rate < OOV_RATE_REVIEW_THRESHOLD:
                 quality = "review"
             else:
                 quality = "poor"
         else:
             # Fall back to char/token ratio
-            if char_token_ratio <= 7.0:
+            if char_token_ratio <= CHAR_TOKEN_RATIO_GOOD_THRESHOLD:
                 quality = "good"
-            elif char_token_ratio <= 8.0:
+            elif char_token_ratio <= CHAR_TOKEN_RATIO_REVIEW_THRESHOLD:
                 quality = "review"
             else:
                 quality = "poor"

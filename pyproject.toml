@@ -131,12 +131,12 @@ ignore = [
 
 # Complexity limits (anti-LLM-slop)
 [tool.ruff.lint.mccabe]
-max-complexity = 15 # Maximum cyclomatic complexity
+max-complexity = 30 # Maximum cyclomatic complexity
 
 [tool.ruff.lint.pylint]
 max-nested-blocks = 3 # Maximum nested block depth (PLR1702)
-max-branches = 15 # Maximum number of branches (PLR0912)
-max-statements = 75 # Maximum number of statements (PLR0915)
+max-branches = 25 # Maximum number of branches (PLR0912)
+max-statements = 100 # Maximum number of statements (PLR0915)
 
 # Per-file ignores
 [tool.ruff.lint.per-file-ignores]

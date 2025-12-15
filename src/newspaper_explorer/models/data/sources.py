@@ -184,4 +184,4 @@ class SourceStatus(BaseModel):
         None, description="Min/max years in image collection"
     )
     images_dir: str = Field(..., description="Path to images directory")
-    has_image_index: bool = Field(False, description="Whether image index exists")
+    has_image_index: bool = Field(default=False, description="Whether image index exists")

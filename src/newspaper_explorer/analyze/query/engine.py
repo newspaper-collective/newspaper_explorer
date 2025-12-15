@@ -6,14 +6,17 @@ loading entire files into memory.
 """
 
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from types import TracebackType
+from typing import Any, Optional
 
 import duckdb
 import polars as pl
 
 from newspaper_explorer.config.base import get_config
+
+# DuckDB exception types for proper error handling
+DuckDBError = duckdb.Error
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +48,9 @@ class QueryEngine:
         self,
         source: str = "der_tag",
         db_path: Optional[Path] = None,
+        *,
         in_memory: bool = True,
-    ):
+    ) -> None:
         """
         Initialize query engine.
 
@@ -80,7 +84,7 @@ class QueryEngine:
         # Create views for common queries
         self._create_views()
 
-    def _create_views(self):
+    def _create_views(self) -> None:
         """Create common views for easier querying."""
         if not self.source_parquet.exists():
             logger.warning(f"Source parquet not found: {self.source_parquet}")
@@ -88,14 +92,15 @@ class QueryEngine:
 
         # Create view for source data
         self.con.execute(
-            f"""
+            """
             CREATE OR REPLACE VIEW source_lines AS
-            SELECT * FROM '{self.source_parquet}'
-        """
+            SELECT * FROM read_parquet(?)
+        """,
+            [str(self.source_parquet)],
         )
         logger.debug("Created source_lines view")
 
-    def query(self, sql: str, params: Optional[List[Any]] = None) -> pl.DataFrame:
+    def query(self, sql: str, params: Optional[list[Any]] = None) -> pl.DataFrame:
         """
         Execute SQL query and return Polars DataFrame.
 
@@ -106,14 +111,11 @@ class QueryEngine:
         Returns:
             Query result as Polars DataFrame.
         """
-        if params:
-            result = self.con.execute(sql, params).df()
-        else:
-            result = self.con.execute(sql).df()
+        result = self.con.execute(sql, params).df() if params else self.con.execute(sql).df()
 
         return pl.from_pandas(result)
 
-    def get_line(self, line_id: str) -> Optional[Dict[str, Any]]:
+    def get_line(self, line_id: str) -> Optional[dict[str, Any]]:
         """
         Get full text and metadata for a specific line.
 
@@ -136,44 +138,6 @@ class QueryEngine:
             return None
 
         return result.to_dicts()[0]
-
-    def search_text(
-        self,
-        query_text: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        limit: int = 100,
-    ) -> pl.DataFrame:
-        """
-        Full-text search with optional date filtering.
-
-        Args:
-            query_text: Text to search for (case-insensitive substring match).
-            start_date: Optional start date (YYYY-MM-DD).
-            end_date: Optional end date (YYYY-MM-DD).
-            limit: Maximum results to return.
-
-        Returns:
-            DataFrame with matching lines.
-        """
-        sql = """
-            SELECT line_id, text, date, filename, text_block_id
-            FROM source_lines
-            WHERE text ILIKE ?
-        """
-        params = [f"%{query_text}%"]
-
-        if start_date:
-            sql += " AND date >= ?"
-            params.append(start_date)
-
-        if end_date:
-            sql += " AND date <= ?"
-            params.append(end_date)
-
-        sql += f" LIMIT {limit}"
-
-        return self.query(sql, params)
 
     def find_entity_mentions(
         self,
@@ -202,8 +166,8 @@ class QueryEngine:
             logger.warning(f"Entity results not found: {entities_path}")
             return pl.DataFrame()
 
-        sql = f"""
-            SELECT 
+        sql = """
+            SELECT
                 e.entity_text,
                 e.entity_type,
                 e.confidence,
@@ -212,11 +176,11 @@ class QueryEngine:
                 s.date,
                 s.filename,
                 s.text_block_id
-            FROM '{entities_path}' e
+            FROM read_parquet(?) e
             JOIN source_lines s ON e.line_id = s.line_id
             WHERE e.entity_text = ?
         """
-        params = [entity_name]
+        params = [str(entities_path), entity_name]
 
         if entity_type:
             sql += " AND e.entity_type = ?"
@@ -255,8 +219,8 @@ class QueryEngine:
             logger.warning("One or both entity result files not found")
             return pl.DataFrame()
 
-        sql = f"""
-            SELECT 
+        sql = """
+            SELECT
                 COALESCE(e1.line_id, e2.line_id) as line_id,
                 e1.entity_text as method1_entity,
                 e1.entity_type as method1_type,
@@ -264,19 +228,21 @@ class QueryEngine:
                 e2.entity_type as method2_type,
                 s.text,
                 s.date
-            FROM '{path1}' e1
-            FULL OUTER JOIN '{path2}' e2
-                ON e1.line_id = e2.line_id 
+            FROM read_parquet(?) e1
+            FULL OUTER JOIN read_parquet(?) e2
+                ON e1.line_id = e2.line_id
                 AND e1.entity_text = e2.entity_text
             JOIN source_lines s
                 ON COALESCE(e1.line_id, e2.line_id) = s.line_id
             WHERE e1.entity_text IS NULL OR e2.entity_text IS NULL
         """
+        params = [str(path1), str(path2)]
 
         if entity_type:
-            sql += f" AND (e1.entity_type = '{entity_type}' OR e2.entity_type = '{entity_type}')"
+            sql += " AND (e1.entity_type = ? OR e2.entity_type = ?)"
+            params.extend([entity_type, entity_type])
 
-        return self.query(sql)
+        return self.query(sql, params=params)
 
     def entity_frequency(
         self,
@@ -303,34 +269,47 @@ class QueryEngine:
             logger.warning(f"Entity results not found: {entities_path}")
             return pl.DataFrame()
 
-        # Determine time grouping
-        if group_by == "year":
-            time_expr = "YEAR(s.date)"
-        elif group_by == "month":
-            time_expr = "DATE_TRUNC('month', s.date)"
-        else:
-            time_expr = "s.date"
+        # Whitelist for time grouping to prevent SQL injection
+        time_grouping_map = {
+            "year": "YEAR(s.date)",
+            "month": "DATE_TRUNC('month', s.date)",
+            "date": "s.date",
+        }
 
-        sql = f"""
-            SELECT 
-                {time_expr} as time_period,
+        if group_by not in time_grouping_map:
+            logger.warning(f"Invalid group_by value: {group_by}. Using 'year'.")
+            group_by = "year"
+
+        time_expr = time_grouping_map[group_by]
+
+        # Build SQL with validated time expression (safe from injection)
+        sql = (
+            """
+            SELECT
+                """
+            + time_expr
+            + """ as time_period,
                 e.entity_text,
                 e.entity_type,
                 COUNT(*) as mention_count
-            FROM '{entities_path}' e
+            FROM read_parquet(?) e
             JOIN source_lines s ON e.line_id = s.line_id
         """
+        )
+        params: list[Any] = [str(entities_path)]
 
         if entity_type:
-            sql += f" WHERE e.entity_type = '{entity_type}'"
+            sql += " WHERE e.entity_type = ?"
+            params.append(entity_type)
 
-        sql += f"""
+        sql += """
             GROUP BY time_period, e.entity_text, e.entity_type
-            HAVING mention_count >= {min_mentions}
+            HAVING mention_count >= ?
             ORDER BY time_period, mention_count DESC
         """
+        params.append(min_mentions)
 
-        return self.query(sql)
+        return self.query(sql, params)
 
     def get_topic_distribution(
         self, method: str = "llm_gpt4o_mini", group_by: str = "year"
@@ -351,27 +330,38 @@ class QueryEngine:
             logger.warning(f"Topic results not found: {topics_path}")
             return pl.DataFrame()
 
-        if group_by == "year":
-            time_expr = "YEAR(s.date)"
-        elif group_by == "month":
-            time_expr = "DATE_TRUNC('month', s.date)"
-        else:
-            time_expr = "s.date"
+        # Whitelist for time grouping to prevent SQL injection
+        time_grouping_map = {
+            "year": "YEAR(s.date)",
+            "month": "DATE_TRUNC('month', s.date)",
+            "date": "s.date",
+        }
 
-        sql = f"""
-            SELECT 
-                {time_expr} as time_period,
+        if group_by not in time_grouping_map:
+            logger.warning(f"Invalid group_by value: {group_by}. Using 'year'.")
+            group_by = "year"
+
+        time_expr = time_grouping_map[group_by]
+
+        # Build SQL with validated time expression (safe from injection)
+        sql = (
+            """
+            SELECT
+                """
+            + time_expr
+            + """ as time_period,
                 t.primary_topic,
                 COUNT(*) as count
-            FROM '{topics_path}' t
+            FROM read_parquet(?) t
             JOIN source_lines s ON t.line_id = s.line_id
             GROUP BY time_period, t.primary_topic
             ORDER BY time_period, count DESC
         """
+        )
 
-        return self.query(sql)
+        return self.query(sql, [str(topics_path)])
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get comprehensive statistics from the source parquet file.
 
@@ -395,8 +385,8 @@ class QueryEngine:
 
         try:
             result = self.con.execute(
-                f"""
-                SELECT 
+                """
+                SELECT
                     COUNT(*) as total_lines,
                     COUNT(DISTINCT filename) as total_files,
                     COUNT(DISTINCT issue_id) as total_issues,
@@ -405,17 +395,37 @@ class QueryEngine:
                     MAX(date) as max_date,
                     AVG(page_count) as avg_pages,
                     COUNT(DISTINCT page_id) as total_pages
-                FROM read_parquet('{self.source_parquet}')
-            """
+                FROM read_parquet(?)
+            """,
+                [str(self.source_parquet)],
             ).fetchone()
 
-            min_date = result[4].strftime("%Y-%m-%d") if result[4] else "N/A"
-            max_date = result[5].strftime("%Y-%m-%d") if result[5] else "N/A"
+            # Handle case where query returns None
+            if result is None:
+                return {
+                    "total_lines": 0,
+                    "total_files": 0,
+                    "total_issues": 0,
+                    "total_blocks": 0,
+                    "min_date": "N/A",
+                    "max_date": "N/A",
+                    "years": 0,
+                    "avg_pages": 0,
+                    "total_pages": 0,
+                    "total_images": 0,
+                }
+
+            # Now we can safely index into result
+            min_date_obj = result[4]
+            max_date_obj = result[5]
+
+            min_date = min_date_obj.strftime("%Y-%m-%d") if min_date_obj else "N/A"
+            max_date = max_date_obj.strftime("%Y-%m-%d") if max_date_obj else "N/A"
 
             # Calculate years
             years = 0
-            if result[4] and result[5]:
-                years = result[5].year - result[4].year + 1
+            if min_date_obj and max_date_obj:
+                years = max_date_obj.year - min_date_obj.year + 1
 
             # Get image count from image_index.parquet if it exists
             total_images = 0
@@ -423,10 +433,11 @@ class QueryEngine:
             if image_index_path.exists():
                 try:
                     img_result = self.con.execute(
-                        f"SELECT COUNT(*) FROM read_parquet('{image_index_path}')"
+                        "SELECT COUNT(*) FROM read_parquet(?)", [str(image_index_path)]
                     ).fetchone()
-                    total_images = img_result[0] if img_result else 0
-                except Exception:
+                    if img_result is not None:
+                        total_images = img_result[0] or 0
+                except DuckDBError:
                     pass
 
             return {
@@ -441,7 +452,7 @@ class QueryEngine:
                 "total_pages": result[7] or 0,
                 "total_images": total_images,
             }
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error getting stats: {e}")
             return {
                 "total_lines": 0,
@@ -456,7 +467,7 @@ class QueryEngine:
                 "total_pages": 0,
             }
 
-    def get_sample_data(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_sample_data(self, limit: int = 5) -> list[dict[str, Any]]:
         """
         Get random sample data for preview.
 
@@ -471,18 +482,19 @@ class QueryEngine:
 
         try:
             result = self.con.execute(
-                f"""
-                SELECT 
+                """
+                SELECT
                     date,
                     SUBSTR(text, 1, 100) || '...' as text,
                     page_number,
                     newspaper_title,
                     issue_number
-                FROM read_parquet('{self.source_parquet}')
+                FROM read_parquet(?)
                 WHERE text IS NOT NULL AND LENGTH(text) > 20
                 ORDER BY RANDOM()
-                LIMIT {limit}
-            """
+                LIMIT ?
+            """,
+                [str(self.source_parquet), limit],
             ).fetchall()
 
             return [
@@ -495,11 +507,11 @@ class QueryEngine:
                 }
                 for row in result
             ]
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error getting sample data: {e}")
             return []
 
-    def get_date_range_stats(self, start_date: str, end_date: str) -> Dict[str, Any]:
+    def get_date_range_stats(self, start_date: str, end_date: str) -> dict[str, Any]:
         """
         Get statistics for a specific date range.
 
@@ -508,42 +520,59 @@ class QueryEngine:
             end_date: End date (YYYY-MM-DD).
 
         Returns:
-            Statistics dictionary.
+            Statistics dictionary with total_lines, total_issues, total_pages.
         """
         if not self.source_parquet.exists():
-            return {"total_lines": 0, "total_issues": 0, "total_pages": 0}
+            logger.warning(f"Source parquet not found: {self.source_parquet}")
+            return self._empty_date_stats()
 
         try:
             result = self.con.execute(
-                f"""
-                SELECT 
+                """
+                SELECT
                     COUNT(*) as total_lines,
                     COUNT(DISTINCT issue_id) as total_issues,
                     COUNT(DISTINCT page_id) as total_pages
-                FROM read_parquet('{self.source_parquet}')
-                WHERE date >= '{start_date}' AND date <= '{end_date}'
-            """
+                FROM read_parquet(?)
+                WHERE date >= ? AND date <= ?
+                """,
+                [str(self.source_parquet), start_date, end_date],
             ).fetchone()
+
+            if not result:
+                return self._empty_date_stats()
 
             return {
                 "total_lines": result[0] or 0,
                 "total_issues": result[1] or 0,
                 "total_pages": result[2] or 0,
             }
-        except Exception as e:
-            logger.error(f"Error getting date range stats: {e}")
-            return {"total_lines": 0, "total_issues": 0, "total_pages": 0}
 
-    def search_text_simple(
+        except DuckDBError as e:
+            logger.error(f"DuckDB error getting date range stats: {e}")
+            return self._empty_date_stats()
+        except (IndexError, TypeError) as e:
+            logger.error(f"Error processing date range stats result: {e}")
+            return self._empty_date_stats()
+
+    def _empty_date_stats(self) -> dict[str, Any]:
+        """Return empty date range statistics."""
+        return {
+            "total_lines": 0,
+            "total_issues": 0,
+            "total_pages": 0,
+        }
+
+    def search_text(
         self,
         query: str,
         limit: int = 100,
         offset: int = 0,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
-        Simple text search with pagination (for UI).
+        Text search with pagination and image paths.
 
         Args:
             query: Search query.
@@ -559,17 +588,9 @@ class QueryEngine:
             return []
 
         try:
-            # Build WHERE clause
-            where_clause = f"LOWER(text) LIKE LOWER('%{query}%')"
-            if start_date:
-                where_clause += f" AND date >= '{start_date}'"
-            if end_date:
-                where_clause += f" AND date <= '{end_date}'"
-
-            # Simple LIKE search
-            result = self.con.execute(
-                f"""
-                SELECT 
+            # Build parameterized query dynamically based on filters
+            base_query = """
+                SELECT
                     date,
                     text,
                     page_number,
@@ -582,33 +603,49 @@ class QueryEngine:
                     y,
                     width,
                     height
-                FROM read_parquet('{self.source_parquet}')
-                WHERE {where_clause}
-                ORDER BY date DESC
-                LIMIT {limit}
-                OFFSET {offset}
+                FROM read_parquet(?)
+                WHERE LOWER(text) LIKE LOWER(?)
             """
-            ).fetchall()
+            params: list[Any] = [str(self.source_parquet), f"%{query}%"]
+
+            if start_date:
+                base_query += " AND date >= ?"
+                params.append(start_date)
+            if end_date:
+                base_query += " AND date <= ?"
+                params.append(end_date)
+
+            base_query += """
+                ORDER BY date DESC
+                LIMIT ?
+                OFFSET ?
+            """
+            params.extend([limit, offset])
+
+            # Execute main search query
+            result = self.con.execute(base_query, params).fetchall()
 
             # Get image paths
             image_index_path = self.source_parquet.parent.parent / "image_index.parquet"
-            image_map = {}
+            image_map: dict[Any, Any] = {}
 
             if image_index_path.exists() and result:
-                page_ids = [f"'{row[6]}'" for row in result if row[6]]
+                page_ids = [row[6] for row in result if row[6]]
                 if page_ids:
-                    page_ids_str = ",".join(page_ids)
-                    try:
+                    # Validate page_ids are safe types (defense in depth)
+                    if not all(isinstance(pid, (str, int)) for pid in page_ids):
+                        logger.warning("Invalid page_id types detected, skipping image lookup")
+                    else:
+                        # Use DuckDB's list parameter support for safe IN clause
                         img_result = self.con.execute(
-                            f"""
-                            SELECT page_id, image_path 
-                            FROM read_parquet('{image_index_path}')
-                            WHERE page_id IN ({page_ids_str})
                             """
+                            SELECT page_id, image_path
+                            FROM read_parquet(?)
+                            WHERE page_id = ANY(?)
+                        """,
+                            [str(image_index_path), page_ids],
                         ).fetchall()
                         image_map = {row[0]: row[1] for row in img_result}
-                    except Exception as e:
-                        logger.warning(f"Error fetching image paths: {e}")
 
             return [
                 {
@@ -628,7 +665,7 @@ class QueryEngine:
                 }
                 for row in result
             ]
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error searching text: {e}")
             return []
 
@@ -653,27 +690,29 @@ class QueryEngine:
             return 0
 
         try:
-            # Build WHERE clause
-            where_clause = f"LOWER(text) LIKE LOWER('%{query}%')"
-            if start_date:
-                where_clause += f" AND date >= '{start_date}'"
-            if end_date:
-                where_clause += f" AND date <= '{end_date}'"
-
-            result = self.con.execute(
-                f"""
+            # Build SQL with validated conditions (safe from injection)
+            sql = """
                 SELECT COUNT(*)
-                FROM read_parquet('{self.source_parquet}')
-                WHERE {where_clause}
+                FROM read_parquet(?)
+                WHERE LOWER(text) LIKE LOWER(?)
             """
-            ).fetchone()
+            params: list[Any] = [str(self.source_parquet), f"%{query}%"]
+
+            if start_date:
+                sql += " AND date >= ?"
+                params.append(start_date)
+            if end_date:
+                sql += " AND date <= ?"
+                params.append(end_date)
+
+            result = self.con.execute(sql, params).fetchone()
 
             return result[0] if result else 0
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error counting search results: {e}")
             return 0
 
-    def get_yearly_stats(self) -> List[Dict[str, Any]]:
+    def get_yearly_stats(self) -> list[dict[str, Any]]:
         """
         Get statistics aggregated by year.
 
@@ -685,16 +724,17 @@ class QueryEngine:
 
         try:
             result = self.con.execute(
-                f"""
-                SELECT 
+                """
+                SELECT
                     year,
                     COUNT(*) as total_lines,
                     COUNT(DISTINCT issue_id) as total_issues,
                     COUNT(DISTINCT filename) as total_files
-                FROM read_parquet('{self.source_parquet}')
+                FROM read_parquet(?)
                 GROUP BY year
                 ORDER BY year
-            """
+            """,
+                [str(self.source_parquet)],
             ).fetchall()
 
             return [
@@ -706,11 +746,11 @@ class QueryEngine:
                 }
                 for row in result
             ]
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error getting yearly stats: {e}")
             return []
 
-    def get_monthly_distribution(self, year: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_monthly_distribution(self, year: Optional[int] = None) -> list[dict[str, Any]]:
         """
         Get distribution of documents by month.
 
@@ -723,100 +763,82 @@ class QueryEngine:
         if not self.source_parquet.exists():
             return []
 
-        year_filter = f"WHERE year = {year}" if year else ""
-
         try:
-            result = self.con.execute(
-                f"""
-                SELECT 
-                    month,
-                    COUNT(DISTINCT issue_id) as issue_count
-                FROM read_parquet('{self.source_parquet}')
-                {year_filter}
-                GROUP BY month
-                ORDER BY month
-            """
-            ).fetchall()
+            if year:
+                result = self.con.execute(
+                    """
+                    SELECT
+                        month,
+                        COUNT(DISTINCT issue_id) as issue_count
+                    FROM read_parquet(?)
+                    WHERE year = ?
+                    GROUP BY month
+                    ORDER BY month
+                """,
+                    [str(self.source_parquet), year],
+                ).fetchall()
+            else:
+                result = self.con.execute(
+                    """
+                    SELECT
+                        month,
+                        COUNT(DISTINCT issue_id) as issue_count
+                    FROM read_parquet(?)
+                    GROUP BY month
+                    ORDER BY month
+                """,
+                    [str(self.source_parquet)],
+                ).fetchall()
 
             return [{"month": row[0], "issue_count": row[1]} for row in result]
-        except Exception as e:
+        except DuckDBError as e:
             logger.error(f"Error getting monthly distribution: {e}")
             return []
 
-    def execute_custom_query(self, query_sql: str) -> List[tuple]:
+    def execute_custom_query(self, query_sql: str) -> list[Any]:
         """
         Execute a custom SQL query on the parquet file.
 
         Args:
-            query_sql: SQL query string.
+            query_sql: SQL query string with '{{parquet}}' placeholder.
+                       Example: "SELECT * FROM {{parquet}} WHERE year > 1900"
 
         Returns:
-            Query results as list of tuples.
+            Query results as list of row tuples.
+
+        Raises:
+            ValueError: If query doesn't contain {{parquet}} placeholder.
         """
         if not self.source_parquet.exists():
             return []
 
+        # Validate placeholder exists to prevent accidental raw SQL
+        if "{{parquet}}" not in query_sql:
+            raise ValueError("Query must contain {{parquet}} placeholder")
+
         try:
-            # Replace placeholder table name with actual parquet path
-            query_sql = query_sql.replace("{{parquet}}", f"read_parquet('{self.source_parquet}')")
-            result = self.con.execute(query_sql).fetchall()
-            return result
-        except Exception as e:
+            # Replace placeholder with DuckDB's parameterized function
+            query_sql = query_sql.replace("{{parquet}}", "read_parquet(?)")
+            return self.con.execute(query_sql, [str(self.source_parquet)]).fetchall()
+
+        except DuckDBError as e:
             logger.error(f"Error executing custom query: {e}")
             return []
 
-    def close(self):
+    def close(self) -> None:
         """Close database connection."""
         self.con.close()
         logger.debug("Closed DuckDB connection")
 
-    def __enter__(self):
+    def __enter__(self) -> "QueryEngine":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Context manager exit."""
         self.close()
-
-
-def create_result_metadata(
-    analysis_type: str,
-    method_type: str,
-    model_name: str,
-    source: str,
-    parameters: Dict[str, Any],
-    line_count: int,
-    duration_seconds: float,
-    model_version: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Create metadata dictionary for analysis results.
-
-    Args:
-        analysis_type: Type of analysis (e.g., "entities", "topics").
-        method_type: Method type ("llm" or "traditional").
-        model_name: Model identifier.
-        source: Source dataset name.
-        parameters: Analysis parameters/configuration.
-        line_count: Number of lines processed.
-        duration_seconds: Processing time in seconds.
-        model_version: Optional model version.
-
-    Returns:
-        Metadata dictionary.
-    """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    analysis_id = f"{method_type}_{model_name}_{timestamp}".replace(".", "_").replace("-", "_")
-
-    return {
-        "analysis_id": analysis_id,
-        "analysis_type": analysis_type,
-        "method_type": method_type,
-        "model_name": model_name,
-        "model_version": model_version,
-        "parameters": parameters,
-        "source": source,
-        "created_at": datetime.now().isoformat(),
-        "line_count": line_count,
-        "duration_seconds": duration_seconds,
-    }

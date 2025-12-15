@@ -2,9 +2,9 @@
 Pydantic schema for text quality assessment responses.
 """
 
-from typing import List, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class TextQualityResponse(BaseModel):
@@ -15,12 +15,5 @@ class TextQualityResponse(BaseModel):
     coherence: Literal["coherent", "partial", "fragmented"] = Field(
         description="Text coherence level"
     )
-    issues: List[str] = Field(default_factory=list, description="List of detected issues")
+    issues: list[str] = Field(default_factory=list, description="List of detected issues")
     readable: bool = Field(description="Whether text is usable for analysis")
-
-    @field_validator("issues", mode="before")
-    @classmethod
-    def ensure_list(cls, v):
-        if v is None:
-            return []
-        return v

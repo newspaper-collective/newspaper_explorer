@@ -31,6 +31,7 @@ Example:
     >>> save_metadata(metadata, Path("results/entities/analysis.parquet"))
 """
 
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
@@ -39,6 +40,62 @@ from typing import Any, Optional, Union
 from newspaper_explorer.models.data.metadata import AnalysisMetadata, PreprocessingMetadata
 
 logger = logging.getLogger(__name__)
+
+
+def create_result_metadata(
+    analysis_type: str,
+    method_type: str,
+    model_name: str,
+    source: str,
+    parameters: dict[str, Any],
+    line_count: int,
+    duration_seconds: float,
+    model_version: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Create metadata dictionary for analysis results.
+
+    Args:
+        analysis_type: Type of analysis (e.g., "entities", "topics").
+        method_type: Method type ("llm" or "traditional").
+        model_name: Model identifier.
+        source: Source dataset name.
+        parameters: Analysis parameters/configuration.
+        line_count: Number of lines processed.
+        duration_seconds: Processing time in seconds.
+        model_version: Optional model version.
+
+    Returns:
+        Metadata dictionary.
+
+    Example:
+        >>> metadata_dict = create_result_metadata(
+        ...     analysis_type="entities",
+        ...     method_type="gliner",
+        ...     model_name="multi-v2.1",
+        ...     source="der_tag",
+        ...     parameters={"threshold": 0.2},
+        ...     line_count=10000,
+        ...     duration_seconds=123.45
+        ... )
+        >>> print(metadata_dict["analysis_id"])
+        'gliner_multi_v2_1_20250115_143022'
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    analysis_id = f"{method_type}_{model_name}_{timestamp}".replace(".", "_").replace("-", "_")
+
+    return {
+        "analysis_id": analysis_id,
+        "analysis_type": analysis_type,
+        "method_type": method_type,
+        "model_name": model_name,
+        "model_version": model_version,
+        "parameters": parameters,
+        "source": source,
+        "created_at": datetime.now().isoformat(),
+        "line_count": line_count,
+        "duration_seconds": duration_seconds,
+    }
 
 
 def save_metadata(

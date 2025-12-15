@@ -4,7 +4,6 @@ Prompt template for keyword and keyphrase extraction.
 
 from newspaper_explorer.llm.prompts.base import PromptTemplate
 
-
 KEYWORD_EXTRACTION = PromptTemplate(
     system="""You are an expert at keyword and keyphrase extraction from historical German newspaper texts.
 Your task is to identify the most important and representative keywords/keyphrases that capture:

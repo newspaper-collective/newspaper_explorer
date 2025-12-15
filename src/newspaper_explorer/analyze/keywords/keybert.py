@@ -18,11 +18,17 @@ Example:
     >>> keywords = extractor.extract_keywords(top_k=10)
 """
 
+import contextlib
 from datetime import datetime
 import logging
+import multiprocessing as mp
+from multiprocessing import Barrier, Process, Queue
+from multiprocessing.queues import Queue as QueueType
+from multiprocessing.synchronize import Barrier as BarrierType
+import os
 from pathlib import Path
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from keybert import KeyBERT
 import polars as pl
@@ -44,20 +50,21 @@ logger = logging.getLogger(__name__)
 
 def _extract_keywords_on_gpu(
     device: str,
-    texts: List[str],
-    doc_ids: List[str],
+    texts: list[str],
+    doc_ids: list[str],
     model_name: str,
-    keyphrase_ngram_range: Tuple[int, int],
-    stopwords: Optional[List[str]],
+    keyphrase_ngram_range: tuple[int, int],
+    stopwords: Optional[list[str]],
     top_k: int,
     diversity: float,
+    *,
     use_mmr: bool,
     max_seq_length: int,
     batch_size: int = 32,
-    result_queue=None,
-    barrier=None,
+    result_queue: Optional[QueueType] = None,
+    barrier: Optional[BarrierType] = None,
     gpu_id: Optional[int] = None,
-) -> Optional[List[Dict]]:
+) -> Optional[list[dict]]:
     """
     Worker function to extract keywords on a specific GPU device.
 
@@ -201,7 +208,7 @@ def _extract_keywords_on_gpu(
                     }
                 )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, torch.cuda.OutOfMemoryError) as e:
             logger.error(f"Error processing batch: {e}")
             # Add empty results for failed batch
             for doc_id in valid_ids:
@@ -225,8 +232,8 @@ def _extract_keywords_on_gpu(
     if result_queue is not None:
         result_queue.put(results)
         return None
-    else:
-        return results
+
+    return results
 
 
 class KeyBERTExtractor:
@@ -257,9 +264,10 @@ class KeyBERTExtractor:
         input_file: Optional[Path] = None,
         text_column: str = "text",
         model_name: str = "paraphrase-multilingual-MiniLM-L12-v2",
-        keyphrase_ngram_range: Tuple[int, int] = (1, 2),
+        keyphrase_ngram_range: tuple[int, int] = (1, 2),
+        *,
         use_stopwords: bool = True,
-        custom_stopwords: Optional[List[str]] = None,
+        custom_stopwords: Optional[list[str]] = None,
         diversity: float = 0.5,
         batch_size: int = 32,
         max_seq_length: int = 512,
@@ -269,7 +277,7 @@ class KeyBERTExtractor:
         chunk_overlap: int = 50,
         use_multi_gpu: Optional[bool] = None,
         compile_model: bool = False,
-    ):
+    ) -> None:
         """
         Initialize KeyBERT extractor.
 
@@ -366,7 +374,7 @@ class KeyBERTExtractor:
                         )
                         transformer_model.auto_model = compiled
                         logger.info("Model compilation successful")
-                except Exception as e:
+                except (RuntimeError, AttributeError, TypeError, ValueError) as e:
                     logger.warning(
                         f"Model compilation failed: {e}. Continuing without compilation."
                     )
@@ -393,7 +401,7 @@ class KeyBERTExtractor:
                 logger.info(f"Multi-GPU enabled: will use {gpu_count} GPUs")
                 self.num_gpus = gpu_count
             elif gpu_count > 1 and not use_multi_gpu:
-                logger.info(f"Multi-GPU available but disabled (use --use-multi-gpu to enable)")
+                logger.info("Multi-GPU available but disabled (use --use-multi-gpu to enable)")
                 self.num_gpus = 1
             else:
                 self.num_gpus = 1
@@ -408,14 +416,14 @@ class KeyBERTExtractor:
             logger.info(f"Using {len(self.stopwords)} stopwords")
 
     def _get_stopwords(
-        self, use_stopwords: bool, custom_stopwords: Optional[List[str]]
-    ) -> Optional[List[str]]:
+        self, *, use_stopwords: bool, custom_stopwords: Optional[list[str]]
+    ) -> Optional[list[str]]:
         """Get German stopwords list."""
         if not use_stopwords:
             return None
 
-        # Convert set[LiteralString] to List[str] explicitly
-        stopwords: List[str] = list(DE_STOP_WORDS)
+        # Convert set[LiteralString] to list[str] explicitly
+        stopwords: list[str] = list(DE_STOP_WORDS)
         logger.info(f"Loaded {len(stopwords)} German stopwords from SpaCy")
 
         # Add custom stopwords
@@ -425,7 +433,7 @@ class KeyBERTExtractor:
 
         return stopwords
 
-    def _chunk_text(self, text: str) -> List[str]:
+    def _chunk_text(self, text: str) -> list[str]:
         """
         Split long text into overlapping chunks to avoid truncation.
 
@@ -464,8 +472,8 @@ class KeyBERTExtractor:
         return chunks
 
     def _merge_keywords(
-        self, keyword_lists: List[List[Tuple[str, float]]], top_k: int
-    ) -> List[Tuple[str, float]]:
+        self, keyword_lists: list[list[tuple[str, float]]], top_k: int
+    ) -> list[tuple[str, float]]:
         """
         Merge keywords from multiple chunks.
 
@@ -479,7 +487,7 @@ class KeyBERTExtractor:
             Merged and deduplicated list of (keyword, score) tuples
         """
         # Aggregate scores for each keyword (take maximum)
-        keyword_scores: Dict[str, float] = {}
+        keyword_scores: dict[str, float] = {}
         for kw_list in keyword_lists:
             for keyword, score in kw_list:
                 if keyword in keyword_scores:
@@ -495,7 +503,8 @@ class KeyBERTExtractor:
         self,
         top_k: int = 10,
         limit: Optional[int] = None,
-        group_by: Optional[List[str]] = None,
+        group_by: Optional[list[str]] = None,
+        *,
         use_mmr: bool = True,
     ) -> pl.DataFrame:
         """
@@ -564,24 +573,17 @@ class KeyBERTExtractor:
         if self.num_gpus > 1:
             logger.info(f"Distributing {len(texts)} documents across {self.num_gpus} GPUs")
 
-            import multiprocessing as mp
-
             # Set start method to 'spawn' for CUDA compatibility
-            try:
+            with contextlib.suppress(RuntimeError):
                 mp.set_start_method("spawn", force=True)
-            except RuntimeError:
-                # Already set, ignore
-                pass
-
-            from multiprocessing import Barrier, Process, Queue
 
             # Create barrier for synchronization
             barrier = Barrier(self.num_gpus)
 
             # Split documents across GPUs
             docs_per_gpu = (len(texts) + self.num_gpus - 1) // self.num_gpus
-            processes = []
-            result_queue: Queue = Queue()
+            processes: list[Process] = []
+            result_queue: Queue[list[dict[str, object]]] = Queue()
 
             for gpu_id in range(self.num_gpus):
                 start_idx = gpu_id * docs_per_gpu
