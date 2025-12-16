@@ -163,11 +163,16 @@ def index_images(source: str, *, force: bool) -> None:
         # Show statistics
         stats = indexer.get_stats()
         output.divider()
-        output.key_value("Total size", f"{stats['total_size_gb']:.2f} GB")
-        output.key_value("Average file size", f"{stats['avg_file_size_mb']:.2f} MB")
+        output.key_value("Total size", f"{stats.total_size_gb:.2f} GB")
+        output.key_value("Average file size", f"{stats.avg_file_size_mb:.2f} MB")
+
+        # Calculate year span
+        year_span = (
+            (stats.max_year - stats.min_year + 1) if stats.min_year and stats.max_year else 0
+        )
         output.key_value(
             "Year range",
-            f"{stats['min_year']} - {stats['max_year']} ({stats['years']} years)",
+            f"{stats.min_year} - {stats.max_year} ({year_span} years)",
         )
 
         # Show completeness

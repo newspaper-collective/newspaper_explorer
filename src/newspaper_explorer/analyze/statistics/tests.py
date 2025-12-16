@@ -20,7 +20,7 @@ Usage:
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import polars as pl
 from scipy import stats
@@ -34,7 +34,7 @@ def mann_whitney_u(
     group_col: str,
     groups: Optional[tuple[str, str]] = None,
     alternative: str = "two-sided",
-) -> dict:
+) -> dict[str, Any]:
     """
     Perform Mann-Whitney U test comparing two groups.
 
@@ -108,7 +108,7 @@ def kruskal_wallis(
     value_col: str,
     group_col: str,
     groups: Optional[list[str]] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Perform Kruskal-Wallis H test comparing multiple groups.
 
@@ -190,7 +190,7 @@ def independent_ttest(
     groups: Optional[tuple[str, str]] = None,
     equal_var: bool = False,
     alternative: str = "two-sided",
-) -> dict:
+) -> dict[str, Any]:
     """
     Perform independent samples t-test comparing two groups.
 
@@ -253,7 +253,7 @@ def one_way_anova(
     value_col: str,
     group_col: str,
     groups: Optional[list[str]] = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Perform one-way ANOVA comparing multiple groups.
 

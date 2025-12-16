@@ -1,0 +1,6 @@
+INVALID IMAGES REPORT
+============================================================
+Source: der_tag
+Timestamp: 20251216_141958
+Total invalid: 0
+

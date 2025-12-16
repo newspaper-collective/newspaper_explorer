@@ -5,6 +5,7 @@ Functions for loading source configurations and computing paths.
 Uses models from newspaper_explorer.models.core.sources.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,8 @@ import polars as pl
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.models.data.sources import SourceConfig, SourceStatus
+
+logger = logging.getLogger(__name__)
 
 
 def list_available_sources() -> list[str]:
@@ -141,15 +144,45 @@ def get_source_status(source_name: str) -> SourceStatus:
     paths = get_source_paths(config)
     app_config = get_config()
 
-    # Raw XML status
+    # Raw XML status - single pass through directory tree
     raw_dir = paths["raw_dir"]
-    xml_pattern = config.loading.pattern if config.loading else "**/fulltext/*.xml"
     has_raw_xml = raw_dir.exists()
-    xml_file_count = 0
+    alto_file_count = 0
+    mets_file_count = 0
+    total_xml_count = 0
 
     if has_raw_xml:
-        xml_files = natsorted(raw_dir.glob(xml_pattern))
-        xml_file_count = len(xml_files)
+        # Single pass: collect all XML files and categorize them
+        alto_files: list[Path] = []
+        all_xml_count = 0
+
+        for xml_file in raw_dir.glob("**/*.xml"):
+            all_xml_count += 1
+            # ALTO files are in fulltext/ subdirectories
+            if "fulltext" in xml_file.parts:
+                alto_files.append(xml_file)
+
+        alto_file_count = len(alto_files)
+        total_xml_count = all_xml_count
+        mets_file_count = total_xml_count - alto_file_count
+
+    # Download archives status - single pass for both tar.gz and zip
+    downloads_dir = app_config.download_dir / config.dataset_name
+    has_download_archives = False
+    download_archives_count = 0
+
+    if downloads_dir.exists():
+        # Single pass: count all archives
+        archive_count = 0
+        for archive_file in downloads_dir.glob("**/*"):
+            if archive_file.is_file() and (
+                (archive_file.suffix == ".gz" and archive_file.stem.endswith(".tar"))
+                or archive_file.suffix == ".zip"
+            ):
+                archive_count += 1
+
+        download_archives_count = archive_count
+        has_download_archives = archive_count > 0
 
     # Parsed data status
     output_file = paths["output_file"]
@@ -166,8 +199,8 @@ def get_source_status(source_name: str) -> SourceStatus:
         parsed_file_count = df["filename"].n_unique()
 
         # Calculate coverage
-        if xml_file_count > 0:
-            parsing_coverage_pct = (parsed_file_count / xml_file_count) * 100
+        if alto_file_count > 0:
+            parsing_coverage_pct = (parsed_file_count / alto_file_count) * 100
 
         # Get date range
         if "date" in df.columns and len(df) > 0:
@@ -202,7 +235,7 @@ def get_source_status(source_name: str) -> SourceStatus:
     has_image_index = False
 
     try:
-        from newspaper_explorer.data.indexing.image_index import ImageIndexer
+        from newspaper_explorer.data.indexing.image_index import ImageIndexer # noqa: I001, PLC0415 lazy loading to avoid circular imports
 
         indexer = ImageIndexer(source_name)
         index = indexer.load_index()
@@ -211,28 +244,27 @@ def get_source_status(source_name: str) -> SourceStatus:
             has_image_index = True
             has_images = True
             stats = indexer.get_stats()
+
+            # Extract values - all are guaranteed present by ImageStats TypedDict
             image_count = stats["total_images"]
             total_size_gb = stats["total_size_gb"]
-            image_year_range = (stats["min_year"], stats["max_year"])
+            images_expected = stats["total_images_expected"]
 
-            # Also get expected count from ImageDownloader
-            try:
-                from newspaper_explorer.data.download.images import ImageDownloader
+            # Year range can be None if no images
+            min_year = stats["min_year"]
+            max_year = stats["max_year"]
+            image_year_range = (min_year, max_year) if min_year and max_year else None
 
-                image_downloader = ImageDownloader(source_name=source_name)
-                image_status = image_downloader.get_download_status()
-                images_expected = image_status["total_images_expected"]
-
-                if images_expected > 0:
-                    image_coverage_pct = (image_count / images_expected) * 100
-            except Exception:
-                # If ImageDownloader fails, use indexed count
+            if images_expected > 0:
+                image_coverage_pct = (image_count / images_expected) * 100
+            else:
+                # Fallback if metadata doesn't have expected count
                 images_expected = image_count
                 image_coverage_pct = 100.0
         else:
             # No index, use ImageDownloader directly
             try:
-                from newspaper_explorer.data.download.images import ImageDownloader
+                from newspaper_explorer.data.download.images import ImageDownloader # noqa: I001, PLC0415 lazy loading to avoid circular imports
 
                 image_downloader = ImageDownloader(source_name=source_name)
                 image_status = image_downloader.get_download_status()
@@ -243,10 +275,11 @@ def get_source_status(source_name: str) -> SourceStatus:
 
                 if images_expected > 0:
                     image_coverage_pct = image_status["coverage_pct"]
-            except Exception:
+            except (OSError, ValueError, KeyError) as e:
+                logger.debug(f"Could not get image status from downloader: {e}")
                 # Fall through to defaults
-                pass
-    except Exception:
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.debug(f"Could not load image index for {source_name}: {e}")
         # If both fail, use defaults
         has_images = images_dir.exists()
 
@@ -254,8 +287,14 @@ def get_source_status(source_name: str) -> SourceStatus:
         source_name=source_name,
         # Raw XML
         has_raw_xml=has_raw_xml,
-        xml_file_count=xml_file_count,
+        alto_file_count=alto_file_count,
+        mets_file_count=mets_file_count,
+        total_xml_count=total_xml_count,
         raw_dir=str(raw_dir),
+        # Download archives
+        has_download_archives=has_download_archives,
+        download_archives_count=download_archives_count,
+        downloads_dir=str(downloads_dir),
         # Parsed data
         has_parsed_data=has_parsed_data,
         parsed_row_count=parsed_row_count,

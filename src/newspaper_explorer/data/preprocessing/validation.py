@@ -131,14 +131,13 @@ def calculate_quality_metrics(
                 quality = "review"
             else:
                 quality = "poor"
+        # Fall back to char/token ratio
+        elif char_token_ratio <= CHAR_TOKEN_RATIO_GOOD_THRESHOLD:
+            quality = "good"
+        elif char_token_ratio <= CHAR_TOKEN_RATIO_REVIEW_THRESHOLD:
+            quality = "review"
         else:
-            # Fall back to char/token ratio
-            if char_token_ratio <= CHAR_TOKEN_RATIO_GOOD_THRESHOLD:
-                quality = "good"
-            elif char_token_ratio <= CHAR_TOKEN_RATIO_REVIEW_THRESHOLD:
-                quality = "review"
-            else:
-                quality = "poor"
+            quality = "poor"
 
         return {
             "char_token_ratio": char_token_ratio,

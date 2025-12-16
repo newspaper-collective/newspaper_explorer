@@ -145,26 +145,24 @@ def text_column_option(default: str = "text") -> Callable[[F], F]:
     )
 
 
-def resume_option(*, default: bool = True) -> Callable[[F], F]:
+def force_resume_option() -> Callable[[F], F]:
     """
-    Standard --resume option for skipping already processed items.
-
-    Args:
-        default: Default resume behavior (default: True)
+    Standard --force option for parse command (disables resume mode).
 
     Returns:
         Click option decorator
 
     Example:
         @click.command()
-        @resume_option()
-        def my_command(resume):
-            pass
+        @force_resume_option()
+        def parse_cmd(force):
+            skip_processed = not force
     """
     return click.option(
-        "--resume/--no-resume",
-        default=default,
-        help="Skip already processed items",
+        "--force",
+        is_flag=True,
+        default=False,
+        help="Reprocess all files (disables resume mode)",
         show_default=True,
     )
 

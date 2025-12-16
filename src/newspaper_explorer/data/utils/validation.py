@@ -169,7 +169,7 @@ def validate_images_in_directory(
         }
 
     # Find all image files
-    logger.info(f"Scanning for images in {images_dir}")
+    logger.debug(f"Scanning for images in {images_dir}")
     image_files: list[Path] = []
     for ext in extensions:
         image_files.extend(images_dir.rglob(f"*{ext}"))
@@ -183,7 +183,7 @@ def validate_images_in_directory(
             "invalid_list": [],
         }
 
-    logger.info(f"Found {len(image_files)} images to validate")
+    logger.debug(f"Found {len(image_files)} images to validate")
 
     valid_count = 0
     invalid_count = 0
@@ -202,13 +202,11 @@ def validate_images_in_directory(
             invalid_list.append((str(relative_path), error_msg))
             logger.debug(f"Invalid image: {relative_path} - {error_msg}")
 
-    # Log summary
-    logger.info("=" * 60)
-    logger.info("Validation complete!")
-    logger.info(f"Total images: {len(image_files)}")
-    logger.info(f"Valid: {valid_count}")
-    logger.info(f"Invalid: {invalid_count}")
-    logger.info("=" * 60)
+    # Log summary at debug level (CLI will display its own summary)
+    logger.debug("Validation complete")
+    logger.debug(
+        f"Total images: {len(image_files)}, Valid: {valid_count}, Invalid: {invalid_count}"
+    )
 
     return {
         "total": len(image_files),

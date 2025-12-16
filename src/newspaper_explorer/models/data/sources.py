@@ -150,8 +150,17 @@ class SourceStatus(BaseModel):
 
     # Raw XML status
     has_raw_xml: bool = Field(..., description="Whether raw XML directory exists with files")
-    xml_file_count: int = Field(..., description="Number of XML files found")
+    alto_file_count: int = Field(..., description="Number of ALTO XML files found (in fulltext/)")
+    mets_file_count: int = Field(0, description="Number of METS XML files found")
+    total_xml_count: int = Field(0, description="Total XML files (ALTO + METS)")
     raw_dir: str = Field(..., description="Path to raw XML directory")
+
+    # Download archives status
+    has_download_archives: bool = Field(
+        default=False, description="Whether download archives exist"
+    )
+    download_archives_count: int = Field(0, description="Number of download archives found")
+    downloads_dir: str = Field("", description="Path to downloads directory")
 
     # Parsed data status
     has_parsed_data: bool = Field(..., description="Whether parsed parquet file exists")

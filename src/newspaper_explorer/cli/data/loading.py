@@ -9,20 +9,16 @@ import click
 from newspaper_explorer.cli.utils import errors, output
 from newspaper_explorer.cli.utils.options import (
     force_option,
+    force_resume_option,
     input_file_option,
     limit_option,
     output_path_option,
-    resume_option,
     source_option,
 )
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
 from newspaper_explorer.data.processing.aggregation import load_and_aggregate_textblocks
-from newspaper_explorer.data.processing.validation import find_empty_xml_files
 from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
-
-# Display limit for empty file lists
-MAX_EMPTY_FILES_TO_DISPLAY = 10
 
 
 @click.group(name="loading")
@@ -33,9 +29,9 @@ def loading_group() -> None:
 
 @loading_group.command(name="parse")
 @source_option()
-@resume_option()
+@force_resume_option()
 @limit_option()
-def parse_cmd(source: str, *, resume: bool, limit: Optional[int]) -> None:
+def parse_cmd(source: str, *, force: bool, limit: Optional[int]) -> None:
     """
     Parse XML files to Parquet format.
 
@@ -44,24 +40,24 @@ def parse_cmd(source: str, *, resume: bool, limit: Optional[int]) -> None:
     in data/raw/{source}/text/{source}_lines.parquet.
 
     By default, resumes from where it left off by skipping already processed
-    files. Use --no-resume to force reprocessing all files.
+    files. Use --force to reprocess all files from scratch.
 
     \b
     Examples:
       newspaper-explorer data loading parse --source der_tag
-      newspaper-explorer data loading parse --source der_tag --no-resume
+      newspaper-explorer data loading parse --source der_tag --force
       newspaper-explorer data loading parse --source der_tag --limit 100
     """
-    # Setup logging
+    # Setup logging - WARNING for library, INFO for CLI
     config = get_config()
-    logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
+    logging.basicConfig(level=logging.WARNING, format=config.cli_log_format)
 
     try:
         output.header(f"PARSE XML: {source.upper()}")
 
         # Show configuration
         output.section("CONFIGURATION")
-        output.key_value("Resume mode", "Enabled" if resume else "Disabled")
+        output.key_value("Resume mode", "Disabled" if force else "Enabled")
         if limit:
             output.key_value("File limit", f"{limit:,}")
 
@@ -69,7 +65,8 @@ def parse_cmd(source: str, *, resume: bool, limit: Optional[int]) -> None:
         ingester = DataIngester(source_name=source)
 
         # Load the source with optional limit
-        df = ingester.load_source(skip_processed=resume, max_files=limit)
+        skip_processed = not force
+        df = ingester.load_source(skip_processed=skip_processed, max_files=limit)
 
         if len(df) == 0:
             output.error("No data loaded. Check if files exist and are valid.")
@@ -206,66 +203,4 @@ def aggregate_cmd(
     except FileNotFoundError as e:
         errors.handle_error(e, show_traceback=False)
     except (ValueError, RuntimeError) as e:
-        errors.handle_error(e, show_traceback=True)
-
-
-@loading_group.command(name="find-empty")
-@source_option()
-@click.option(
-    "--show",
-    type=int,
-    default=MAX_EMPTY_FILES_TO_DISPLAY,
-    help=f"Number of empty files to display (default: {MAX_EMPTY_FILES_TO_DISPLAY})",
-)
-def find_empty_cmd(source: str, show: int) -> None:
-    """
-    Find XML files without OCR text content.
-
-    Identifies XML files that were skipped during loading due to
-    having no extractable text. Uses the processed parquet file
-    to determine which files have text content.
-
-    \b
-    Examples:
-      newspaper-explorer data loading find-empty --source der_tag
-      newspaper-explorer data loading find-empty --source der_tag --show 20
-    """
-    try:
-        output.header(f"FIND EMPTY FILES: {source.upper()}")
-
-        # Use validation utility
-        output.section("SCANNING")
-        output.info("Analyzing XML files...")
-        result = find_empty_xml_files(source)
-
-        # Display results
-        output.section("RESULTS")
-        output.key_value("Total XML files", f"{result['total_xml_files']:,}")
-        output.key_value("Processed files", f"{result['processed_files']:,}")
-        output.key_value("Empty files", f"{result['empty_files']:,}")
-
-        if result["empty_files"] > 0:
-            empty_pct = (result["empty_files"] / result["total_xml_files"]) * 100
-            output.key_value("Empty rate", f"{empty_pct:.2f}%")
-
-            # Show sample
-            empty_list = result["empty_file_list"]
-            output.section(
-                f"EMPTY FILES (showing {min(show, len(empty_list))} of {len(empty_list)})"
-            )
-
-            for i, path in enumerate(empty_list[:show], 1):
-                output.info(f"{i}. {path}", muted=True)
-
-            if len(empty_list) > show:
-                remaining = len(empty_list) - show
-                output.info(f"... and {remaining:,} more", muted=True)
-
-            click.echo()
-            output.warning("Some files have no extractable text content")
-        else:
-            click.echo()
-            output.success("No empty files found!")
-
-    except (FileNotFoundError, ValueError, RuntimeError) as e:
         errors.handle_error(e, show_traceback=True)

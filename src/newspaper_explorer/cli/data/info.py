@@ -81,14 +81,28 @@ def status(source: str) -> None:
             if config.metadata.location:
                 output.key_value("Location", config.metadata.location)
 
+        # Download Archives Status
+        output.section("DOWNLOAD ARCHIVES")
+        output.key_value("Location", status.downloads_dir)
+
+        if status.has_download_archives:
+            output.success(f"Found {status.download_archives_count} archive(s)")
+        else:
+            output.key_value("Archives found", "0")
+            output.warning(
+                f"No download archives. Run: newspaper-explorer data download --source {source}"
+            )
+
         # Download & Extraction Status
         output.section("DOWNLOAD & EXTRACTION STATUS")
 
         if status.has_raw_xml:
-            if status.xml_file_count > 0:
+            if status.alto_file_count > 0:
                 output.success("Data extracted and ready")
                 output.key_value("Location", status.raw_dir)
-                output.key_value("XML files", f"{status.xml_file_count:,}")
+                output.key_value("Total XML files", f"{status.total_xml_count:,}")
+                output.key_value("ALTO files", f"{status.alto_file_count:,}")
+                output.key_value("METS files", f"{status.mets_file_count:,}")
             else:
                 output.error("Directory exists but no XML files found", symbol=False)
                 output.key_value("Location", status.raw_dir)
@@ -109,13 +123,15 @@ def status(source: str) -> None:
         output.section("RAW XML FILES")
         output.key_value("Directory", status.raw_dir)
         output.key_value(
-            "Pattern", config.loading.pattern if config.loading else "**/fulltext/*.xml"
+            "ALTO Pattern", config.loading.pattern if config.loading else "**/fulltext/*.xml"
         )
 
-        if status.has_raw_xml and status.xml_file_count > 0:
-            output.key_value("XML files found", f"{status.xml_file_count:,}")
+        if status.has_raw_xml and status.alto_file_count > 0:
+            output.key_value("ALTO files found", f"{status.alto_file_count:,}")
+            output.key_value("METS files found", f"{status.mets_file_count:,}")
+            output.key_value("Total XML files", f"{status.total_xml_count:,}")
         else:
-            output.key_value("XML files found", "0 (directory not found)")
+            output.key_value("ALTO files found", "0 (directory not found)")
             output.warning(
                 f"No XML files. Run:\n"
                 f"  newspaper-explorer data download --source {source}\n"
@@ -136,17 +152,17 @@ def status(source: str) -> None:
                 output.key_value(
                     "Coverage",
                     f"{status.parsing_coverage_pct:.1f}% "
-                    f"({status.parsed_file_count}/{status.xml_file_count})",
+                    f"({status.parsed_file_count}/{status.alto_file_count})",
                 )
 
-                if status.parsed_file_count < status.xml_file_count:
-                    remaining = status.xml_file_count - status.parsed_file_count
+                if status.parsed_file_count < status.alto_file_count:
+                    remaining = status.alto_file_count - status.parsed_file_count
                     output.warning(
-                        f"{remaining:,} XML files not yet parsed. "
+                        f"{remaining:,} ALTO files not yet parsed. "
                         f"Run: newspaper-explorer data parse --source {source}"
                     )
                 else:
-                    output.success("All XML files parsed!")
+                    output.success("All ALTO files parsed!")
 
             # Date range
             if status.parsed_date_range:
@@ -183,7 +199,7 @@ def status(source: str) -> None:
         if status.has_image_index:
             # Use indexed data
             output.success("Indexed")
-            output.key_value("Images indexed", f"{status.image_count:,}")
+            output.key_value("Images found", f"{status.image_count:,}")
             output.key_value("Total size", f"{status.total_size_gb:.2f} GB")
 
             if status.image_year_range:
@@ -192,21 +208,29 @@ def status(source: str) -> None:
                 output.key_value("Year range", f"{min_year} - {max_year} ({years} years)")
 
             if status.images_expected > 0:
-                output.key_value("Images expected", f"{status.images_expected:,}")
+                output.key_value("Expected from METS", f"{status.images_expected:,}")
                 if status.image_coverage_pct:
-                    output.key_value("Coverage", f"{status.image_coverage_pct:.2f}%")
+                    coverage_pct = status.image_coverage_pct
 
-                    if status.image_coverage_pct < FULL_COVERAGE_PCT:
+                    # Show coverage status
+                    if coverage_pct < FULL_COVERAGE_PCT:
                         missing = status.images_expected - status.image_count
+                        output.key_value("Coverage", f"{coverage_pct:.2f}%")
                         output.warning(
                             f"{missing:,} images missing. "
                             f"Run: newspaper-explorer data download-images --source {source}"
                         )
-                    elif status.image_count > status.images_expected:
+                    elif coverage_pct > FULL_COVERAGE_PCT:
                         extra = status.image_count - status.images_expected
-                        output.success(f"All images downloaded! ({extra:,} extra images found)")
+                        output.key_value("Coverage", f"{coverage_pct:.2f}% ({extra:,} extra)")
+                        output.info(
+                            f"Note: {extra:,} more images found than expected from METS. "
+                            f"This may include backup/duplicate files.",
+                            muted=True,
+                        )
                     else:
-                        output.success("All images downloaded!")
+                        output.key_value("Coverage", "100.00%")
+                        output.success("All expected images present!")
             else:
                 output.info("Tip: Image index is available for fast queries", muted=True)
 

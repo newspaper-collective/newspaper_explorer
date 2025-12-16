@@ -5,13 +5,16 @@ Functions for validating processed data, finding empty files,
 and checking completeness against METS references.
 """
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import logging
+import os
 from pathlib import Path
 import re
 from typing import Any, Optional
 
 from lxml import etree
 import polars as pl
+from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.parser.mets import METSParser
@@ -95,6 +98,178 @@ def find_empty_xml_files(source_name: str) -> dict[str, Any]:
     }
 
 
+def _validate_single_alto(
+    alto_file_and_raw_dir: tuple[Path, Path],
+) -> tuple[str, Optional[str], str]:
+    """Validate a single ALTO file.
+
+    Worker function for parallel validation. Must be at module level for pickling.
+
+    Args:
+        alto_file_and_raw_dir: Tuple of (alto_file_path, raw_dir_path)
+
+    Returns:
+        (status, relative_path, error_message)
+        status: 'valid', 'invalid_xml', 'corrupt'
+    """
+    alto_file, raw_dir = alto_file_and_raw_dir
+
+    try:
+        tree = etree.parse(str(alto_file))
+        root = tree.getroot()
+
+        # Check for basic ALTO structure
+        if "alto" not in root.tag.lower():
+            relative_path = str(alto_file.relative_to(raw_dir))
+            return ("invalid_xml", relative_path, "Not an ALTO XML file (missing alto root)")
+
+        # Check for Page element
+        ns = None
+        if root.tag.startswith("{"):
+            ns_url = root.tag.split("}")[0][1:]
+            ns = {"alto": ns_url}
+
+        page_elem = root.find(".//alto:Page", ns) if ns else root.find(".//Page")
+        if page_elem is None:
+            relative_path = str(alto_file.relative_to(raw_dir))
+            return ("invalid_xml", relative_path, "Missing Page element")
+
+        return ("valid", None, "")
+
+    except etree.XMLSyntaxError as e:
+        relative_path = str(alto_file.relative_to(raw_dir))
+        error_msg = f"XML syntax error: {str(e)[:100]}"
+        return ("invalid_xml", relative_path, error_msg)
+
+    except OSError as e:
+        relative_path = str(alto_file.relative_to(raw_dir))
+        error_msg = f"File I/O error: {str(e)[:100]}"
+        return ("corrupt", relative_path, error_msg)
+
+    except (AttributeError, ValueError, KeyError) as e:
+        relative_path = str(alto_file.relative_to(raw_dir))
+        error_msg = f"XML structure error: {str(e)[:100]}"
+        return ("corrupt", relative_path, error_msg)
+
+
+def validate_alto_files(source_name: str) -> dict[str, Any]:
+    """
+    Comprehensive ALTO file validation.
+
+    Checks ALTO files for:
+    1. XML validity (can be parsed)
+    2. Empty files (no text content)
+    3. Corrupted/truncated files
+    4. Missing expected elements
+
+    Args:
+        source_name: Name of the source to check (e.g., 'der_tag')
+
+    Returns:
+        Dictionary with validation statistics:
+        - total_alto_files: Total number of ALTO files found
+        - valid_files: Number of valid, parseable ALTO files
+        - invalid_xml: Number of files with XML parsing errors
+        - empty_files: Number of files without text content
+        - corrupt_files: Number of corrupted/truncated files
+        - invalid_list: List of (path, error) tuples for invalid files
+        - empty_list: List of paths for empty files
+
+    Example:
+        >>> result = validate_alto_files("der_tag")
+        >>> print(f"Found {result['invalid_xml']} invalid XML files")
+    """
+    # Load source configuration
+    config = load_source_config(source_name)
+    paths = get_source_paths(config)
+    raw_dir = paths["raw_dir"]
+    output_file = paths["output_file"]
+
+    # Get loading config
+    base_config = get_config()
+    pattern = config.loading.pattern if config.loading else base_config.default_alto_pattern
+
+    logger.debug(f"Scanning for ALTO files in {raw_dir}")
+    alto_files = find_xml_files(raw_dir, pattern)
+    logger.debug(f"Found {len(alto_files)} ALTO files")
+
+    total_alto = len(alto_files)
+
+    # Validate XML structure in parallel
+    logger.debug("Validating ALTO XML structure...")
+    valid_count = 0
+    invalid_xml_count = 0
+    corrupt_count = 0
+    invalid_list: list[tuple[str, str]] = []
+
+    # Process files in parallel
+    cpu_count = os.cpu_count()
+    max_workers = max(1, (cpu_count or 4) - 1)
+
+    # Prepare arguments for worker function (must pass raw_dir since it's closure)
+    file_args = [(f, raw_dir) for f in alto_files]
+
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_validate_single_alto, arg): arg[0] for arg in file_args}
+
+        for future in tqdm(
+            as_completed(futures),
+            total=len(alto_files),
+            desc="Validating ALTO XML",
+            unit="file",
+        ):
+            status, relative_path, error_msg = future.result()
+
+            if status == "valid":
+                valid_count += 1
+            elif status == "invalid_xml":
+                invalid_xml_count += 1
+                if relative_path:
+                    invalid_list.append((relative_path, error_msg))
+            elif status == "corrupt":
+                corrupt_count += 1
+                if relative_path:
+                    invalid_list.append((relative_path, error_msg))
+
+    # Check for empty files (no text content)
+    empty_count = 0
+    empty_list: list[str] = []
+
+    if output_file.exists():
+        logger.debug("Checking for empty ALTO files...")
+        df = pl.read_parquet(output_file)
+        processed_filenames = set(df["filename"].unique())
+
+        # Files that are valid XML but have no text
+        all_relative_paths = [str(f.relative_to(raw_dir)) for f in alto_files]
+        for path in all_relative_paths:
+            filename = Path(path).name
+            # Only count as empty if it's not already marked as invalid
+            if filename not in processed_filenames:
+                is_invalid = any(p == path for p, _ in invalid_list)
+                if not is_invalid:
+                    empty_list.append(path)
+                    empty_count += 1
+    else:
+        logger.warning("No parquet file found - cannot check for empty files")
+
+    logger.debug("ALTO validation complete")
+    logger.debug(
+        f"Total: {total_alto}, Valid: {valid_count}, "
+        f"Invalid XML: {invalid_xml_count}, Empty: {empty_count}, Corrupt: {corrupt_count}"
+    )
+
+    return {
+        "total_alto_files": total_alto,
+        "valid_files": valid_count,
+        "invalid_xml": invalid_xml_count,
+        "empty_files": empty_count,
+        "corrupt_files": corrupt_count,
+        "invalid_list": invalid_list,
+        "empty_list": empty_list,
+    }
+
+
 def _check_alto_mets_pairing(
     alto_file: Path, raw_dir: Path, parser: METSParser
 ) -> tuple[bool, bool, Optional[str]]:
@@ -168,7 +343,7 @@ def validate_alto_mets_relationship(source_name: str) -> dict[str, Any]:
         >>> result = validate_alto_mets_relationship("der_tag")
         >>> print(f"Found {result['alto_without_mets']} orphaned ALTO files")
     """
-    logger.info(f"Validating ALTO-METS relationships for source: {source_name}")
+    logger.debug(f"Validating ALTO-METS relationships for source: {source_name}")
 
     # Load source configuration and get paths
     config = load_source_config(source_name)
@@ -180,9 +355,9 @@ def validate_alto_mets_relationship(source_name: str) -> dict[str, Any]:
     pattern = config.loading.pattern if config.loading else base_config.default_alto_pattern
 
     # Find all ALTO files
-    logger.info(f"Scanning for ALTO files in {raw_dir}")
+    logger.debug(f"Scanning for ALTO files in {raw_dir}")
     alto_files = find_xml_files(raw_dir, pattern)
-    logger.info(f"Found {len(alto_files)} ALTO files")
+    logger.debug(f"Found {len(alto_files)} ALTO files")
     total_alto = len(alto_files)
 
     parser = METSParser()
@@ -210,14 +385,11 @@ def validate_alto_mets_relationship(source_name: str) -> dict[str, Any]:
         else:
             alto_with_mets += 1
 
-    logger.info("=" * 60)
-    logger.info("ALTO-METS Relationship Validation Results")
-    logger.info("=" * 60)
-    logger.info(f"Total ALTO files:              {total_alto}")
-    logger.info(f"ALTO with valid METS:          {alto_with_mets}")
-    logger.info(f"ALTO without parent METS:      {alto_without_mets}")
-    logger.info(f"ALTO not listed in METS:       {alto_not_in_mets}")
-    logger.info("=" * 60)
+    logger.debug("ALTO-METS validation complete")
+    logger.debug(
+        f"Total: {total_alto}, Valid: {alto_with_mets}, "
+        f"Orphaned: {alto_without_mets}, Unlisted: {alto_not_in_mets}"
+    )
 
     return {
         "total_alto_files": total_alto,
@@ -357,13 +529,13 @@ def verify_mets_completeness(source_name: str) -> dict[str, Any]:
     images_dir = data_dir / "raw" / dataset_name / "images"
     xml_dir = data_dir / "raw" / dataset_name / source_config.data_type
 
-    logger.info(f"Checking completeness for source: {source_name}")
-    logger.info(f"XML directory: {xml_dir}")
-    logger.info(f"Images directory: {images_dir}")
+    logger.debug(f"Checking completeness for source: {source_name}")
+    logger.debug(f"XML directory: {xml_dir}")
+    logger.debug(f"Images directory: {images_dir}")
 
     # Find all METS files
     mets_files = find_mets_files(xml_dir)
-    logger.info(f"Found {len(mets_files)} METS files to check")
+    logger.debug(f"Found {len(mets_files)} METS files to check")
 
     # Track totals
     images_expected = 0
@@ -396,19 +568,19 @@ def verify_mets_completeness(source_name: str) -> dict[str, Any]:
     images_missing = images_expected - images_found
     alto_missing = alto_expected - alto_found
 
-    logger.info("=" * 60)
-    logger.info("Completeness Check Results")
-    logger.info("=" * 60)
-    logger.info(f"METS files checked: {len(mets_files)}")
-    logger.info("\nImages:")
-    logger.info(f"  Expected: {images_expected}")
-    logger.info(f"  Found:    {images_found}")
-    logger.info(f"  Missing:  {images_missing}")
-    logger.info("\nALTO files:")
-    logger.info(f"  Expected: {alto_expected}")
-    logger.info(f"  Found:    {alto_found}")
-    logger.info(f"  Missing:  {alto_missing}")
-    logger.info("=" * 60)
+    logger.debug("=" * 60)
+    logger.debug("Completeness Check Results")
+    logger.debug("=" * 60)
+    logger.debug(f"METS files checked: {len(mets_files)}")
+    logger.debug("\nImages:")
+    logger.debug(f"  Expected: {images_expected}")
+    logger.debug(f"  Found:    {images_found}")
+    logger.debug(f"  Missing:  {images_missing}")
+    logger.debug("\nALTO files:")
+    logger.debug(f"  Expected: {alto_expected}")
+    logger.debug(f"  Found:    {alto_found}")
+    logger.debug(f"  Missing:  {alto_missing}")
+    logger.debug("=" * 60)
 
     return {
         "mets_files_checked": len(mets_files),

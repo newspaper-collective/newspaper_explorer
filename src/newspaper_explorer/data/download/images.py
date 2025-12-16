@@ -69,10 +69,10 @@ class ImageDownloader:
         self.xml_dir: Path = data_dir / "raw" / self.dataset_name / self.data_type
         self.images_dir: Path = data_dir / "raw" / self.dataset_name / "images"
 
-        logger.info(f"Initialized ImageDownloader for '{source_name}'")
-        logger.info(f"XML directory: {self.xml_dir}")
-        logger.info(f"Images directory: {self.images_dir}")
-        logger.info(f"Validation: {'enabled' if self.validate else 'disabled'}")
+        logger.debug(f"Initialized ImageDownloader for '{source_name}'")
+        logger.debug(f"XML directory: {self.xml_dir}")
+        logger.debug(f"Images directory: {self.images_dir}")
+        logger.debug(f"Validation: {'enabled' if self.validate else 'disabled'}")
 
     def extract_image_references(self, mets_file: Path) -> list[ImageReference]:
         """

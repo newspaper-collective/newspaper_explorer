@@ -286,3 +286,90 @@ class ALTOParser:
         except OSError as e:
             logger.error(f"File I/O error reading {filepath}: {e}")
             return []
+
+    def create_empty_page_line(
+        self,
+        filepath: Path,
+        source_name: str,
+        mets_metadata: dict[str, str | int | None] | None = None,
+    ) -> TextLine | None:
+        """
+        Create a sentinel TextLine for empty pages (ALTO files with no text content).
+
+        Empty pages are represented with a single row using sentinel values:
+        - text: "" (empty string)
+        - x, y, width, height: 0
+        - line_id: "{page_id}_EMPTY_LINE"
+        - text_block_id: "{page_id}_EMPTY_BLOCK"
+        - is_empty: True
+        - All metadata preserved (date, page_number, etc.)
+
+        Args:
+            filepath: Path to ALTO XML file (used for filename parsing)
+            source_name: Source identifier (e.g., "der_tag")
+            mets_metadata: Optional METS metadata dict to enrich the line
+
+        Returns:
+            TextLine object representing empty page, or None if filename can't be parsed
+        """
+        # Parse filename to get page metadata
+        filename = filepath.name
+        date, issue_number, edition, page_number = self._parse_filename(filename)
+
+        if not (date and issue_number and edition and page_number):
+            logger.warning(
+                f"Cannot create empty page line for {filename}: Missing required ID components"
+            )
+            return None
+
+        # Extract and normalize METS metadata types
+        year_volume: str | None = None
+        page_count: int | None = None
+        newspaper_title: str | None = None
+
+        if mets_metadata:
+            if val := mets_metadata.get("year_volume"):
+                year_volume = str(val)
+            if val := mets_metadata.get("page_count"):
+                page_count = int(val)
+            if val := mets_metadata.get("newspaper_title"):
+                newspaper_title = str(val)
+
+        # Generate hierarchical IDs
+        source_id_str = generate_source_id(source_name)
+        issue_id_str = generate_issue_id(source_name, date, issue_number, edition)
+        page_id_str = generate_page_id(source_name, date, issue_number, edition, page_number)
+
+        # Create sentinel IDs for empty page
+        text_block_id = f"{page_id_str}_EMPTY_BLOCK"
+        line_id = f"{page_id_str}_EMPTY_LINE"
+
+        return TextLine(
+            # Primary key
+            line_id=line_id,
+            # Empty text data
+            text="",
+            text_dehyphenated_ocr=None,
+            # Foreign keys
+            source_id=source_id_str,
+            issue_id=issue_id_str,
+            page_id=page_id_str,
+            text_block_id=text_block_id,
+            # Original reference
+            filename=filename,
+            # Date & coordinates (zeros for empty)
+            date=date,
+            x=0,
+            y=0,
+            width=0,
+            height=0,
+            # Denormalized metadata
+            issue_number=issue_number,
+            edition=edition,
+            page_number=page_number,
+            year_volume=year_volume,
+            page_count=page_count,
+            newspaper_title=newspaper_title,
+            # Empty page flag
+            is_empty=True,
+        )

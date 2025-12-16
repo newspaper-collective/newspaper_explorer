@@ -12,7 +12,7 @@ from datetime import datetime
 import logging
 from multiprocessing import cpu_count
 from pathlib import Path  # noqa: TC003 - Path is used at runtime (glob, exists, mkdir, etc.)
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from natsort import natsorted
 import polars as pl
@@ -24,6 +24,7 @@ from newspaper_explorer.data.parser.mets import METSParser
 from newspaper_explorer.data.utils.sources import get_source_paths, load_source_config
 
 if TYPE_CHECKING:
+    from newspaper_explorer.models.data.content import IssueMetadata
     from newspaper_explorer.models.data.sources import SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ class DataIngester:
             filename (str): Source ALTO XML filename
             date (datetime): Publication date
             x, y, width, height (int): Layout coordinates
+            is_empty (bool): True for pages with no text content
 
         Metadata (denormalized for convenience):
             issue_number (int): Issue number from filename
@@ -69,6 +71,17 @@ class DataIngester:
             year_volume (str): Year volume from METS (e.g., "Jahrgang 1902")
             page_count (int): Total pages in issue from METS
             newspaper_title (str): Newspaper title from METS (e.g., "Der Tag")
+
+        Empty Pages:
+            Pages with no text content are represented with a single sentinel row:
+            - text: "" (empty string)
+            - x, y, width, height: 0
+            - line_id: "{page_id}_EMPTY_LINE"
+            - text_block_id: "{page_id}_EMPTY_BLOCK"
+            - is_empty: True
+            - All metadata fields preserved (date, page_number, etc.)
+
+            Filter empty pages: df.filter(~pl.col("is_empty"))
 
     Note: For source configuration utilities (list sources, load config, get paths),
     import directly from newspaper_explorer.utils.sources module.
@@ -83,7 +96,7 @@ class DataIngester:
         >>> source_df = df.filter(pl.col("source_id") == "3074409-X")
     """
 
-    def __init__(self, source_name: Optional[str] = None, max_workers: Optional[int] = None):
+    def __init__(self, source_name: str | None = None, max_workers: int | None = None) -> None:
         """
         Initialize DataLoader.
 
@@ -98,7 +111,7 @@ class DataIngester:
 
         # Load configuration if source specified
         self.source_name = source_name
-        self.config_data: Optional[SourceConfig] = None
+        self.config_data: SourceConfig | None = None
 
         if source_name:
             self.config_data = load_source_config(source_name)
@@ -168,7 +181,7 @@ class DataIngester:
                 # Size info
                 size_mb = output_file.stat().st_size / (1024 * 1024)
                 status["parquet_size_mb"] = round(size_mb, 1)
-            except Exception as e:
+            except (pl.exceptions.ComputeError, pl.exceptions.SchemaError, OSError) as e:
                 logger.warning(f"Error reading parquet: {e}")
                 status["parquet_error"] = str(e)
 
@@ -176,7 +189,8 @@ class DataIngester:
 
     def load_source(
         self,
-        max_files: Optional[int] = None,
+        max_files: int | None = None,
+        *,
         skip_processed: bool = True,
     ) -> pl.DataFrame:
         """
@@ -224,9 +238,10 @@ class DataIngester:
     def load_directory(
         self,
         directory: Path,
-        pattern: Optional[str] = None,
-        max_files: Optional[int] = None,
-        output_parquet: Optional[Path] = None,
+        pattern: str | None = None,
+        max_files: int | None = None,
+        output_parquet: Path | None = None,
+        *,
         auto_save: bool = True,
         skip_processed: bool = True,
     ) -> pl.DataFrame:
@@ -248,15 +263,15 @@ class DataIngester:
         if pattern is None:
             pattern = get_config().default_alto_pattern
 
-        logger.info(f"Scanning for ALTO XML files in {directory}")
+        logger.debug(f"Scanning for ALTO XML files in {directory}")
 
         # Find all ALTO XML files (only in fulltext directories)
         xml_files = natsorted(directory.glob(pattern))
-        logger.info(f"Found {len(xml_files):,} ALTO XML files")
+        logger.debug(f"Found {len(xml_files):,} ALTO XML files")
 
         if max_files:
             xml_files = xml_files[:max_files]
-            logger.info(f"Limiting to {max_files:,} files (test mode)")
+            logger.debug(f"Limiting to {max_files:,} files (test mode)")
 
         # Determine save path early (needed for resume functionality)
         source_name = self._extract_source_name(directory)
@@ -284,11 +299,11 @@ class DataIngester:
                 return existing_df
 
         # Pre-parse all unique METS files for caching
-        logger.info("Pre-parsing METS metadata files...")
+        logger.debug("Pre-parsing METS metadata files...")
         mets_cache = self._build_mets_cache(xml_files)
-        logger.info(f"Cached {len(mets_cache):,} METS files")
+        logger.debug(f"Cached {len(mets_cache):,} METS files")
 
-        all_lines = []
+        all_lines: list[dict[str, Any]] = []
 
         # Verify we have source_name
         if not self.source_name:
@@ -300,10 +315,10 @@ class DataIngester:
         # Always use source_name for ID generation (canonical identifier)
         # ZDB ID is kept in config for provenance only, not used in IDs
         source_id = self.source_name
-        logger.info(f"Using source name for ID generation: {source_id}")
+        logger.debug(f"Using source name for ID generation: {source_id}")
 
         # Process files in parallel with METS cache
-        logger.info("Processing ALTO XML files in parallel...")
+        logger.debug("Processing ALTO XML files in parallel...")
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(parse_file_worker, str(fp), source_id, mets_cache): fp
@@ -315,7 +330,7 @@ class DataIngester:
                 if success:
                     all_lines.extend(lines_dicts)
 
-        logger.info(f"Extracted {len(all_lines):,} text lines")
+        logger.debug(f"Extracted {len(all_lines):,} text lines")
 
         # Create Polars DataFrame from new data
         logger.debug("Creating DataFrame...")
@@ -332,11 +347,6 @@ class DataIngester:
             # No existing data, just use new
             df = new_df
 
-        # Sort by filename for consistent ordering
-        if len(df) > 0:
-            logger.debug("Sorting DataFrame by filename...")
-            df = df.sort("filename")
-
         # Validate: Check that we have data from all newly processed XML files
         if len(new_df) > 0:
             unique_files = new_df["filename"].n_unique()
@@ -349,20 +359,18 @@ class DataIngester:
                 )
             else:
                 logger.info(f"Data from all {expected_files:,} files present")
-        elif len(all_lines) > 0:
-            logger.warning("DataFrame is empty despite having lines!")
 
         # Save to Parquet if we have a path and data
         if save_path and len(df) > 0:
-            logger.info(f"Saving {len(df):,} rows to {save_path.name}")
+            logger.debug(f"Saving {len(df):,} rows to {save_path.name}")
             save_path.parent.mkdir(parents=True, exist_ok=True)
             df.write_parquet(save_path, compression="zstd")
-            logger.info("Saved successfully")
+            logger.debug("Saved successfully")
 
         return df
 
     @staticmethod
-    def _extract_source_name(directory: Path) -> Optional[str]:
+    def _extract_source_name(directory: Path) -> str | None:
         """
         Extract source name from directory path.
 
@@ -392,7 +400,7 @@ class DataIngester:
 
         return None
 
-    def _build_mets_cache(self, alto_files: list[Path]) -> dict[str, dict]:
+    def _build_mets_cache(self, alto_files: list[Path]) -> dict[str, IssueMetadata]:
         """
         Pre-parse all unique METS files and build cache in parallel.
 
@@ -403,21 +411,21 @@ class DataIngester:
             alto_files: List of ALTO file paths
 
         Returns:
-            Dict mapping METS file paths to metadata dicts
+            Dict mapping METS file paths to IssueMetadata objects
         """
         mets_parser = METSParser()
 
-        # First pass: find all unique METS files
-        unique_mets_files = set()
-        for alto_file in alto_files:
-            mets_file = mets_parser.find_mets_for_alto(alto_file)
-            if mets_file and mets_file.exists():
-                unique_mets_files.add(mets_file)
+        # Find all unique METS files using set comprehension
+        unique_mets_files: set[Path] = {
+            mets_file
+            for alto_file in alto_files
+            if (mets_file := mets_parser.find_mets_for_alto(alto_file)) and mets_file.exists()
+        }
 
-        unique_mets_list = list(unique_mets_files)
+        unique_mets_list: list[Path] = list(unique_mets_files)
 
         # Second pass: parse METS files in parallel with progress bar
-        mets_cache = {}
+        mets_cache: dict[str, IssueMetadata] = {}
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(parse_mets_worker, str(mets_file)): mets_file
@@ -436,8 +444,8 @@ class DataIngester:
     def load_files(
         self,
         filepaths: list[Path],
-        output_parquet: Optional[Path] = None,
-        source_name: Optional[str] = None,
+        output_parquet: Path | None = None,
+        source_name: str | None = None,
     ) -> pl.DataFrame:
         """
         Load specific ALTO XML files in parallel.
@@ -465,7 +473,7 @@ class DataIngester:
         source_id = src
         logger.info(f"Using source name for ID generation: {source_id}")
 
-        all_lines = []
+        all_lines: list[dict[str, Any]] = []
 
         # Process files in parallel
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:

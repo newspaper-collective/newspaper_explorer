@@ -4,8 +4,8 @@ Tests for caption-picture matching using center-to-center distance.
 
 import polars as pl
 import pytest
-from newspaper_explorer.analyze.layout.schemas import BoundingBox
-from newspaper_explorer.analyze.layout.region_matching import ProximityMatcher
+
+from newspaper_explorer.analyze.layout.region_matching import BoundingBox, ProximityMatcher
 
 
 class TestCenterToCenterMatching:
@@ -25,7 +25,7 @@ class TestCenterToCenterMatching:
         # With new algorithm: vertical_dist = 220 - 200 = 20px
         # horizontal_offset = 0 (centers aligned)
         # score = 20 + (0 * 0.2) = 20
-        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
         assert abs(distance - 20.0) < 0.01, f"Expected ~20 (edge distance), got {distance}"
 
     def test_shortest_distance_match(self):
@@ -47,16 +47,16 @@ class TestCenterToCenterMatching:
         # Caption 3: diagonal, overlaps corner - also uses center-to-center fallback
         caption3_bbox = BoundingBox(x1=200, y1=200, x2=300, y2=300)
 
-        dist1 = matcher._calculate_distance(picture_bbox, caption1_bbox)
-        dist2 = matcher._calculate_distance(picture_bbox, caption2_bbox)
-        dist3 = matcher._calculate_distance(picture_bbox, caption3_bbox)
+        dist1 = matcher.calculate_distance(picture_bbox, caption1_bbox)
+        dist2 = matcher.calculate_distance(picture_bbox, caption2_bbox)
+        dist3 = matcher.calculate_distance(picture_bbox, caption3_bbox)
 
         # Caption 1 should have best score (properly positioned below)
         assert dist1 < dist2, f"Caption 1 ({dist1}) should be closer than caption 2 ({dist2})"
         # Caption 3 overlaps, so might have similar score to caption 1
-        assert (
-            dist1 <= dist3 + 1
-        ), f"Caption 1 ({dist1}) should be close to or better than caption 3 ({dist3})"
+        assert dist1 <= dist3 + 1, (
+            f"Caption 1 ({dist1}) should be close to or better than caption 3 ({dist3})"
+        )
 
     def test_page_based_filtering(self):
         """Test that pictures only match captions on the same page."""
@@ -116,9 +116,9 @@ class TestCenterToCenterMatching:
             # Verify only same-page captions are considered
             assert len(page_pictures) == 1, f"Expected 1 picture on {page_id}"
             assert len(page_captions) == 1, f"Expected 1 caption on {page_id}"
-            assert (
-                page_captions["page_id"][0] == page_id
-            ), f"Caption should be on same page {page_id}"
+            assert page_captions["page_id"][0] == page_id, (
+                f"Caption should be on same page {page_id}"
+            )
 
     def test_max_distance_threshold(self):
         """Test that captions beyond max_distance are not matched."""
@@ -130,7 +130,7 @@ class TestCenterToCenterMatching:
         # Caption far away - top at 380, so vertical_dist = 380 - 200 = 180
         caption_bbox = BoundingBox(x1=120, y1=380, x2=180, y2=420)
 
-        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
         # With spatial algorithm: vertical_dist = 180, h_offset = 0
         # score = 180 + 0*0.2 = 180
         assert abs(distance - 180.0) < 0.01, f"Expected ~180 (vertical distance), got {distance}"
@@ -150,7 +150,7 @@ class TestCenterToCenterMatching:
         # score = 50 + 0*0.2 = 50
         caption_bbox = BoundingBox(x1=120, y1=100, x2=180, y2=150)
 
-        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
         assert abs(distance - 50.0) < 0.01, f"Expected ~50 (edge distance), got {distance}"
         assert distance < matcher.search_radius, "Caption above should be within range"
 

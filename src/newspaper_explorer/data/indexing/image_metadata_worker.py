@@ -9,6 +9,7 @@ from typing import Any, Optional
 from PIL import Image
 
 from newspaper_explorer.data.utils.ids import generate_page_id
+from newspaper_explorer.models.data.images import ImageIndexRecord
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def extract_image_metadata_worker(
     source_id: str,
     mets_cache: dict[str, Any],
     alto_cache: dict[str, tuple[int, int]],
-) -> Optional[dict[str, Any]]:
+) -> Optional[ImageIndexRecord]:
     """
     Worker function for parallel image metadata extraction.
 
@@ -33,7 +34,7 @@ def extract_image_metadata_worker(
         alto_cache: Dictionary mapping page keys to (width, height) tuples
 
     Returns:
-        Dictionary with image metadata, or None if extraction failed
+        ImageIndexRecord with validated metadata, or None if extraction failed
     """
     try:
         # Get relative path from images directory
@@ -103,32 +104,30 @@ def extract_image_metadata_worker(
                 page_number,
             )
 
-        # Build record
-        record: dict[str, Any] = {
-            "image_path": rel_path_str,
-            "source_id": source_id,
-            "year": int(year),
-            "month": int(month),
-            "day": int(day),
-            "date": f"{year}-{month.zfill(2)}-{day.zfill(2)}",
-            "issue_id": issue_id,
-            "page_id": page_id,
-            "page_number": page_number,
-            "filename": filename,
-            "file_size_bytes": file_size,
-            "alto_width": alto_width,
-            "alto_height": alto_height,
-            "width": width,
-            "height": height,
-            "newspaper_title": mets_data.get("newspaper_title"),
-            "year_volume": mets_data.get("year_volume"),
-            "page_count": mets_data.get("page_count"),
-            "issue_number": mets_data.get("issue_number"),
-            "edition": mets_data.get("edition"),
-            "file_exists": True,
-        }
-
-        return record
+        # Build and validate record using Pydantic model
+        return ImageIndexRecord(
+            image_path=rel_path_str,
+            source_id=source_id,
+            year=int(year),
+            month=int(month),
+            day=int(day),
+            date=f"{year}-{month.zfill(2)}-{day.zfill(2)}",
+            issue_id=issue_id,
+            page_id=page_id,
+            page_number=page_number,
+            filename=filename,
+            file_size_bytes=file_size,
+            alto_width=alto_width,
+            alto_height=alto_height,
+            width=width,
+            height=height,
+            newspaper_title=mets_data.get("newspaper_title"),
+            year_volume=mets_data.get("year_volume"),
+            page_count=mets_data.get("page_count"),
+            issue_number=mets_data.get("issue_number"),
+            edition=mets_data.get("edition"),
+            file_exists=True,
+        )
 
     except (OSError, ValueError, KeyError) as e:
         logger.debug(f"Failed to extract metadata from {img_path}: {e}")

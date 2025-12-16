@@ -66,10 +66,8 @@ def find_mets_files(xml_dir: Path) -> list[Path]:
     mets_files = natsorted(mets_files)
 
     if mets_files:
-        logger.info(f"Found {len(mets_files)} METS files")
+        logger.debug(f"Found {len(mets_files)} METS files")
     else:
         logger.warning(f"XML directory not found or empty: {xml_dir}")
 
     return mets_files
-
-

@@ -6,6 +6,8 @@ from METS and ALTO files.
 """
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Union
@@ -15,10 +17,12 @@ import polars as pl
 from tqdm import tqdm
 
 from newspaper_explorer.config.base import get_config
+from newspaper_explorer.data.download.images import ImageDownloader
 from newspaper_explorer.data.indexing.image_metadata_worker import extract_image_metadata_worker
 from newspaper_explorer.data.parser.mets import METSParser
 from newspaper_explorer.data.utils.files import find_mets_files
 from newspaper_explorer.data.utils.ids import extract_edition, generate_issue_id
+from newspaper_explorer.models.data.images import ImageIndexRecord, ImageStats
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,9 @@ class ImageIndexer:
 
         self.images_dir = Path(self.config.data_dir) / "raw" / source_name / "images"
         self.index_path = Path(self.config.data_dir) / "raw" / source_name / "image_index.parquet"
+        self.metadata_path = (
+            Path(self.config.data_dir) / "raw" / source_name / "image_index_metadata.json"
+        )
 
         # METS files are in the xml_ocr directory
         self.xml_dir = Path(self.config.data_dir) / "raw" / source_name / "xml_ocr"
@@ -127,8 +134,9 @@ class ImageIndexer:
             logger.warning("No image metadata extracted")
             return existing_index if existing_index is not None else pl.DataFrame()
 
-        # Create new index DataFrame
-        new_index = pl.DataFrame(records)
+        # Convert Pydantic models to dicts for DataFrame creation
+        records_dicts = [record.model_dump() for record in records]
+        new_index = pl.DataFrame(records_dicts)
 
         # Merge with existing index if available
         if existing_index is not None:
@@ -140,6 +148,22 @@ class ImageIndexer:
         logger.info(f"Saving image index to {self.index_path}")
         full_index.write_parquet(self.index_path, compression="zstd")
 
+        # Save metadata with expected image count from METS
+        logger.info("Calculating expected image count from METS files...")
+        mets_files = find_mets_files(self.xml_dir)
+        expected_images = self._count_expected_images_from_mets(mets_files)
+
+        metadata: dict[str, Union[str, int]] = {
+            "source_name": self.source_name,
+            "total_images_indexed": len(full_index),
+            "total_images_expected_from_mets": expected_images,
+            "index_created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        logger.info(f"Saving metadata to {self.metadata_path}")
+        with self.metadata_path.open("w") as f:
+            json.dump(metadata, f, indent=2)
+
         logger.info(f"Image index complete: {len(full_index)} total images")
         return full_index
 
@@ -148,7 +172,7 @@ class ImageIndexer:
         image_files: list[Path],
         mets_cache: dict[str, dict[str, Union[str, int, None]]],
         alto_cache: dict[str, tuple[int, int]],
-    ) -> list[dict[str, Union[str, int, float, bool, None]]]:
+    ) -> list[ImageIndexRecord]:
         """Extract metadata from images using parallel processing.
 
         Args:
@@ -157,9 +181,9 @@ class ImageIndexer:
             alto_cache: Pre-built ALTO dimension cache
 
         Returns:
-            List of metadata records for each successfully processed image
+            List of validated ImageIndexRecord objects for each successfully processed image
         """
-        records: list[dict[str, Union[str, int, float, bool, None]]] = []
+        records: list[ImageIndexRecord] = []
         max_workers = max(1, len(image_files) // 1000)  # Scale workers with dataset size
         max_workers = min(max_workers, 16)  # Cap at 16 workers
 
@@ -195,6 +219,26 @@ class ImageIndexer:
                     logger.warning(f"Failed to process {img_path}: {e}")
 
         return records
+
+    def _count_expected_images_from_mets(self, mets_files: list[Path]) -> int:
+        """
+        Count total expected images by parsing all METS files.
+
+        Args:
+            mets_files: List of METS file paths
+
+        Returns:
+            Total number of images expected from METS
+        """
+
+        downloader = ImageDownloader(source_name=self.source_name)
+        total_expected = 0
+
+        for mets_file in tqdm(mets_files, desc="Counting expected images", unit="file"):
+            images = downloader.extract_image_references(mets_file)
+            total_expected += len(images)
+
+        return total_expected
 
     def _build_mets_cache(self) -> dict[str, dict[str, Union[str, int, None]]]:
         """
@@ -320,6 +364,25 @@ class ImageIndexer:
         logger.info(f"Built ALTO dimension cache with {len(alto_cache)} entries")
         return alto_cache
 
+    def load_metadata(self) -> Optional[dict[str, Union[str, int]]]:
+        """
+        Load index metadata if it exists.
+
+        Returns:
+            Dictionary with metadata or None if not found
+        """
+        if not self.metadata_path.exists():
+            return None
+
+        try:
+            with self.metadata_path.open("r") as f:
+                # Type assertion - we control the JSON structure via save
+                loaded_data: dict[str, Union[str, int]] = json.load(f)
+                return loaded_data
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to load metadata: {e}")
+            return None
+
     def load_index(self) -> Optional[pl.DataFrame]:
         """
         Load the existing image index.
@@ -333,37 +396,47 @@ class ImageIndexer:
 
         return pl.read_parquet(self.index_path)
 
-    def get_stats(self) -> dict[str, Union[int, float, None]]:
+    def get_stats(self) -> ImageStats:
         """
         Get statistics about indexed images.
 
         Returns:
-            Dictionary with image statistics
+            ImageStats model with image statistics including expected count from metadata
         """
         index = self.load_index()
         if index is None or len(index) == 0:
-            return {
-                "total_images": 0,
-                "total_size_bytes": 0,
-                "total_size_gb": 0.0,
-                "years": 0,
-                "min_year": None,
-                "max_year": None,
-                "avg_file_size_mb": 0.0,
-            }
+            return ImageStats(
+                total_images=0,
+                total_images_expected=0,
+                total_size_bytes=0,
+                total_size_gb=0.0,
+                min_year=None,
+                max_year=None,
+                avg_file_size_mb=0.0,
+            )
 
         total_size = index["file_size_bytes"].sum() if "file_size_bytes" in index.columns else 0
         years = sorted(index["year"].unique().to_list())
 
-        return {
-            "total_images": len(index),
-            "total_size_bytes": total_size,
-            "total_size_gb": total_size / (1024**3),
-            "years": len(years),
-            "min_year": min(years) if years else None,
-            "max_year": max(years) if years else None,
-            "avg_file_size_mb": (total_size / len(index) / (1024**2)) if len(index) > 0 else 0.0,
-        }
+        # Load expected count from metadata (if available)
+        metadata = self.load_metadata()
+        expected_count = 0
+        if metadata:
+            # JSON loads numbers as int or float - ensure we get an int
+            raw_value = metadata.get("total_images_expected_from_mets", 0)
+            expected_count = int(raw_value) if raw_value else 0
+
+        return ImageStats(
+            total_images=len(index),
+            total_images_expected=expected_count,
+            total_size_bytes=int(total_size),
+            total_size_gb=float(total_size / (1024**3)),
+            min_year=int(min(years)) if years else None,
+            max_year=int(max(years)) if years else None,
+            avg_file_size_mb=float(
+                (total_size / len(index) / (1024**2)) if len(index) > 0 else 0.0
+            ),
+        )
 
     def get_sample_images(
         self,

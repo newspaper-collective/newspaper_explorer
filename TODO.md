@@ -265,3 +265,5 @@ keywords commands: tfidf gourp by / document level clarification
 keywords commands: tfidf min-df and max-df do what?
 
 topics commands: rework merge-yearly
+
+imagedownloader: allow variable image size from mets

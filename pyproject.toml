@@ -238,5 +238,6 @@ module = [
     "bertopic",
     "sklearn",
     "sklearn.feature_extraction.text",
+    "scipy",
 ]
 ignore_missing_imports = true

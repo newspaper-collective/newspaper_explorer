@@ -70,6 +70,9 @@ class TextLine(BaseModel):
     page_count: Optional[int] = None  # Total pages in issue
     newspaper_title: Optional[str] = None  # e.g., "Der Tag"
 
+    # Empty page flag
+    is_empty: bool = False  # True for pages with no text content
+
     @computed_field
     def year(self) -> Optional[int]:
         """Extract year from date"""

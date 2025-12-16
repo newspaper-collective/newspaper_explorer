@@ -1,6 +1,7 @@
 """Tests for image_worker module."""
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -59,13 +60,13 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["year"] == 1920
-        assert result["month"] == 1
-        assert result["day"] == 15
-        assert result["date"] == "1920-01-15"
-        assert result["filename"] == "max_7.jpg"
-        assert result["source_id"] == "test_source"
-        assert result["file_exists"] is True
+        assert result.year == 1920
+        assert result.month == 1
+        assert result.day == 15
+        assert result.date == "1920-01-15"
+        assert result.filename == "max_7.jpg"
+        assert result.source_id == "test_source"
+        assert result.file_exists is True
 
     def test_extracts_page_number_from_max_filename(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
@@ -81,13 +82,13 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["page_number"] == 7
+        assert result.page_number == 7
 
     def test_uses_mets_cache_for_metadata(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that METS metadata is used when available in cache."""
-        mets_cache = {
+        mets_cache: dict[str, dict[str, Any]] = {
             "1920/01/15/01": {
                 "issue_id": "test_source_1920-01-15_001_1",
                 "newspaper_title": "Test Newspaper",
@@ -109,18 +110,18 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["issue_id"] == "test_source_1920-01-15_001_1"
-        assert result["newspaper_title"] == "Test Newspaper"
-        assert result["year_volume"] == "1920/15"
-        assert result["page_count"] == 8
-        assert result["issue_number"] == 1
-        assert result["edition"] == 1
+        assert result.issue_id == "test_source_1920-01-15_001_1"
+        assert result.newspaper_title == "Test Newspaper"
+        assert result.year_volume == "1920/15"
+        assert result.page_count == 8
+        assert result.issue_number == 1
+        assert result.edition == 1
 
     def test_generates_page_id_with_complete_mets_data(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
     ) -> None:
         """Test that page_id is generated when all required METS data is present."""
-        mets_cache = {
+        mets_cache: dict[str, dict[str, Any]] = {
             "1920/01/15/01": {
                 "issue_id": "test_source_1920-01-15_001_1",
                 "date": "1920-01-15",
@@ -139,7 +140,7 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["page_id"] == "test_source_1920-01-15_001_1_007"
+        assert result.page_id == "test_source_1920-01-15_001_1_007"
 
     def test_uses_alto_cache_for_dimensions(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
@@ -159,8 +160,8 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["alto_width"] == 2000
-        assert result["alto_height"] == 3000
+        assert result.alto_width == 2000
+        assert result.alto_height == 3000
 
     def test_tries_different_page_paddings_for_alto_lookup(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
@@ -181,8 +182,8 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["alto_width"] == 1500
-        assert result["alto_height"] == 2500
+        assert result.alto_width == 1500
+        assert result.alto_height == 2500
 
     def test_returns_none_for_invalid_path_structure(self, images_dir: Path) -> None:
         """Test that None is returned for paths that don't match expected structure."""
@@ -217,8 +218,8 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["page_number"] is None
-        assert result["filename"] == "page_007.jpg"
+        assert result.page_number is None
+        assert result.filename == "page_007.jpg"
 
     def test_fallback_issue_id_when_not_in_cache(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
@@ -234,7 +235,7 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["issue_id"] == "1920/01/15/01"  # Falls back to path_key
+        assert result.issue_id == "1920/01/15/01"  # Falls back to path_key
 
     def test_includes_file_size(
         self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
@@ -250,8 +251,8 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["file_size_bytes"] is not None
-        assert result["file_size_bytes"] > 0
+        assert result.file_size_bytes is not None
+        assert result.file_size_bytes > 0
 
     def test_handles_image_read_failure(self, sample_image_path: Path, images_dir: Path) -> None:
         """Test that image dimension read failures are handled gracefully."""
@@ -259,7 +260,9 @@ class TestExtractImageMetadataWorker:
         mock_image_module.open.side_effect = OSError("Cannot read image")
         mock_image_module.DecompressionBombError = Exception
 
-        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module):
+        with patch(
+            "newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module
+        ):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -269,8 +272,8 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["width"] is None
-        assert result["height"] is None
+        assert result.width is None
+        assert result.height is None
 
     def test_reads_actual_image_dimensions(self, sample_image_path: Path, images_dir: Path) -> None:
         """Test that actual image dimensions are read from the file."""
@@ -278,7 +281,9 @@ class TestExtractImageMetadataWorker:
         mock_image_module.open.return_value = create_image_mock(800, 1200)
         mock_image_module.DecompressionBombError = Exception
 
-        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module):
+        with patch(
+            "newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module
+        ):
             result = extract_image_metadata_worker(
                 img_path=sample_image_path,
                 images_dir=images_dir,
@@ -288,5 +293,168 @@ class TestExtractImageMetadataWorker:
             )
 
         assert result is not None
-        assert result["width"] == 800
-        assert result["height"] == 1200
+        assert result.width == 800
+        assert result.height == 1200
+
+    def test_handles_decompression_bomb_error(
+        self, sample_image_path: Path, images_dir: Path
+    ) -> None:
+        """Test that DecompressionBombError is handled gracefully."""
+        mock_image_module = MagicMock()
+        mock_image_module.DecompressionBombError = Exception
+        mock_image_module.open.side_effect = mock_image_module.DecompressionBombError(
+            "Image too large"
+        )
+
+        with patch(
+            "newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_image_module
+        ):
+            result = extract_image_metadata_worker(
+                img_path=sample_image_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        assert result is not None
+        assert result.width is None
+        assert result.height is None
+
+    def test_handles_os_error_in_file_stat(
+        self, images_dir: Path, mock_pil_image: MagicMock
+    ) -> None:
+        """Test that OSError during file stat is caught and returns None."""
+        # Create a path that exists but will fail on stat (simulate permission error)
+        img_path = images_dir / "1920" / "01" / "15" / "01" / "max_7.jpg"
+        img_path.parent.mkdir(parents=True)
+        img_path.write_bytes(b"fake image")
+
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image), patch.object(Path, "stat", side_effect=OSError("Permission denied")):
+            result = extract_image_metadata_worker(
+                img_path=img_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        # Should fail and return None due to OSError
+        assert result is None
+
+    def test_handles_value_error_in_parsing(
+        self, images_dir: Path, mock_pil_image: MagicMock
+    ) -> None:
+        """Test that ValueError during parsing is caught and returns None."""
+        img_path = images_dir / "1920" / "01" / "15" / "01" / "max_7.jpg"
+        img_path.parent.mkdir(parents=True)
+        img_path.write_bytes(b"fake image")
+
+        # Mock mets_cache with invalid date format to trigger ValueError
+        mets_cache: dict[str, dict[str, Any]] = {
+            "1920/01/15/01": {
+                "date": "invalid-date-format",  # Will cause ValueError in datetime.fromisoformat
+                "issue_number": 1,
+                "edition": 1,
+            }
+        }
+
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
+            result = extract_image_metadata_worker(
+                img_path=img_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache=mets_cache,
+                alto_cache={},
+            )
+
+        # Should fail and return None due to ValueError
+        assert result is None
+
+    def test_handles_key_error_in_metadata(
+        self, sample_image_path: Path, images_dir: Path, mock_pil_image: MagicMock
+    ) -> None:
+        """Test that KeyError during metadata access is caught and returns None."""
+        # This is harder to trigger since we use .get() for METS data
+        # But we can mock int() to raise KeyError on the year conversion
+        with patch(
+            "newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image
+        ), patch(
+            "newspaper_explorer.data.indexing.image_metadata_worker.int",
+            side_effect=KeyError("Invalid key"),
+        ):
+            result = extract_image_metadata_worker(
+                img_path=sample_image_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        # Should fail and return None due to KeyError
+        assert result is None
+
+    def test_handles_nonexistent_file(self, images_dir: Path, mock_pil_image: MagicMock) -> None:
+        """Test that nonexistent file path is handled (file_size_bytes is None)."""
+        # Create path structure but don't write the file
+        img_path = images_dir / "1920" / "01" / "15" / "01" / "missing.jpg"
+        img_path.parent.mkdir(parents=True)
+        # Don't write the file - it doesn't exist
+
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
+            result = extract_image_metadata_worker(
+                img_path=img_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        # File doesn't exist, so file_size should be None
+        assert result is not None
+        assert result.file_size_bytes is None
+
+    def test_max_filename_with_malformed_format(
+        self, images_dir: Path, mock_pil_image: MagicMock
+    ) -> None:
+        """Test that malformed max_ filename doesn't crash parsing."""
+        # Filename with 'max_' but invalid number format
+        img_path = images_dir / "1920" / "01" / "15" / "01" / "max_abc.jpg"
+        img_path.parent.mkdir(parents=True)
+        img_path.write_bytes(b"fake image")
+
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
+            result = extract_image_metadata_worker(
+                img_path=img_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        # Should succeed but page_number should be None (suppressed ValueError)
+        assert result is not None
+        assert result.page_number is None
+
+    def test_zero_padded_month_and_day_in_date_string(
+        self, images_dir: Path, mock_pil_image: MagicMock
+    ) -> None:
+        """Test that single-digit months and days are zero-padded in date string."""
+        # Single digit month and day
+        img_path = images_dir / "1920" / "1" / "5" / "01" / "max_7.jpg"
+        img_path.parent.mkdir(parents=True)
+        img_path.write_bytes(b"fake image")
+
+        with patch("newspaper_explorer.data.indexing.image_metadata_worker.Image", mock_pil_image):
+            result = extract_image_metadata_worker(
+                img_path=img_path,
+                images_dir=images_dir,
+                source_id="test_source",
+                mets_cache={},
+                alto_cache={},
+            )
+
+        assert result is not None
+        assert result.month == 1
+        assert result.day == 5
+        assert result.date == "1920-01-05"  # Should be zero-padded

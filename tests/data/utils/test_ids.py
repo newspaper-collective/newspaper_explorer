@@ -109,7 +109,7 @@ class TestIDParsing:
 
     def test_parse_page_id_invalid(self):
         """Test parsing invalid page ID"""
-        with pytest.raises(ValueError, match="Invalid page_id format"):
+        with pytest.raises(ValueError, match="Could not find date"):
             parse_page_id("invalid_id")
 
     def test_parse_issue_id(self):
@@ -123,7 +123,7 @@ class TestIDParsing:
 
     def test_parse_issue_id_invalid(self):
         """Test parsing invalid issue ID"""
-        with pytest.raises(ValueError, match="Invalid issue_id format"):
+        with pytest.raises(ValueError, match="Could not find date"):
             parse_issue_id("invalid_id")
 
     def test_parse_line_id(self):
@@ -142,7 +142,7 @@ class TestIDParsing:
 
     def test_parse_line_id_invalid(self):
         """Test parsing invalid line ID"""
-        with pytest.raises(ValueError, match="Invalid line_id format"):
+        with pytest.raises(ValueError, match="Could not find date"):
             parse_line_id("invalid_id")
 
 
