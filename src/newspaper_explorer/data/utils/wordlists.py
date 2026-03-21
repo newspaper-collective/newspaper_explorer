@@ -9,17 +9,21 @@ Provides functions to extract wordlists from various sources:
 
 import logging
 from pathlib import Path
-from typing import Optional, Set
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Constants
+MIN_WORD_LENGTH = 2
 
 
 def extract_spacy_vocab(
     model_name: str = "de_core_news_sm",
     output_path: Optional[str] = None,
     min_length: int = 2,
+    *,
     lowercase: bool = True,
-) -> Set[str]:
+) -> set[str]:
     """
     Extract vocabulary from spaCy German model.
 
@@ -45,20 +49,20 @@ def extract_spacy_vocab(
     """
     try:
         import spacy
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "spaCy not installed. Install with: pip install spacy\n"
             "Then download model: python -m spacy download de_core_news_sm"
-        )
+        ) from e
 
     logger.info(f"Loading spaCy model: {model_name}")
     try:
         nlp = spacy.load(model_name)
-    except OSError:
+    except OSError as e:
         raise OSError(
             f"spaCy model '{model_name}' not found.\n"
             f"Download with: python -m spacy download {model_name}"
-        )
+        ) from e
 
     # Extract all vocabulary strings
     vocab_words = set()
@@ -98,7 +102,7 @@ def extract_spacy_vocab(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with output_path.open("w", encoding="utf-8") as f:
             for word in sorted(vocab_words):
                 f.write(f"{word}\n")
 
@@ -107,7 +111,7 @@ def extract_spacy_vocab(
     return vocab_words
 
 
-def load_wordlist(path: str, lowercase: bool = True) -> Set[str]:
+def load_wordlist(path: str, *, lowercase: bool = True) -> set[str]:
     """
     Load wordlist from file.
 
@@ -129,7 +133,7 @@ def load_wordlist(path: str, lowercase: bool = True) -> Set[str]:
     logger.info(f"Loading wordlist from: {path}")
 
     words = set()
-    with open(path, "r", encoding="utf-8") as f:
+    with path.open(encoding="utf-8") as f:
         for line in f:
             word = line.strip()
             if word:
@@ -141,8 +145,9 @@ def load_wordlist(path: str, lowercase: bool = True) -> Set[str]:
 
 def extract_hunspell_wordlist(
     output_path: Optional[str] = None,
+    *,
     include_compounds: bool = True,
-) -> Set[str]:
+) -> set[str]:
     """
     Extract German wordlist from Hunspell dictionary (igerman98).
 
@@ -182,22 +187,22 @@ def extract_hunspell_wordlist(
     """
     try:
         import hunspell
-    except ImportError:
+    except ImportError as e:
         raise ImportError(
             "hunspell not installed. Install with:\n"
             "  pip install pyhunspell\n"
             "  sudo apt-get install hunspell hunspell-de-de  # Linux\n"
             "  brew install hunspell                         # macOS"
-        )
+        ) from e
 
     logger.info("Loading Hunspell German dictionary (de_DE)")
 
     try:
         hobj = hunspell.HunSpell("/usr/share/hunspell/de_DE.dic", "/usr/share/hunspell/de_DE.aff")
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         raise FileNotFoundError(
             f"Hunspell dictionary not found: {e}\nInstall with: sudo apt-get install hunspell-de-de"
-        )
+        ) from e
 
     words = set()
 
@@ -210,22 +215,19 @@ def extract_hunspell_wordlist(
     if not dic_path.exists():
         raise FileNotFoundError(f"Dictionary file not found: {dic_path}")
 
-    with open(dic_path, "r", encoding="latin-1") as f:
+    with dic_path.open(encoding="latin-1") as f:
         # First line is word count
         next(f)
 
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             if not line:
                 continue
 
-            # Format: word/flags
-            if "/" in line:
-                word = line.split("/")[0]
-            else:
-                word = line
+            # Parse word/flags format
+            word = line.split("/")[0] if "/" in line else line
 
-            if word and len(word) >= 2:
+            if word and len(word) >= MIN_WORD_LENGTH:
                 words.add(word.lower())
 
                 # If include_compounds, also generate inflected forms
@@ -234,7 +236,7 @@ def extract_hunspell_wordlist(
                     # Try to generate suggestions (gives inflected forms)
                     suggestions = hobj.suggest(word)
                     for sugg in suggestions:
-                        if sugg and len(sugg) >= 2:
+                        if sugg and len(sugg) >= MIN_WORD_LENGTH:
                             words.add(sugg.lower())
 
     logger.info(f"Extracted {len(words):,} words from Hunspell")
@@ -244,7 +246,7 @@ def extract_hunspell_wordlist(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with output_path.open("w", encoding="utf-8") as f:
             for word in sorted(words):
                 f.write(f"{word}\n")
 
@@ -255,8 +257,9 @@ def extract_hunspell_wordlist(
 
 def download_leipzig_wordlist(
     output_path: Optional[str] = None,
+    *,
     year: int = 2021,
-) -> Set[str]:
+) -> set[str]:
     """
     Download German wordlist from Leipzig Corpora Collection.
 
@@ -298,41 +301,40 @@ def download_leipzig_wordlist(
 
     words = set()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmpdir = Path(tmp_dir)
         tar_path = tmpdir / filename
 
         # Download
         logger.info(f"Downloading from: {url}")
         try:
-            urlretrieve(url, tar_path)
-        except Exception as e:
+            urlretrieve(url, tar_path)  # noqa: S310
+        except (OSError, ValueError) as e:
             raise RuntimeError(
                 f"Failed to download Leipzig Corpora: {e}\n"
                 f"URL: {url}\n"
                 f"Check https://wortschatz.uni-leipzig.de/en/download/German for available corpora"
-            )
+            ) from e
 
         # Extract
         logger.info("Extracting archive...")
         with tarfile.open(tar_path, "r:gz") as tar:
-            tar.extractall(tmpdir)
+            tar.extractall(tmpdir)  # noqa: S202
 
-        # Read word list
-        # Format: deu_news_2021_100K/deu_news_2021_100K-words.txt
+        # Read word list from extracted archive
         words_file = tmpdir / corpus_name / f"{corpus_name}-words.txt"
 
         if not words_file.exists():
             raise FileNotFoundError(f"Words file not found in archive: {words_file}")
 
         logger.info("Reading word frequencies...")
-        with open(words_file, "r", encoding="utf-8") as f:
+        with words_file.open(encoding="utf-8") as f:
             for line in f:
                 # Format: rank\tword\tfrequency
                 parts = line.strip().split("\t")
-                if len(parts) >= 2:
+                if len(parts) >= MIN_WORD_LENGTH:
                     word = parts[1]
-                    if word and len(word) >= 2 and word[0].isalpha():
+                    if word and len(word) >= MIN_WORD_LENGTH and word[0].isalpha():
                         words.add(word.lower())
 
     logger.info(f"Extracted {len(words):,} words from Leipzig Corpora")
@@ -342,7 +344,7 @@ def download_leipzig_wordlist(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with output_path.open("w", encoding="utf-8") as f:
             for word in sorted(words):
                 f.write(f"{word}\n")
 
@@ -351,9 +353,7 @@ def download_leipzig_wordlist(
     return words
 
 
-def download_dta_wordlist(
-    output_path: Optional[str] = None,
-) -> Set[str]:
+def download_dta_wordlist() -> set[str]:
     """
     Download German wordlist from Deutsches Textarchiv (DTA).
 
@@ -382,9 +382,6 @@ def download_dta_wordlist(
         "eigenthümlich" (→ "eigentümlich"), essential for 1910-1920 text.
         Requires internet connection.
     """
-    import tempfile
-    from urllib.request import urlretrieve
-
     logger.info("Downloading DTA (Deutsches Textarchiv) wordlist")
 
     # DTA provides various resources
@@ -415,7 +412,7 @@ def download_dta_wordlist(
 def download_german_wordlist(
     source: str = "spacy",
     output_path: str = "data/wordlist_de.txt",
-    **kwargs,
+    **kwargs: Any,
 ) -> Path:
     """
     Download/generate German wordlist from specified source.
@@ -469,9 +466,7 @@ def download_german_wordlist(
     elif source == "leipzig":
         download_leipzig_wordlist(output_path=str(output_path), **kwargs)
     elif source == "dta":
-        download_dta_wordlist(
-            output_path=str(output_path),
-        )
+        download_dta_wordlist()
     else:
         raise ValueError(
             f"Unknown source: {source}\nAvailable: spacy, spacy_lg, hunspell, leipzig, dta"
@@ -501,7 +496,7 @@ def get_wordlist_info(path: str) -> dict:
 
     return {
         "word_count": len(words),
-        "unique_count": len(set(w.lower() for w in words)),
+        "unique_count": len({w.lower() for w in words}),
         "min_length": min(lengths) if lengths else 0,
         "max_length": max(lengths) if lengths else 0,
         "avg_length": sum(lengths) / len(lengths) if lengths else 0,

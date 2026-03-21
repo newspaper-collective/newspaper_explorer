@@ -235,7 +235,7 @@ def get_source_status(source_name: str) -> SourceStatus:
     has_image_index = False
 
     try:
-        from newspaper_explorer.data.indexing.image_index import ImageIndexer # noqa: I001, PLC0415 lazy loading to avoid circular imports
+        from newspaper_explorer.data.indexing.image_index import ImageIndexer  # noqa: I001, PLC0415 lazy loading to avoid circular imports
 
         indexer = ImageIndexer(source_name)
         index = indexer.load_index()
@@ -245,14 +245,14 @@ def get_source_status(source_name: str) -> SourceStatus:
             has_images = True
             stats = indexer.get_stats()
 
-            # Extract values - all are guaranteed present by ImageStats TypedDict
-            image_count = stats["total_images"]
-            total_size_gb = stats["total_size_gb"]
-            images_expected = stats["total_images_expected"]
+            # Extract values - stats is an ImageStats Pydantic model
+            image_count = stats.total_images
+            total_size_gb = stats.total_size_gb
+            images_expected = stats.total_images_expected
 
-            # Year range can be None if no images
-            min_year = stats["min_year"]
-            max_year = stats["max_year"]
+            # Year range fields are Optional[int] and can be None
+            min_year = stats.min_year
+            max_year = stats.max_year
             image_year_range = (min_year, max_year) if min_year and max_year else None
 
             if images_expected > 0:
@@ -264,7 +264,7 @@ def get_source_status(source_name: str) -> SourceStatus:
         else:
             # No index, use ImageDownloader directly
             try:
-                from newspaper_explorer.data.download.images import ImageDownloader # noqa: I001, PLC0415 lazy loading to avoid circular imports
+                from newspaper_explorer.data.download.images import ImageDownloader  # noqa: I001, PLC0415 lazy loading to avoid circular imports
 
                 image_downloader = ImageDownloader(source_name=source_name)
                 image_status = image_downloader.get_download_status()

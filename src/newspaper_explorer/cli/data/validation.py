@@ -83,7 +83,7 @@ def all_validations_cmd(source: str, output_dir: Optional[str], min_size: int) -
         result_alto = validate_alto_files(source)
 
         with alto_report.open("w") as f:
-            f.write(f"ALTO VALIDATION REPORT\n")
+            f.write("ALTO VALIDATION REPORT\n")
             f.write("=" * 60 + "\n")
             f.write(f"Source: {source}\n")
             f.write(f"Timestamp: {timestamp}\n")
