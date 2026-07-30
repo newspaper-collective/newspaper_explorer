@@ -90,7 +90,7 @@ def status(source: str) -> None:
         else:
             output.key_value("Archives found", "0")
             output.warning(
-                f"No download archives. Run: newspaper-explorer data download --source {source}"
+                f"No download archives. Run: newspaper-explorer data text download --source {source}"
             )
 
         # Download & Extraction Status
@@ -108,15 +108,15 @@ def status(source: str) -> None:
                 output.key_value("Location", status.raw_dir)
                 output.warning(
                     f"Data may not be properly extracted. "
-                    f"Run: newspaper-explorer data unpack --source {source}"
+                    f"Run: newspaper-explorer data text unpack --source {source}"
                 )
         else:
             output.error("Not extracted", symbol=False)
             output.key_value("Expected location", status.raw_dir)
             output.warning(
                 f"No data found. Run:\n"
-                f"  newspaper-explorer data download --source {source}\n"
-                f"  newspaper-explorer data unpack --source {source}"
+                f"  newspaper-explorer data text download --source {source}\n"
+                f"  newspaper-explorer data text unpack --source {source}"
             )
 
         # Raw XML Files
@@ -134,8 +134,8 @@ def status(source: str) -> None:
             output.key_value("ALTO files found", "0 (directory not found)")
             output.warning(
                 f"No XML files. Run:\n"
-                f"  newspaper-explorer data download --source {source}\n"
-                f"  newspaper-explorer data unpack --source {source}"
+                f"  newspaper-explorer data text download --source {source}\n"
+                f"  newspaper-explorer data text unpack --source {source}"
             )
 
         # Parsed Data Status
@@ -159,7 +159,7 @@ def status(source: str) -> None:
                     remaining = status.alto_file_count - status.parsed_file_count
                     output.warning(
                         f"{remaining:,} ALTO files not yet parsed. "
-                        f"Run: newspaper-explorer data parse --source {source}"
+                        f"Run: newspaper-explorer data text parse --source {source}"
                     )
                 else:
                     output.success("All ALTO files parsed!")
@@ -173,7 +173,7 @@ def status(source: str) -> None:
             output.key_value("File size", f"{status.parsed_size_mb:.1f} MB")
         else:
             output.error("Not found", symbol=False)
-            output.warning(f"No parsed data. Run: newspaper-explorer data parse --source {source}")
+            output.warning(f"No parsed data. Run: newspaper-explorer data text parse --source {source}")
 
         # Aggregated Data Status
         output.section("AGGREGATED TEXT BLOCKS")
@@ -189,7 +189,7 @@ def status(source: str) -> None:
             if status.has_parsed_data:
                 output.warning(
                     f"Parsed data exists but not aggregated. "
-                    f"Run: newspaper-explorer data aggregate --source {source}"
+                    f"Run: newspaper-explorer data text aggregate --source {source}"
                 )
 
         # Image Status
@@ -218,7 +218,7 @@ def status(source: str) -> None:
                         output.key_value("Coverage", f"{coverage_pct:.2f}%")
                         output.warning(
                             f"{missing:,} images missing. "
-                            f"Run: newspaper-explorer data download-images --source {source}"
+                            f"Run: newspaper-explorer data images download --source {source}"
                         )
                     elif coverage_pct > FULL_COVERAGE_PCT:
                         extra = status.image_count - status.images_expected
@@ -248,7 +248,7 @@ def status(source: str) -> None:
                         missing = status.images_expected - status.image_count
                         output.warning(
                             f"{missing:,} images not yet downloaded. "
-                            f"Run: newspaper-explorer data download-images --source {source}"
+                            f"Run: newspaper-explorer data images download --source {source}"
                         )
                     elif status.image_count > status.images_expected:
                         extra = status.image_count - status.images_expected
@@ -269,7 +269,7 @@ def status(source: str) -> None:
                 output.key_value("Images expected", f"{status.images_expected:,}")
                 output.warning(
                     f"No images downloaded. "
-                    f"Run: newspaper-explorer data download-images --source {source}"
+                    f"Run: newspaper-explorer data images download --source {source}"
                 )
 
         click.echo()  # Final newline
@@ -291,7 +291,7 @@ def list_sources_cmd() -> None:
 
     \b
     Examples:
-      newspaper-explorer data info list-sources
+      newspaper-explorer data list-sources
     """
 
     sources = list_available_sources()
@@ -321,7 +321,7 @@ def list_sources_cmd() -> None:
 
     click.echo()
     output.info(
-        "Tip: Use 'newspaper-explorer data info status --source <name>' to see details", muted=True
+        "Tip: Use 'newspaper-explorer data info --source <name>' to see details", muted=True
     )
 
 
@@ -339,8 +339,8 @@ def analyze_chars(source: str, limit: int, text_column: str) -> None:
 
     \b
     Examples:
-      newspaper-explorer analyze info analyze-chars --source der_tag
-      newspaper-explorer analyze info analyze-chars --source der_tag --limit 100000
+      newspaper-explorer data analyze-chars --source der_tag
+      newspaper-explorer data analyze-chars --source der_tag --limit 100000
     """
 
     try:
@@ -356,7 +356,7 @@ def analyze_chars(source: str, limit: int, text_column: str) -> None:
 
         if not parquet_file.exists():
             output.error(f"Parquet file not found: {parquet_file}")
-            output.warning(f"Run parsing first:\n  newspaper-explorer data parse --source {source}")
+            output.warning(f"Run parsing first:\n  newspaper-explorer data text parse --source {source}")
             raise click.Abort()
 
         # Load data directly from parquet (skip XML scanning)
@@ -365,7 +365,7 @@ def analyze_chars(source: str, limit: int, text_column: str) -> None:
 
         if len(df) == 0:
             output.error("Empty parquet file")
-            output.warning(f"Re-run parsing:\n  newspaper-explorer data parse --source {source}")
+            output.warning(f"Re-run parsing:\n  newspaper-explorer data text parse --source {source}")
             raise click.Abort()
 
         # Analyze character lengths
@@ -451,9 +451,9 @@ def analyze_tokens(source: str, limit: int, tokenizer: str, text_column: str) ->
 
     \b
     Examples:
-      newspaper-explorer analyze info analyze-tokens --source der_tag
-      newspaper-explorer analyze info analyze-tokens --source der_tag --limit 100000
-      newspaper-explorer analyze info analyze-tokens --source der_tag --tokenizer bert-base-german-cased
+      newspaper-explorer data analyze-tokens --source der_tag
+      newspaper-explorer data analyze-tokens --source der_tag --limit 100000
+      newspaper-explorer data analyze-tokens --source der_tag --tokenizer bert-base-german-cased
     """
 
     try:
@@ -469,7 +469,7 @@ def analyze_tokens(source: str, limit: int, tokenizer: str, text_column: str) ->
 
         if not parquet_file.exists():
             output.error(f"Parquet file not found: {parquet_file}")
-            output.warning(f"Run parsing first:\n  newspaper-explorer data parse --source {source}")
+            output.warning(f"Run parsing first:\n  newspaper-explorer data text parse --source {source}")
             raise click.Abort()
 
         # Load data directly from parquet (skip XML scanning)
@@ -478,7 +478,7 @@ def analyze_tokens(source: str, limit: int, tokenizer: str, text_column: str) ->
 
         if len(df) == 0:
             output.error("Empty parquet file")
-            output.warning(f"Re-run parsing:\n  newspaper-explorer data parse --source {source}")
+            output.warning(f"Re-run parsing:\n  newspaper-explorer data text parse --source {source}")
             raise click.Abort()
 
         # Analyze token lengths
@@ -595,10 +595,10 @@ def longest_tokens(
 
     \b
     Examples:
-      newspaper-explorer analyze info longest-tokens --source der_tag
-      newspaper-explorer analyze info longest-tokens --source der_tag --top-n 50
-      newspaper-explorer analyze info longest-tokens --source der_tag --tokenizer bert-base-german-cased
-      newspaper-explorer analyze info longest-tokens --source der_tag --no-metadata
+      newspaper-explorer data longest-tokens --source der_tag
+      newspaper-explorer data longest-tokens --source der_tag --top-n 50
+      newspaper-explorer data longest-tokens --source der_tag --tokenizer bert-base-german-cased
+      newspaper-explorer data longest-tokens --source der_tag --no-metadata
     """
 
     try:
@@ -615,7 +615,7 @@ def longest_tokens(
         if not parquet_file.exists():
             output.error(f"Parquet file not found: {parquet_file}")
             output.info("Run parsing first:")
-            output.info(f"  newspaper-explorer data parse --source {source}", muted=True)
+            output.info(f"  newspaper-explorer data text parse --source {source}", muted=True)
             raise click.Abort()
 
         # Load data directly from parquet
@@ -624,7 +624,7 @@ def longest_tokens(
 
         if len(df) == 0:
             output.error("Empty parquet file. Re-run parsing:")
-            output.info(f"  newspaper-explorer data parse --source {source}", muted=True)
+            output.info(f"  newspaper-explorer data text parse --source {source}", muted=True)
             raise click.Abort()
 
         # Get longest lines

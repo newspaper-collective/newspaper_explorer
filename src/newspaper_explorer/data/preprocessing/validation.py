@@ -18,6 +18,8 @@ from typing import Optional
 
 import polars as pl
 
+from newspaper_explorer.data.utils.wordlists import get_wordlist_path
+
 logger = logging.getLogger(__name__)
 
 # Quality thresholds based on normalize.md research
@@ -72,7 +74,14 @@ def calculate_quality_metrics(
     """
     logger.info(f"Calculating quality metrics: {input_column}")
 
-    # Load German wordlist if provided
+    # Auto-discover wordlist if not explicitly provided
+    if german_wordlist_path is None:
+        default_path = get_wordlist_path("hunspell")
+        if default_path.exists():
+            german_wordlist_path = str(default_path)
+            logger.info(f"Auto-discovered wordlist: {default_path}")
+
+    # Load German wordlist if available
     vocab = None
     if german_wordlist_path:
         try:
@@ -90,11 +99,11 @@ def calculate_quality_metrics(
                 "char_token_ratio": 0.0,
                 "oov_rate": 0.0,
                 "proper_noun_density": 0.0,
-                "quality": 0.0,
+                "quality": "poor",
             }
 
         tokens = text.split()
-        if not tokens:
+        if not tokens:  # pragma: no cover
             return {
                 "char_token_ratio": 0.0,
                 "oov_rate": 0.0,

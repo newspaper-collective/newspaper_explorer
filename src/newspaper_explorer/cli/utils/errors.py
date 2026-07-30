@@ -153,7 +153,7 @@ def require_directory(
         require_directory(
             images_dir,
             error_message="Images directory not found",
-            tip="Run 'newspaper-explorer data download-images --source der_tag' first"
+            tip="Run 'newspaper-explorer data images download --source der_tag' first"
         )
     """
     path = Path(path)

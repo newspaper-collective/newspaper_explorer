@@ -1,7 +1,7 @@
 """Tests for data CLI commands."""
 
-import pytest
 from click.testing import CliRunner
+import pytest
 
 from newspaper_explorer.cli.data.commands import data
 
@@ -21,18 +21,14 @@ class TestDataCommands:
         assert "Manage newspaper data" in result.output
         assert "Commands:" in result.output
 
+    # --- Flat commands ---
+
     def test_list_sources(self, runner):
         """Test list-sources command."""
         result = runner.invoke(data, ["list-sources"])
         assert result.exit_code == 0
         assert "Available Data Sources" in result.output
         assert "der_tag" in result.output
-
-    def test_sources_alias(self, runner):
-        """Test that 'sources' works as alias for 'list-sources'."""
-        result = runner.invoke(data, ["sources"])
-        assert result.exit_code == 0
-        assert "Available Data Sources" in result.output
 
     def test_info_requires_source(self, runner):
         """Test that info command requires --source."""
@@ -46,37 +42,11 @@ class TestDataCommands:
         assert result.exit_code == 0
         assert "SOURCE INFORMATION" in result.output
         assert "Der Tag" in result.output
-        assert "DOWNLOAD & EXTRACTION STATUS" in result.output
+        assert "DOWNLOAD" in result.output
 
     def test_info_with_invalid_source(self, runner):
         """Test info command with invalid source."""
         result = runner.invoke(data, ["info", "--source", "nonexistent"])
-        assert result.exit_code != 0
-
-    def test_parse_help(self, runner):
-        """Test parse command help."""
-        result = runner.invoke(data, ["parse", "--help"])
-        assert result.exit_code == 0
-        assert "Parse XML files" in result.output
-        assert "--source" in result.output
-        assert "--resume" in result.output
-
-    def test_parse_requires_source(self, runner):
-        """Test that parse requires --source."""
-        result = runner.invoke(data, ["parse"])
-        assert result.exit_code != 0
-
-    def test_aggregate_help(self, runner):
-        """Test aggregate command help."""
-        result = runner.invoke(data, ["aggregate", "--help"])
-        assert result.exit_code == 0
-        assert "Aggregate line-level data" in result.output
-        assert "--source" in result.output
-        assert "--force" in result.output
-
-    def test_aggregate_requires_source(self, runner):
-        """Test that aggregate requires --source."""
-        result = runner.invoke(data, ["aggregate"])
         assert result.exit_code != 0
 
     def test_preprocess_help(self, runner):
@@ -93,65 +63,131 @@ class TestDataCommands:
         result = runner.invoke(data, ["preprocess"])
         assert result.exit_code != 0
 
-    def test_download_help(self, runner):
+    def test_list_pipelines(self, runner):
+        """Test list-pipelines command."""
+        result = runner.invoke(data, ["list-pipelines"])
+        assert result.exit_code == 0
+        assert "PIPELINE" in result.output.upper()
+
+    # --- Text group commands ---
+
+    def test_text_group_help(self, runner):
+        """Test that text group shows help."""
+        result = runner.invoke(data, ["text", "--help"])
+        assert result.exit_code == 0
+        assert "Text data pipeline" in result.output
+
+    def test_text_parse_help(self, runner):
+        """Test parse command help."""
+        result = runner.invoke(data, ["text", "parse", "--help"])
+        assert result.exit_code == 0
+        assert "Parse XML files" in result.output
+        assert "--source" in result.output
+
+    def test_text_parse_requires_source(self, runner):
+        """Test that parse requires --source."""
+        result = runner.invoke(data, ["text", "parse"])
+        assert result.exit_code != 0
+
+    def test_text_aggregate_help(self, runner):
+        """Test aggregate command help."""
+        result = runner.invoke(data, ["text", "aggregate", "--help"])
+        assert result.exit_code == 0
+        assert "Aggregate line-level data" in result.output
+        assert "--source" in result.output
+        assert "--force" in result.output
+
+    def test_text_aggregate_requires_source(self, runner):
+        """Test that aggregate requires --source."""
+        result = runner.invoke(data, ["text", "aggregate"])
+        assert result.exit_code != 0
+
+    def test_text_download_help(self, runner):
         """Test download command help."""
-        result = runner.invoke(data, ["download", "--help"])
+        result = runner.invoke(data, ["text", "download", "--help"])
         assert result.exit_code == 0
         assert "Download newspaper data" in result.output
 
-    def test_unpack_help(self, runner):
+    def test_text_unpack_help(self, runner):
         """Test unpack command help."""
-        result = runner.invoke(data, ["unpack", "--help"])
+        result = runner.invoke(data, ["text", "unpack", "--help"])
         assert result.exit_code == 0
-        assert "Unpack" in result.output or "extract" in result.output
+        assert "Extract" in result.output or "Unpack" in result.output
         assert "--source" in result.output
 
-    def test_verify_help(self, runner):
+    def test_text_verify_help(self, runner):
         """Test verify command help."""
-        result = runner.invoke(data, ["verify", "--help"])
+        result = runner.invoke(data, ["text", "verify", "--help"])
         assert result.exit_code == 0
         assert "Verify" in result.output
         assert "checksum" in result.output.lower()
 
-    def test_download_images_help(self, runner):
-        """Test download-images command help."""
-        result = runner.invoke(data, ["download-images", "--help"])
+    # --- Images group commands ---
+
+    def test_images_group_help(self, runner):
+        """Test that images group shows help."""
+        result = runner.invoke(data, ["images", "--help"])
+        assert result.exit_code == 0
+        assert "Image" in result.output
+
+    def test_images_download_help(self, runner):
+        """Test images download command help."""
+        result = runner.invoke(data, ["images", "download", "--help"])
         assert result.exit_code == 0
         assert "Download high-resolution" in result.output
         assert "--source" in result.output
 
-    def test_find_empty_help(self, runner):
-        """Test find-empty command help."""
-        result = runner.invoke(data, ["find-empty", "--help"])
+    def test_images_index_help(self, runner):
+        """Test images index command help."""
+        result = runner.invoke(data, ["images", "index", "--help"])
         assert result.exit_code == 0
-        assert "Find XML files without" in result.output
+        assert "image index" in result.output.lower()
+
+    # --- Validation group commands ---
+
+    def test_validation_group_help(self, runner):
+        """Test that validation group shows help."""
+        result = runner.invoke(data, ["validation", "--help"])
+        assert result.exit_code == 0
+        assert "validation" in result.output.lower()
+
+    def test_validation_all_help(self, runner):
+        """Test validation all command help."""
+        result = runner.invoke(data, ["validation", "all", "--help"])
+        assert result.exit_code == 0
         assert "--source" in result.output
 
-    def test_find_empty_requires_source(self, runner):
-        """Test that find-empty requires --source."""
-        result = runner.invoke(data, ["find-empty"])
-        assert result.exit_code != 0
+    # --- Command listing ---
 
-    def test_all_commands_listed(self, runner):
-        """Test that all expected commands are listed."""
+    def test_all_top_level_commands_listed(self, runner):
+        """Test that all expected top-level commands and groups are listed."""
         result = runner.invoke(data, ["--help"])
         assert result.exit_code == 0
 
-        expected_commands = [
-            "aggregate",
-            "download",
-            "download-images",
-            "find-empty",
+        expected = [
+            "text",
+            "images",
+            "validation",
             "info",
             "list-sources",
-            "parse",
             "preprocess",
-            "unpack",
-            "verify",
+            "list-pipelines",
+            "analyze-chars",
+            "analyze-tokens",
+            "longest-tokens",
         ]
 
-        for cmd in expected_commands:
+        for cmd in expected:
             assert cmd in result.output, f"Command '{cmd}' not found in help output"
+
+    def test_all_text_commands_listed(self, runner):
+        """Test that all text subcommands are listed."""
+        result = runner.invoke(data, ["text", "--help"])
+        assert result.exit_code == 0
+
+        expected = ["download", "unpack", "verify", "parse", "aggregate"]
+        for cmd in expected:
+            assert cmd in result.output, f"Command '{cmd}' not found in text help output"
 
 
 class TestCommandConsistency:
@@ -162,25 +198,22 @@ class TestCommandConsistency:
         """Create a CLI runner for testing."""
         return CliRunner()
 
-    def test_commands_requiring_source(self, runner):
-        """Test that source-based commands all require --source."""
+    def test_text_commands_requiring_source(self, runner):
+        """Test that text commands all require --source."""
         source_commands = [
-            "info",
-            "parse",
-            "aggregate",
-            "preprocess",
-            "download-images",
-            "find-empty",
-            "unpack",
+            ["text", "parse"],
+            ["text", "aggregate"],
+            ["text", "unpack"],
         ]
 
-        for cmd in source_commands:
-            result = runner.invoke(data, [cmd])
-            assert result.exit_code != 0, f"Command '{cmd}' should require --source"
-            assert "source" in result.output.lower(), f"Command '{cmd}' error should mention source"
+        for cmd_parts in source_commands:
+            result = runner.invoke(data, cmd_parts)
+            cmd_str = " ".join(cmd_parts)
+            assert result.exit_code != 0, f"Command '{cmd_str}' should require --source"
+            assert "source" in result.output.lower(), f"Command '{cmd_str}' error should mention source"
 
     def test_all_commands_have_help(self, runner):
-        """Test that all commands have --help."""
+        """Test that all top-level commands have --help."""
         result = runner.invoke(data, ["--help"])
         commands = []
 
@@ -211,12 +244,12 @@ class TestDeprecatedCommands:
         return CliRunner()
 
     def test_old_load_command_not_available(self, runner):
-        """Test that 'load' command is no longer available (now 'parse')."""
+        """Test that 'load' command is no longer available (now 'text parse')."""
         result = runner.invoke(data, ["load", "--help"])
         assert result.exit_code != 0
 
     def test_old_extract_command_not_available(self, runner):
-        """Test that 'extract' command is no longer available (now 'unpack')."""
+        """Test that 'extract' command is no longer available (now 'text unpack')."""
         result = runner.invoke(data, ["extract", "--help"])
         assert result.exit_code != 0
 
@@ -225,7 +258,12 @@ class TestDeprecatedCommands:
         result = runner.invoke(data, ["status", "--help"])
         assert result.exit_code != 0
 
-    def test_old_load_status_command_not_available(self, runner):
-        """Test that 'load-status' command is no longer available (now 'info')."""
-        result = runner.invoke(data, ["load-status", "--help"])
+    def test_old_flat_parse_not_available(self, runner):
+        """Test that 'parse' is not at top level (now under 'text')."""
+        result = runner.invoke(data, ["parse", "--help"])
+        assert result.exit_code != 0
+
+    def test_old_flat_download_not_available(self, runner):
+        """Test that 'download' is not at top level (now under 'text')."""
+        result = runner.invoke(data, ["download", "--help"])
         assert result.exit_code != 0

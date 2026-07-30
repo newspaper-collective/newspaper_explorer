@@ -19,6 +19,7 @@ import polars as pl
 import torch
 from tqdm import tqdm
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config import external_tools  # noqa: F401 (sets HF_HOME)
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
@@ -561,6 +562,14 @@ class GLiNEREntityExtractor:
             df = ingester.load_source()
 
         logger.info(f"Loaded {len(df)} lines")
+
+        # Auto-resolve text column (prefer text_processed if available)
+        if source_parquet:
+            text_column = resolve_text_column(
+                text_column, file_path=str(source_parquet)
+            )
+        else:
+            text_column = resolve_text_column(text_column, df=df)
 
         # Extract entities
         results_df = self.extract_from_dataframe(

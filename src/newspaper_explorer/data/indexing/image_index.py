@@ -68,9 +68,9 @@ class ImageIndexer:
         self.source_id = source_name
 
         self.images_dir = Path(self.config.data_dir) / "raw" / source_name / "images"
-        self.index_path = Path(self.config.data_dir) / "raw" / source_name / "image_index.parquet"
+        self.index_path = Path(self.config.parsed_dir) / source_name / "image_index.parquet"
         self.metadata_path = (
-            Path(self.config.data_dir) / "raw" / source_name / "image_index_metadata.json"
+            Path(self.config.parsed_dir) / source_name / "image_index_metadata.json"
         )
 
         # METS files are in the xml_ocr directory

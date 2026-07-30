@@ -17,6 +17,12 @@ from newspaper_explorer.data.processing.validation import (
     verify_mets_completeness,
 )
 from newspaper_explorer.data.utils.validation import validate_images_in_directory
+from newspaper_explorer.data.utils.wordlists import (
+    WORDLIST_FILENAMES,
+    generate_wordlist,
+    get_wordlist_info,
+    get_wordlist_path,
+)
 
 # Display limits for validation issue lists
 MAX_ISSUES_TO_DISPLAY = 10
@@ -38,7 +44,7 @@ def validation_group() -> None:
     "--output-dir",
     type=click.Path(),
     default=None,
-    help="Directory to save validation reports (default: data/validation_reports/{source})",
+    help="Directory to save validation reports (default: results/{source}/validation)",
 )
 @min_image_size_option(default=1024)
 def all_validations_cmd(source: str, output_dir: Optional[str], min_size: int) -> None:
@@ -62,10 +68,7 @@ def all_validations_cmd(source: str, output_dir: Optional[str], min_size: int) -
         config = get_config()
 
         # Determine output directory
-        if output_dir:
-            reports_dir = Path(output_dir)
-        else:
-            reports_dir = Path(config.data_dir) / "validation_reports" / source
+        reports_dir = Path(output_dir) if output_dir else config.results_dir / source / "validation"
 
         reports_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -597,3 +600,71 @@ def mets_references_cmd(source: str, save_report: Optional[str]) -> None:
 
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         errors.handle_error(e, show_traceback=True)
+
+
+# Valid wordlist source choices (exclude spacy_lg alias)
+WORDLIST_SOURCES = sorted({k for k in WORDLIST_FILENAMES if k != "spacy_lg"})
+
+
+@validation_group.command(name="generate-wordlist")
+@click.option(
+    "--source-type",
+    type=click.Choice(WORDLIST_SOURCES + ["all"], case_sensitive=False),
+    default="hunspell",
+    show_default=True,
+    help="Wordlist source to generate",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Regenerate even if wordlist already exists",
+)
+def generate_wordlist_cmd(source_type: str, *, force: bool) -> None:
+    """
+    Generate German wordlists for OCR quality validation.
+
+    Downloads and processes wordlists from various sources into the central
+    wordlists directory. These wordlists are used by the quality metrics
+    pipeline to calculate out-of-vocabulary (OOV) rates.
+
+    \b
+    Sources:
+      spacy    - Extract from spaCy de_core_news_sm (~244k words)
+      hunspell - Hunspell de_DE + de_DE-1901 old orthography (~142k stems)
+      leipzig  - Leipzig Corpora Collection (~155k most common words)
+      dta      - DTA Deutsches Textarchiv (historical German, ~1.4M words)
+      all      - Generate all wordlists
+
+    \b
+    Examples:
+      newspaper-explorer data validation generate-wordlist
+      newspaper-explorer data validation generate-wordlist --source-type all
+      newspaper-explorer data validation generate-wordlist --source-type dta --force
+    """
+    config = get_config()
+    logging.basicConfig(level=logging.INFO, format=config.cli_log_format)
+
+    sources = WORDLIST_SOURCES if source_type == "all" else [source_type]
+
+    output.header("GENERATE WORDLISTS")
+    output.key_value("Sources", ", ".join(sources))
+    output.key_value("Output directory", str(config.wordlists_dir))
+    click.echo()
+
+    for source in sources:
+        wordlist_path = get_wordlist_path(source)
+
+        if wordlist_path.exists() and not force:
+            info = get_wordlist_info(wordlist_path)
+            output.key_value(source, f"already exists ({info['word_count']:,} words) -- skip")
+            continue
+
+        output.section(source.upper())
+        try:
+            result_path = generate_wordlist(source=source)
+            info = get_wordlist_info(result_path)
+            output.key_value("Words", f"{info['word_count']:,}")
+            output.key_value("File", str(result_path))
+            output.success(f"{source} wordlist generated")
+        except (ImportError, OSError, ValueError, RuntimeError) as e:
+            errors.handle_error(e, tip=f"Failed to generate {source} wordlist")

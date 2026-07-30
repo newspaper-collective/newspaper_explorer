@@ -11,7 +11,7 @@ import pytest
 import numpy as np
 
 from newspaper_explorer.analyze.layout.detection import LayoutDetector, DOCLAYNET_CLASSES
-from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox, PageLayout
+from newspaper_explorer.models.analysis.layout import Detection, BoundingBox, PageLayout
 
 
 # Fixtures
@@ -99,7 +99,7 @@ class TestLayoutDetector:
 
         mock_yolo.assert_called_once_with("/downloaded/model.pt")
 
-    @patch("newspaper_explorer.analyzeayout.detection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_init_invalid_model_size(self, mock_yolo):
         """Test initialization with invalid model size"""
         with pytest.raises(RuntimeError, match="Failed to load model from HuggingFace"):
@@ -173,7 +173,7 @@ class TestLayoutDetector:
         assert detections == []
 
     @patch("huggingface_hub.hf_hub_download")
-    @patch("newspaper_explorer.analyzelayout.detection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_extract_detections_with_foreign_keys(self, mock_yolo, mock_hf_download):
         """Test _extract_detections extracts foreign keys from page_id"""
         mock_hf_download.return_value = "/fake/model.pt"
@@ -207,7 +207,7 @@ class TestLayoutDetector:
         assert det.detection_id.startswith(f"{page_id}_title_")
         assert len(det.detection_id) > len(page_id) + 7  # page_id + "_title_" + uuid
 
-    @patch("newspaper_explorer.analyzeayout.detection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_detect_page(self, mock_yolo):
         """Test detect_page method"""
         # Setup mock model
@@ -240,7 +240,7 @@ class TestLayoutDetector:
         assert layout.detections[0].class_name == "Title"
         assert layout.total_detections == 1
 
-    @patch("newspaper_explorer.analyzet.detection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_detect_page_auto_page_id(self, mock_yolo):
         """Test detect_page with automatic page_id from filename"""
         mock_model_instance = MagicMock()
@@ -260,7 +260,7 @@ class TestLayoutDetector:
         # Page ID should be extracted from filename stem
         assert layout.page_id == "1902_01_01_001"
 
-    @patch("newspaper_explorer.analyzeetection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_detect_batch(self, mock_yolo):
         """Test detect_batch method with real images"""
         mock_model_instance = MagicMock()
@@ -303,7 +303,7 @@ class TestLayoutDetector:
             assert len(layout.detections) == 1
             assert layout.detections[0].class_name == "Picture"
 
-    @patch("newspaper_explorer.analyzelayout.detection.YOLO")
+    @patch("newspaper_explorer.analyze.layout.detection.YOLO")
     def test_detect_batch_auto_page_ids(self, mock_yolo):
         """Test detect_batch with automatic page_id generation using real images"""
         mock_model_instance = MagicMock()

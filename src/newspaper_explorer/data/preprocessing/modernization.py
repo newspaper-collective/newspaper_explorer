@@ -170,7 +170,7 @@ class _JsonCache(_TextCache):
 # =============================================================================
 
 
-def _process_chunks_on_gpu(
+def _process_chunks_on_gpu(  # pragma: no cover
     device: str,
     chunks: list[str],
     chunk_indices: list[int],
@@ -234,7 +234,7 @@ def _process_chunks_on_gpu(
     return results
 
 
-def _load_and_compile_model(
+def _load_and_compile_model(  # pragma: no cover
     device: str,
     model_name: str,
 ) -> tuple[PreTrainedModel, PreTrainedTokenizerBase, GenerationConfig]:
@@ -260,7 +260,7 @@ def _load_and_compile_model(
     return model_obj, tokenizer, gen_config  # type: ignore[return-value]
 
 
-def _run_inference_batches(
+def _run_inference_batches(  # pragma: no cover
     *,
     model_obj: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
@@ -439,7 +439,7 @@ def _log_cache_stats(
         logger.info(f"Chunks to process: {chunks_to_process:,} ({100 - cache_rate:.1f}%)")
 
 
-def _process_with_multi_gpu(
+def _process_with_multi_gpu(  # pragma: no cover
     chunks_to_process_list: list[str],
     chunk_indices_to_process: list[int],
     num_gpus: int,
@@ -512,7 +512,7 @@ def _process_with_multi_gpu(
     return processing_results
 
 
-def _process_with_single_device(
+def _process_with_single_device(  # pragma: no cover
     chunks_to_process_list: list[str],
     chunk_indices_to_process: list[int],
     device_str: str,

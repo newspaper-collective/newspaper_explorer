@@ -47,6 +47,7 @@ import numpy as np
 import polars as pl
 from tqdm import tqdm
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.metadata import save_metadata
@@ -119,9 +120,9 @@ class MALLETExtractor:
         if input_file:
             self.input_file = Path(input_file)
         else:
-            source_dir = self.config.data_dir / "raw" / source_name / "text"
-            textblocks_file = source_dir / f"{source_name}_textblocks.parquet"
-            lines_file = source_dir / f"{source_name}_lines.parquet"
+            source_dir = self.config.parsed_dir / source_name
+            textblocks_file = source_dir / "textblocks.parquet"
+            lines_file = source_dir / "lines.parquet"
 
             if textblocks_file.exists():
                 self.input_file = textblocks_file
@@ -131,6 +132,11 @@ class MALLETExtractor:
                 logger.info("Using lines.parquet (line-level data)")
             else:
                 self.input_file = textblocks_file
+
+        # Auto-resolve text column (prefer text_processed if available)
+        self.text_column = resolve_text_column(
+            self.text_column, file_path=str(self.input_file)
+        )
 
         # Setup model directory
         if model_dir:

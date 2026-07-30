@@ -30,7 +30,7 @@ async def get_pages(
     """Get list of pages with optional filtering"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
         parquet_files = list(text_path.glob("*.parquet"))
         if not parquet_files:
@@ -143,17 +143,15 @@ async def get_text_blocks(
     """Get aggregated text blocks with optional filtering"""
     try:
         config = get_config()
-        # Try processed directory first (aggregated blocks)
-        processed_path = Path(config.data_dir) / "processed" / source_name / "text"
-        raw_path = Path(config.data_dir) / "raw" / source_name / "text"
+        parsed_path = Path(config.parsed_dir) / source_name
 
-        # Look for textblocks.parquet in processed directory
-        textblocks_file = processed_path / "textblocks.parquet"
+        # Look for textblocks.parquet in parsed directory
+        textblocks_file = parsed_path / "textblocks.parquet"
         if textblocks_file.exists():
             df = pl.read_parquet(textblocks_file)
         else:
-            # Fall back to raw lines and aggregate on the fly
-            lines_file = raw_path / f"{source_name}_lines.parquet"
+            # Fall back to lines and aggregate on the fly
+            lines_file = parsed_path / "lines.parquet"
             if not lines_file.exists():
                 return []
 
@@ -232,9 +230,9 @@ async def get_lines(
     """Get individual text lines with bounding boxes"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
-        lines_file = text_path / f"{source_name}_lines.parquet"
+        lines_file = text_path / "lines.parquet"
         if not lines_file.exists():
             return []
 
@@ -292,10 +290,10 @@ async def get_random_lines(
     """Get random text lines from the data as dictionaries"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
         # Find parquet files (look for lines file first, then any parquet)
-        lines_file = text_path / f"{source_name}_lines.parquet"
+        lines_file = text_path / "lines.parquet"
         if lines_file.exists():
             df = pl.read_parquet(lines_file)
         else:
@@ -326,7 +324,7 @@ async def get_random_images(
     """Get random image URLs with metadata from the specified source"""
     try:
         config = get_config()
-        index_path = Path(config.data_dir) / "raw" / source_name / "image_index.parquet"
+        index_path = Path(config.parsed_dir) / source_name / "image_index.parquet"
 
         if not index_path.exists():
             return []
@@ -373,7 +371,7 @@ async def browse_years(
     """Browse newspapers by year with aggregated statistics"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
         parquet_files = list(text_path.glob("*.parquet"))
         if not parquet_files:
@@ -414,7 +412,7 @@ async def browse_years(
         )
 
         # Load image index for thumbnails
-        image_index_path = Path(config.data_dir) / "raw" / source_name / "image_index.parquet"
+        image_index_path = Path(config.parsed_dir) / source_name / "image_index.parquet"
         year_images = {}
         if image_index_path.exists():
             img_df = pl.read_parquet(image_index_path)
@@ -458,7 +456,7 @@ async def browse_months(
     """Browse newspapers by month with aggregated statistics"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
         parquet_files = list(text_path.glob("*.parquet"))
         if not parquet_files:
@@ -536,7 +534,7 @@ async def browse_issues(
     """Browse individual newspaper issues with metadata and images"""
     try:
         config = get_config()
-        text_path = Path(config.data_dir) / "raw" / source_name / "text"
+        text_path = Path(config.parsed_dir) / source_name
 
         parquet_files = list(text_path.glob("*.parquet"))
         if not parquet_files:
@@ -587,7 +585,7 @@ async def browse_issues(
         issues_df = issues_df.slice(offset, page_size)
 
         # Load image index for thumbnails (first page of each issue)
-        image_index_path = Path(config.data_dir) / "raw" / source_name / "image_index.parquet"
+        image_index_path = Path(config.parsed_dir) / source_name / "image_index.parquet"
         issue_images = {}
         if image_index_path.exists():
             img_df = pl.read_parquet(image_index_path)

@@ -1,17 +1,24 @@
 """
 Tests for filtering functions in data preprocessing.
 
-Tests number-only line filtering including:
-- Plain numbers
-- Numbers with parentheses/brackets
-- Numbers with separators
-- Mixed text (should be kept)
+Tests all filtering functions:
+- filter_number_only_lines: number/separator-only lines
+- filter_by_total_character_length: min/max character length
+- filter_by_word_count: min/max word count
+- filter_lines_without_alphabetic_chars: non-alphabetic lines
+- filter_empty_lines: empty/whitespace-only lines
 """
 
 import polars as pl
 import pytest
 
-from newspaper_explorer.data.preprocessing.filtering import filter_number_only_lines
+from newspaper_explorer.data.preprocessing.filtering import (
+    filter_by_total_character_length,
+    filter_by_word_count,
+    filter_empty_lines,
+    filter_lines_without_alphabetic_chars,
+    filter_number_only_lines,
+)
 
 
 class TestFilterNumberOnlyLines:
@@ -212,3 +219,185 @@ class TestFilterNumberOnlyLines:
         result = filter_number_only_lines(df, input_column="content")
         assert len(result) == 1
         assert result["content"][0] == "text"
+
+
+# ---------------------------------------------------------------------------
+# filter_by_total_character_length
+# ---------------------------------------------------------------------------
+
+
+class TestFilterByTotalCharacterLength:
+    """Test suite for filter_by_total_character_length function."""
+
+    def test_min_length_filters_short(self):
+        """Lines shorter than min_length should be removed."""
+        df = pl.DataFrame({"text": ["ab", "short", "a longer sentence here"]})
+        result = filter_by_total_character_length(df, min_length=10)
+        assert len(result) == 1
+        assert result["text"][0] == "a longer sentence here"
+
+    def test_max_length_filters_long(self):
+        """Lines longer than max_length should be removed."""
+        df = pl.DataFrame({"text": ["short", "medium text", "a" * 100]})
+        result = filter_by_total_character_length(df, min_length=0, max_length=20)
+        assert len(result) == 2
+        assert "a" * 100 not in result["text"].to_list()
+
+    def test_min_and_max_length(self):
+        """Both min and max filters should apply when specified."""
+        df = pl.DataFrame({"text": ["ab", "medium text", "a" * 100]})
+        result = filter_by_total_character_length(df, min_length=5, max_length=50)
+        assert len(result) == 1
+        assert result["text"][0] == "medium text"
+
+    def test_no_max_length(self):
+        """When max_length is None, only min_length applies."""
+        df = pl.DataFrame({"text": ["ab", "a" * 1000]})
+        result = filter_by_total_character_length(df, min_length=3)
+        assert len(result) == 1
+        assert len(result["text"][0]) == 1000
+
+    def test_custom_input_column(self):
+        df = pl.DataFrame({"content": ["ab", "longer text here"]})
+        result = filter_by_total_character_length(df, input_column="content", min_length=5)
+        assert len(result) == 1
+
+    def test_empty_dataframe(self):
+        df = pl.DataFrame({"text": pl.Series([], dtype=pl.String)})
+        result = filter_by_total_character_length(df, min_length=10)
+        assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# filter_by_word_count
+# ---------------------------------------------------------------------------
+
+
+class TestFilterByWordCount:
+    """Test suite for filter_by_word_count function."""
+
+    def test_min_words_filters_short(self):
+        """Lines with fewer words than min_words should be removed."""
+        df = pl.DataFrame({"text": ["word", "two words", "this has four words"]})
+        result = filter_by_word_count(df, min_words=2)
+        assert len(result) == 2
+        assert "word" not in result["text"].to_list()
+
+    def test_max_words_filters_long(self):
+        """Lines with more words than max_words should be removed."""
+        df = pl.DataFrame({"text": ["short", "two words", "this has four words"]})
+        result = filter_by_word_count(df, min_words=1, max_words=2)
+        assert len(result) == 2
+        assert "this has four words" not in result["text"].to_list()
+
+    def test_min_and_max_words(self):
+        """Both min and max filters should apply together."""
+        df = pl.DataFrame({"text": ["one", "two words", "this has four words"]})
+        result = filter_by_word_count(df, min_words=2, max_words=3)
+        assert len(result) == 1
+        assert result["text"][0] == "two words"
+
+    def test_no_max_words(self):
+        """When max_words is None, only min_words applies."""
+        df = pl.DataFrame({"text": ["one", "a " * 500]})
+        result = filter_by_word_count(df, min_words=2)
+        assert len(result) == 1
+
+    def test_custom_input_column(self):
+        df = pl.DataFrame({"content": ["one", "two words here"]})
+        result = filter_by_word_count(df, input_column="content", min_words=2)
+        assert len(result) == 1
+
+    def test_empty_dataframe(self):
+        df = pl.DataFrame({"text": pl.Series([], dtype=pl.String)})
+        result = filter_by_word_count(df, min_words=2)
+        assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# filter_lines_without_alphabetic_chars
+# ---------------------------------------------------------------------------
+
+
+class TestFilterLinesWithoutAlphabeticChars:
+    """Test suite for filter_lines_without_alphabetic_chars function."""
+
+    def test_removes_pure_numbers(self):
+        df = pl.DataFrame({"text": ["12345", "text here"]})
+        result = filter_lines_without_alphabetic_chars(df)
+        assert len(result) == 1
+        assert result["text"][0] == "text here"
+
+    def test_removes_pure_punctuation(self):
+        df = pl.DataFrame({"text": ["!!!", "---", "Good text"]})
+        result = filter_lines_without_alphabetic_chars(df)
+        assert len(result) == 1
+        assert result["text"][0] == "Good text"
+
+    def test_keeps_text_with_numbers(self):
+        """Lines mixing text and numbers should be kept."""
+        df = pl.DataFrame({"text": ["Am 12. Maerz", "Page 42"]})
+        result = filter_lines_without_alphabetic_chars(df)
+        assert len(result) == 2
+
+    def test_keeps_german_umlauts(self):
+        """Unicode letters like umlauts should count as alphabetic."""
+        df = pl.DataFrame({"text": ["Aendern", "123"]})
+        result = filter_lines_without_alphabetic_chars(df)
+        assert len(result) == 1
+        assert result["text"][0] == "Aendern"
+
+    def test_custom_input_column(self):
+        df = pl.DataFrame({"content": ["123", "abc"]})
+        result = filter_lines_without_alphabetic_chars(df, input_column="content")
+        assert len(result) == 1
+        assert result["content"][0] == "abc"
+
+    def test_empty_dataframe(self):
+        df = pl.DataFrame({"text": pl.Series([], dtype=pl.String)})
+        result = filter_lines_without_alphabetic_chars(df)
+        assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# filter_empty_lines
+# ---------------------------------------------------------------------------
+
+
+class TestFilterEmptyLines:
+    """Test suite for filter_empty_lines function."""
+
+    def test_removes_empty_strings(self):
+        df = pl.DataFrame({"text": ["", "content", ""]})
+        result = filter_empty_lines(df)
+        assert len(result) == 1
+        assert result["text"][0] == "content"
+
+    def test_removes_whitespace_only(self):
+        df = pl.DataFrame({"text": ["   ", "\t", "content"]})
+        result = filter_empty_lines(df)
+        assert len(result) == 1
+        assert result["text"][0] == "content"
+
+    def test_default_input_column(self):
+        """When input_column=None, should default to 'text'."""
+        df = pl.DataFrame({"text": ["", "hello"]})
+        result = filter_empty_lines(df, input_column=None)
+        assert len(result) == 1
+        assert result["text"][0] == "hello"
+
+    def test_custom_input_column(self):
+        df = pl.DataFrame({"content": ["", "hello"]})
+        result = filter_empty_lines(df, input_column="content")
+        assert len(result) == 1
+        assert result["content"][0] == "hello"
+
+    def test_all_empty(self):
+        df = pl.DataFrame({"text": ["", "  ", "\t"]})
+        result = filter_empty_lines(df)
+        assert len(result) == 0
+
+    def test_empty_dataframe(self):
+        df = pl.DataFrame({"text": pl.Series([], dtype=pl.String)})
+        result = filter_empty_lines(df)
+        assert len(result) == 0

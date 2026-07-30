@@ -59,9 +59,12 @@ def filter_by_total_character_length(
     df = df.filter(mask)
 
     filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
+    if original_count > 0:
+        logger.info(
+            f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
+        )
+    else:
+        logger.info("No rows to filter (empty DataFrame)")
     logger.info(f"Remaining: {len(df):,} rows")
 
     return df
@@ -112,9 +115,12 @@ def filter_by_word_count(
     df = df.filter(mask)
 
     filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
+    if original_count > 0:
+        logger.info(
+            f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
+        )
+    else:
+        logger.info("No rows to filter (empty DataFrame)")
     logger.info(f"Remaining: {len(df):,} rows")
 
     return df
@@ -229,9 +235,12 @@ def filter_lines_without_alphabetic_chars(
     df = df.filter(pl.col(input_column).str.contains(r"\p{L}"))
 
     filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
+    if original_count > 0:
+        logger.info(
+            f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
+        )
+    else:
+        logger.info("No rows to filter (empty DataFrame)")
     logger.info(f"Remaining: {len(df):,} rows")
 
     return df
@@ -261,9 +270,12 @@ def filter_empty_lines(
     df = df.filter(pl.col(input_column).str.strip_chars() != "")
 
     filtered_count = original_count - len(df)
-    logger.info(
-        f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
-    )
+    if original_count > 0:
+        logger.info(
+            f"Filtered out {filtered_count:,} rows ({filtered_count / original_count * 100:.1f}%)"
+        )
+    else:
+        logger.info("No rows to filter (empty DataFrame)")
     logger.info(f"Remaining: {len(df):,} rows")
 
     return df

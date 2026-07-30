@@ -141,7 +141,7 @@ df = calculate_quality_metrics(df, input_column="text")
 df = calculate_quality_metrics(
     df,
     input_column="text",
-    german_wordlist_path="wordlist_de.txt",
+    german_wordlist_path="data/wordlists/wordlist_spacy_de.txt",
 )
 
 # Access metrics
@@ -307,7 +307,7 @@ berichtet
 
 ```python
 # Download/create German wordlist
-wordlist_path = "data/wordlist_de.txt"
+wordlist_path = "data/wordlists/wordlist_spacy_de.txt"
 
 # Use in quality calculation
 df = calculate_quality_metrics(

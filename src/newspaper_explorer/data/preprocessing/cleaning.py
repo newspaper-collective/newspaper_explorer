@@ -434,3 +434,45 @@ def remove_stopwords(
 
     logger.info(f"Removed stopwords from {len(df):,} rows")
     return df
+
+
+def remove_short_words(
+    df: pl.DataFrame,
+    input_column: str = "text",
+    output_column: Optional[str] = None,
+    min_word_length: int = 2,
+) -> pl.DataFrame:
+    """Remove words shorter than a minimum length.
+
+    Useful as a cleanup step after punctuation/number/stopword removal, which can
+    leave behind single-character fragments and empty tokens from collapsed spaces.
+
+    Args:
+        df: Input DataFrame
+        input_column: Column to process (default: "text")
+        output_column: Name for output column (default: overwrites input_column)
+        min_word_length: Minimum word length to keep (default: 2, removes single-char tokens)
+
+    Returns:
+        DataFrame with short words removed from text
+
+    Example:
+        >>> # "berlin b theater s" → "berlin theater"
+        >>> df = remove_short_words(df, min_word_length=2)
+    """
+    if output_column is None:
+        output_column = input_column
+
+    logger.info(f"Removing words <{min_word_length} chars: {input_column}")
+
+    # Native Polars: split → filter by length → rejoin
+    df = df.with_columns(
+        pl.col(input_column)
+        .str.split(" ")
+        .list.eval(pl.element().filter(pl.element().str.len_chars() >= min_word_length))
+        .list.join(" ")
+        .alias(output_column)
+    )
+
+    logger.info(f"Removed short words from {len(df):,} rows")
+    return df

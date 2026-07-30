@@ -1,11 +1,11 @@
 # Newspaper Explorer
 
-> **Initially created at [culture.explore(data)](https://lab.sbb.berlin/culture-explore-data/) Hackathon**  
+> **Initially created at [culture.explore(data)](https://lab.sbb.berlin/culture-explore-data/) Hackathon**
 > *7-8 October 2025, Staatsbibliothek zu Berlin*
 
-A toolkit for exploring historical newspapers through computational analysis. Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing, yet standardized tools connecting raw data to statistical, NLP, computer vision, and LLM workflows remain scarce. 
+A toolkit for exploring historical newspapers through computational analysis. Historical newspaper archives contain thousands of pages locked in ALTO XML format. Exploring this data requires downloading, parsing, cleaning, and analyzing, yet standardized tools connecting raw data to statistical, NLP, computer vision, and LLM workflows remain scarce.
 
-Built during a two-day hackathon and refined since, this project provides a starting point for researchers, students, and cultural heritage professionals to explore large newspaper datasets under a unified interface combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data and allows researchers a first step into unknown datasets, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated. 
+Built during a two-day hackathon and refined since, this project provides a starting point for researchers, students, and cultural heritage professionals to explore large newspaper datasets under a unified interface combining traditional data analysis with modern AI approaches. It showcases how diverse computational methods (statistical analysis, named entity recognition, topic modeling, layout detection, and LLM-powered insights) can work together on cultural heritage data and allows researchers a first step into unknown datasets, generating visualizations and insights that surface patterns and possibilities before specific research questions have been formulated.
 
 During the hackathon, we experimented with various data analysis approaches, testing GLiNER for named entity extraction, a tool for knowledge graph generation, various models for layout detection, LLM-based topic modeling, and a custom emotion classification BERT-model from Universität Würzburg. The "Der Tag" dataset for the years 1900-1920 contains **~148,000 XML files** with **61+ million text lines** from **135,000 page images**, totaling over **10 GB of compressed XML files** and **200 GB of JPEG images**. Since the hackathon, we have optimized the codebase to efficiently process datasets of this scale, with an CLI for preprocessing and analysis workflows, and a Vue/FastAPI web interface for visualization and discovery.
 
@@ -272,28 +272,28 @@ See **[Installation Guide](docs/INSTALL.md)** for detailed instructions and trou
 newspaper-explorer data list-sources
 
 # 2. Download newspaper data
-newspaper-explorer data download --part dertag_1900-1902
+newspaper-explorer data text download --part dertag_1900-1902
 
 # 3. Unpack archives
-newspaper-explorer data unpack --source der_tag
+newspaper-explorer data text unpack --source der_tag
 
 # 4. Parse ALTO XML to Parquet with METS metadata
-newspaper-explorer data parse --source der_tag
+newspaper-explorer data text parse --source der_tag
 
 # 5. Aggregate lines into text blocks
-newspaper-explorer data aggregate --source der_tag
+newspaper-explorer data text aggregate --source der_tag
 
 # 6. Check comprehensive status
 newspaper-explorer data info --source der_tag
 
 # 7. Optional: Download page images
-newspaper-explorer data download-images --source der_tag --max-workers 8
+newspaper-explorer data images download --source der_tag --max-workers 8
 
 # 8. Optional: Preprocess text (normalize, clean, lemmatize)
 newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
 
-# 9. Optional: Generate German wordlist for quality validation
-newspaper-explorer data generate-wordlist --output data/wordlist_de.txt
+# 9. Optional: Generate German wordlists for quality validation
+newspaper-explorer data validation generate-wordlist --source spacy
 ```
 
 **Then analyze with Python** - see **[Python API Examples](docs/PYTHON_API.md)** for:
@@ -316,7 +316,7 @@ Assess and filter OCR text quality before analysis using four complementary metr
 - **Character/Token Ratio** - Detects overly long words indicating OCR errors
 - **Out-of-Vocabulary (OOV) Rate** - Compares against German wordlists to identify garbled text
 
-**Wordlists**: Supports spaCy (244k words), Leipzig Corpora (155k words), DTA historical corpus, and Hunspell dictionaries. Generate with `newspaper-explorer data generate-wordlist`.
+**Wordlists**: Supports spaCy (244k words), Leipzig Corpora (155k words), DTA historical corpus, and Hunspell dictionaries. All stored centrally in `data/wordlists/`.
 
 **CLI**: Integrated in preprocessing pipeline with `--calculate-quality` and `--filter-by-quality` steps.
 
@@ -380,7 +380,7 @@ All methods support:
 
 **CLI**: `newspaper-explorer analyze keywords {tfidf,rake,yake,keybert,llm} --source <name>`
 
-**Performance**: 
+**Performance**:
 - RAKE and YAKE use `--num-workers` (default: CPU count - 1) and `--batch-size` (default: 1000)
 - KeyBERT uses GPU acceleration automatically if available (`--device cuda` or `--device cpu`)
 
@@ -533,7 +533,7 @@ ruff check src/ tests/
 ### Code Principles
 
 - **NO `__init__.py` files** - Use explicit imports
-- **Polars, not Pandas** - For all DataFrame operations  
+- **Polars, not Pandas** - For all DataFrame operations
 - **Configuration-driven** - Sources in `data/sources/{name}.json`
 - **No legacy support** - Replace old patterns completely, no compatibility layers
 - **Foreign keys** - All analysis results link back via `line_id`

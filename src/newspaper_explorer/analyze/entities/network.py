@@ -132,13 +132,7 @@ class EntityNetworkAnalyzer:
         logger.info(f"Loaded {len(self.entities_df)} entity mentions")
 
         # Load source data for dates/pages
-        source_path = (
-            self.config.data_dir
-            / "raw"
-            / self.source_name
-            / "text"
-            / f"{self.source_name}_lines.parquet"
-        )
+        source_path = self.config.parsed_dir / self.source_name / "lines.parquet"
         if not source_path.exists():
             raise FileNotFoundError(f"Source data not found: {source_path}")
 

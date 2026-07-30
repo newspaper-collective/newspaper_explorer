@@ -5,9 +5,15 @@ Provides standard option decorators for common CLI parameters to ensure
 consistency across all commands.
 """
 
-from typing import Any, Callable, Optional, TypeVar
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 import click
+
+if TYPE_CHECKING:
+    import polars as pl
+
+logger = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -124,6 +130,9 @@ def text_column_option(default: str = "text") -> Callable[[F], F]:
     """
     Standard --text-column option.
 
+    Default is "text", but auto-selects "text_processed" at runtime
+    if the column exists in the input data and the user didn't override.
+
     Args:
         default: Default column name (default: "text")
 
@@ -140,9 +149,46 @@ def text_column_option(default: str = "text") -> Callable[[F], F]:
         "--text-column",
         type=str,
         default=default,
-        help="Name of text column to process",
+        help="Name of text column to process (auto-selects 'text_processed' if available)",
         show_default=True,
     )
+
+
+def resolve_text_column(text_column: str, *, df: Optional["pl.DataFrame"] = None, file_path: Optional[str] = None) -> str:
+    """
+    Auto-resolve text column: prefer 'text_processed' over 'text' when the user
+    didn't explicitly override and the preprocessed column exists.
+
+    Accepts either a loaded DataFrame or a file path (reads schema only).
+
+    Args:
+        text_column: The column name passed by the user (or default)
+        df: Loaded DataFrame (optional)
+        file_path: Path to parquet file to check schema (optional)
+
+    Returns:
+        Resolved column name
+    """
+    if text_column != "text":
+        return text_column
+
+    columns: set[str] = set()
+    if df is not None:
+        columns = set(df.columns)
+    elif file_path is not None:
+        import polars as pl
+
+        try:
+            columns = set(pl.read_parquet_schema(file_path).keys())
+        except Exception:
+            return text_column
+
+    if "text_processed" in columns:
+        logger.info(
+            "Auto-selected 'text_processed' column (use --text-column text to override)"
+        )
+        return "text_processed"
+    return text_column
 
 
 def force_resume_option() -> Callable[[F], F]:

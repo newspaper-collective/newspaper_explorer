@@ -85,15 +85,15 @@ LOG_LEVEL=INFO
 DATA_DIR=/mnt/large-storage/newspapers
 
 # Command remains simple
-newspaper-explorer data download --part dertag_1900-1902
+newspaper-explorer data text download --part dertag_1900-1902
 ```
 
 ### Good: Flags for behavior
 
 ```bash
 # Different behaviors for different needs
-newspaper-explorer data download --part dertag_1900-1902 --no-extract
-newspaper-explorer data download --part dertag_1903-1905  # with extraction
+newspaper-explorer data text download --part dertag_1900-1902 --no-extract
+newspaper-explorer data text download --part dertag_1903-1905  # with extraction
 ```
 
 ### Bad: Environment for behavior
@@ -103,7 +103,7 @@ newspaper-explorer data download --part dertag_1903-1905  # with extraction
 AUTO_EXTRACT=false  # Hidden, not visible in command
 
 # Command doesn't show what will happen
-newspaper-explorer data download --part dertag_1900-1902
+newspaper-explorer data text download --part dertag_1900-1902
 # Will it extract? Have to check .env file!
 ```
 

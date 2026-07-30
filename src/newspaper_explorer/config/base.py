@@ -31,9 +31,16 @@ class Config(BaseSettings):
 
     # Data directories
     data_dir: Path = Field(default=Path("data"), description="Main data directory")
-    download_dir: Path = Field(default=Path("data/downloads"), description="Download directory")
+    archives_dir: Path = Field(default=Path("data/archives"), description="Compressed archives")
     extracted_dir: Path = Field(default=Path("data/extracted"), description="Extraction directory")
+    parsed_dir: Path = Field(default=Path("data/parsed"), description="Parsed parquet data")
+    preprocessed_dir: Path = Field(
+        default=Path("data/preprocessed"), description="Preprocessed text data"
+    )
     sources_dir: Path = Field(default=Path("data/sources"), description="Sources config directory")
+    wordlists_dir: Path = Field(
+        default=Path("data/wordlists"), description="German wordlists directory"
+    )
 
     # Results directory
     results_dir: Path = Field(default=Path("results"), description="Results output directory")
@@ -59,7 +66,16 @@ class Config(BaseSettings):
         default="**/fulltext/*.xml", description="Default glob pattern for ALTO XML files"
     )
 
-    @field_validator("data_dir", "download_dir", "extracted_dir", "sources_dir", "results_dir")
+    @field_validator(
+        "data_dir",
+        "archives_dir",
+        "extracted_dir",
+        "parsed_dir",
+        "preprocessed_dir",
+        "sources_dir",
+        "wordlists_dir",
+        "results_dir",
+    )
     @classmethod
     def resolve_path(cls, v: Path) -> Path:
         """Convert relative paths to absolute (relative to project root)."""

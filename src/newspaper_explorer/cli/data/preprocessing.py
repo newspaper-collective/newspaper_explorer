@@ -12,13 +12,15 @@ from newspaper_explorer.cli.utils import errors, output
 from newspaper_explorer.cli.utils.options import (
     batch_size_option,
     input_file_option,
+    input_type_option,
     limit_option,
     source_option,
     text_column_option,
 )
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
-from newspaper_explorer.data.preprocessing.presets import get_preset, list_presets
+from newspaper_explorer.data.preprocessing.presets import get_extra_steps, get_preset, list_presets
+from newspaper_explorer.data.utils.sources import load_source_config
 
 if TYPE_CHECKING:
     from newspaper_explorer.data.preprocessing.presets import StepType
@@ -33,9 +35,8 @@ def preprocessing_group() -> None:
 
 @preprocessing_group.command(name="preprocess")
 @source_option()
-@input_file_option(
-    help_text="Input parquet file (default: data/processed/{source}/text/textblocks.parquet)"
-)
+@input_type_option()
+@input_file_option(help_text="Input parquet file (overrides --input-type auto-resolution)")
 @click.option(
     "--steps",
     type=str,
@@ -49,8 +50,8 @@ def preprocessing_group() -> None:
             "minimal",
             "basic",
             "standard",
-            "search",
-            "analysis",
+            "advanced",
+            "full",
             "entities",
             "topics",
             "emotions",
@@ -90,6 +91,7 @@ def preprocessing_group() -> None:
 )
 def preprocess_cmd(
     source: str,
+    input_type: str,
     input_file: str | None,
     steps: str | None,
     pipeline: str | None,
@@ -112,11 +114,17 @@ def preprocess_cmd(
 
         \b
         Recommended Pipelines (--pipeline):
-          minimal   - Minimal processing, preserves original text
-          basic     - Basic OCR cleanup without heavy processing (recommended start)
-          standard  - General text analysis, topic modeling, embeddings (default choice)
-          search    - Optimized for search, matching, entity extraction
-          analysis  - Word frequency, keyword extraction with filtering
+          minimal    - Minimal processing, preserves original text
+          basic      - Basic OCR cleanup without heavy processing (recommended start)
+          standard   - General text analysis, topic modeling, embeddings (default choice)
+          advanced   - Aggressive cleanup with quality filtering
+          full       - Maximum cleaning for bag-of-words analysis
+          entities   - Optimized for NER (preserves case and punctuation)
+          topics     - Optimized for topic modeling (lowercase, no stopwords)
+          emotions   - Optimized for sentiment analysis (preserves emphasis)
+          keywords   - Optimized for TF-IDF and keyword extraction
+          embeddings - Optimized for generating text embeddings
+          concepts   - Optimized for concept extraction
 
         \b
         Available steps (--steps):
@@ -181,7 +189,7 @@ def preprocess_cmd(
             output.key_value(name, str(preset_config["description"]))
         click.echo()
         output.info(
-            "Tip: Use --pipeline <name> or view all: newspaper-explorer data preprocessing list-pipelines",
+            "Tip: Use --pipeline <name> or view all: newspaper-explorer data list-pipelines",
             muted=True,
         )
         raise click.Abort()
@@ -204,17 +212,25 @@ def preprocess_cmd(
     output.info(f"Pipeline: {', '.join(step_names)}", muted=True)
 
     try:
+        # Resolve input path based on --input-type (unless --input-file overrides)
+        results_filename = f"{input_type}.parquet"
+        resolved_input = Path(input_file) if input_file else _resolve_input_path(source, input_type)
+
+        output.key_value("Input type", input_type)
+        output.key_value("Input file", str(resolved_input))
+
         # Run preprocessing using TextPreprocessor class
         preprocessor = TextPreprocessor(source=source, text_column=text_column)
         result: PreprocessingResult = preprocessor.run(
             steps=step_list,
-            input_path=Path(input_file) if input_file else None,
+            input_path=resolved_input,
             output_column=output_column,
             sample=limit,
             batch_size=batch_size,
             num_beams=num_beams,
             num_gpus=num_gpus,
             use_cache=not no_cache,
+            results_filename=results_filename,
         )
 
         # Display sample output
@@ -256,7 +272,7 @@ def preprocess_cmd(
 
     except FileNotFoundError as e:
         errors.handle_error(
-            e, tip=f"Run 'newspaper-explorer data loading aggregate --source {source}' first"
+            e, tip=f"Run 'newspaper-explorer data text aggregate --source {source}' first"
         )
     except ValueError as e:
         errors.handle_error(e, show_traceback=True)
@@ -276,7 +292,7 @@ def list_pipelines_cmd() -> None:
 
     \b
     Example:
-      newspaper-explorer data preprocessing list-pipelines
+      newspaper-explorer data list-pipelines
     """
 
     pipelines = list_presets()
@@ -299,12 +315,190 @@ def list_pipelines_cmd() -> None:
 
     output.section("USAGE")
     output.code_block(
-        [
-            "newspaper-explorer data preprocessing preprocess --source SOURCE --pipeline PIPELINE_NAME"
-        ]
+        ["newspaper-explorer data preprocess --source SOURCE --pipeline PIPELINE_NAME"]
     )
 
     output.section("EXAMPLE")
-    output.code_block(
-        ["newspaper-explorer data preprocessing preprocess --source der_tag --pipeline standard"]
+    output.code_block(["newspaper-explorer data preprocess --source der_tag --pipeline standard"])
+
+
+# Analysis presets that add steps beyond standard
+_ANALYSIS_PRESETS = ["topics", "keywords", "concepts"]
+
+
+def _resolve_input_path(source: str, input_type: str) -> Path:
+    """Resolve input parquet path for a source and input type."""
+    config = get_config()
+    source_config = load_source_config(source)
+    dataset = source_config.dataset_name
+    if input_type == "lines":
+        return config.parsed_dir / dataset / "lines.parquet"
+    return config.parsed_dir / dataset / "textblocks.parquet"
+
+
+@preprocessing_group.command(name="preprocess-all")
+@source_option()
+@click.option(
+    "--input-types",
+    type=str,
+    default="textblocks,lines",
+    help="Comma-separated input types to process (default: textblocks,lines)",
+    show_default=True,
+)
+@click.option(
+    "--presets",
+    type=str,
+    default=None,
+    help=(
+        "Comma-separated analysis presets to run on top of standard "
+        f"(default: {','.join(_ANALYSIS_PRESETS)})"
+    ),
+)
+@limit_option(help_text="Limit number of rows per run (for testing)")
+@batch_size_option(default=32)
+@click.option("--num-beams", type=int, default=4, help="Beams for transnormer (default: 4)")
+@click.option("--num-gpus", type=int, default=1, help="GPUs for transnormer (default: 1)")
+@click.option("--no-cache", is_flag=True, help="Disable transnormer caching")
+def preprocess_all_cmd(
+    source: str,
+    input_types: str,
+    presets: str | None,
+    limit: int | None,
+    batch_size: int,
+    num_beams: int,
+    num_gpus: int,
+    *,
+    no_cache: bool,
+) -> None:
+    """
+    Run standard + method-specific preprocessing for all input types.
+
+    First runs the 'standard' preset, then runs only the extra steps
+    from each analysis preset (topics, keywords, concepts) on top of
+    the standard output. Presets identical to standard (entities,
+    emotions, embeddings) are skipped.
+
+    Processes both textblocks and lines by default.
+
+    \b
+    Examples:
+      # Full batch: standard + all analysis presets, both input types
+      newspaper-explorer data preprocess-all --source der_tag
+
+      # Test with small sample first
+      newspaper-explorer data preprocess-all --source der_tag --limit 10000
+
+      # Only textblocks, only topics preset
+      newspaper-explorer data preprocess-all --source der_tag \\
+          --input-types textblocks --presets topics
+
+      # Only lines
+      newspaper-explorer data preprocess-all --source der_tag --input-types lines
+    """
+    logging.basicConfig(level=logging.INFO, format=get_config().cli_log_format)
+
+    # Parse options
+    type_list = [t.strip() for t in input_types.split(",")]
+    preset_list = [p.strip() for p in presets.split(",")] if presets else list(_ANALYSIS_PRESETS)
+
+    # Validate presets have extra steps
+    preset_extras: dict[str, list] = {}
+    for preset_name in preset_list:
+        extra = get_extra_steps(preset_name, base_preset="standard")
+        if extra:
+            preset_extras[preset_name] = extra
+        else:
+            output.info(f"Skipping '{preset_name}' (identical to standard)", muted=True)
+
+    # Plan summary
+    total_runs = len(type_list) * (1 + len(preset_extras))
+    output.header("BATCH PREPROCESSING")
+    output.key_value("Source", source)
+    output.key_value("Input types", ", ".join(type_list))
+    output.key_value("Base preset", "standard")
+    output.key_value(
+        "Analysis presets", ", ".join(preset_extras.keys()) if preset_extras else "(none)"
     )
+    output.key_value("Total runs", total_runs)
+    if limit:
+        output.key_value("Row limit", f"{limit:,}")
+    click.echo()
+
+    completed: list[str] = []
+    failed: list[str] = []
+
+    for input_type in type_list:
+        results_filename = f"{input_type}.parquet"
+        input_path = _resolve_input_path(source, input_type)
+
+        # --- Run standard preset ---
+        run_label = f"standard/{input_type}"
+        output.section(f"RUN: {run_label}")
+        output.key_value("Input", str(input_path))
+
+        try:
+            preprocessor = TextPreprocessor(source=source, text_column="text")
+            standard_result: PreprocessingResult = preprocessor.run(
+                steps=get_preset("standard"),
+                input_path=input_path,
+                sample=limit,
+                batch_size=batch_size,
+                num_beams=num_beams,
+                num_gpus=num_gpus,
+                use_cache=not no_cache,
+                results_filename=results_filename,
+                preprocessing_id=f"standard_{input_type}",
+            )
+            output.success(
+                f"{run_label}: {standard_result.output_rows:,} rows "
+                f"({standard_result.duration_seconds:.1f}s)"
+            )
+            completed.append(run_label)
+        except (FileNotFoundError, ValueError, ImportError) as e:
+            output.error(f"{run_label}: {e}")
+            failed.append(run_label)
+            continue  # Skip analysis presets if standard failed
+
+        standard_output = standard_result.results_path
+
+        # --- Run analysis presets on top of standard ---
+        for preset_name, extra_steps in preset_extras.items():
+            run_label = f"{preset_name}/{input_type}"
+            step_names = [s if isinstance(s, str) else s["name"] for s in extra_steps]
+            output.section(f"RUN: {run_label}")
+            output.key_value("Base", str(standard_output))
+            output.key_value("Extra steps", ", ".join(step_names))
+
+            try:
+                chained_preprocessor = TextPreprocessor(source=source, text_column="text_processed")
+                chained_result: PreprocessingResult = chained_preprocessor.run(
+                    steps=extra_steps,
+                    input_path=standard_output,
+                    sample=limit,
+                    batch_size=batch_size,
+                    num_beams=num_beams,
+                    num_gpus=num_gpus,
+                    use_cache=not no_cache,
+                    results_filename=results_filename,
+                    preprocessing_id=f"{preset_name}_{input_type}",
+                )
+                output.success(
+                    f"{run_label}: {chained_result.output_rows:,} rows "
+                    f"({chained_result.duration_seconds:.1f}s)"
+                )
+                completed.append(run_label)
+            except (FileNotFoundError, ValueError, ImportError) as e:
+                output.error(f"{run_label}: {e}")
+                failed.append(run_label)
+
+    # --- Summary ---
+    output.section("BATCH COMPLETE")
+    output.key_value("Completed", f"{len(completed)}/{total_runs}")
+    for label in completed:
+        output.info(f"  OK  {label}")
+    if failed:
+        for label in failed:
+            output.info(f"  FAIL  {label}")
+        output.warning(f"{len(failed)} run(s) failed")
+    else:
+        output.success("All preprocessing runs completed successfully!")

@@ -8,13 +8,13 @@ Comprehensive guide for downloading and managing newspaper data from Zenodo.
 
 ```bash
 # List available dataset parts
-newspaper-explorer data list
+newspaper-explorer data list-sources
 
 # Download and extract a specific time period
-newspaper-explorer data download --part dertag_1900-1902
+newspaper-explorer data text download --part dertag_1900-1902
 
 # Check status
-newspaper-explorer data status
+newspaper-explorer data info
 ```
 
 ### Using the Python API
@@ -46,7 +46,7 @@ downloader.print_status_summary()
 
 The "Der Tag" Zenodo collection is divided into parts covering different time periods.
 
-Use `newspaper-explorer data list` to see all available parts with their:
+Use `newspaper-explorer data list-sources` to see all available parts with their:
 
 - Year ranges
 - File sizes
@@ -99,7 +99,7 @@ If you want to download data without automatic fixes:
 
 ```bash
 # CLI
-newspaper-explorer data download --part dertag_1900-1902 --no-fix
+newspaper-explorer data text download --part dertag_1900-1902 --no-fix
 
 # Python API
 downloader.download_and_extract(['dertag_1900-1902'], fix_errors=False)
@@ -198,7 +198,7 @@ Download multiple parts simultaneously for faster processing:
 
 ```bash
 # CLI with parallel flag
-newspaper-explorer data download --parts dertag_1900-1902,dertag_1903-1905 --parallel
+newspaper-explorer data text download --parts dertag_1900-1902,dertag_1903-1905 --parallel
 
 # Python API
 downloader.download_parts_parallel(
@@ -212,7 +212,7 @@ downloader.download_parts_parallel(
 Ensure data integrity by verifying MD5 checksums:
 
 ```bash
-newspaper-explorer data verify --part dertag_1900-1902
+newspaper-explorer data text verify --part dertag_1900-1902
 ```
 
 ### Extraction Status
@@ -221,10 +221,10 @@ Get detailed information about what's been downloaded and extracted:
 
 ```bash
 # Basic status
-newspaper-explorer data status
+newspaper-explorer data info
 
 # Detailed status with paths and checksums
-newspaper-explorer data status --verbose
+newspaper-explorer data info --verbose
 ```
 
 ## API Reference

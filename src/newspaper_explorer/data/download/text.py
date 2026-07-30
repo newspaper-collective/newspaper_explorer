@@ -41,7 +41,7 @@ class ZenodoDownloader:
             data_dir = config.data_dir
 
         self.data_dir = Path(data_dir)
-        self.download_dir: Path = Path(config.download_dir)
+        self.download_dir: Path = Path(config.archives_dir)
         self.extracted_dir: Path = Path(config.extracted_dir)
 
         # Ensure directories exist

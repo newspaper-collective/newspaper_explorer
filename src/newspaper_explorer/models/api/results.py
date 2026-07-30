@@ -18,9 +18,16 @@ class AnalysisRunInfo(BaseModel):
     analysis_type: str = Field(..., description="Type of analysis (entities, emotions, etc.)")
     method_type: str = Field(..., description="Method used (gliner, keybert, etc.)")
     model_name: str = Field(..., description="Specific model identifier")
+    display_name: str = Field("", description="Human-readable display name for the run")
     created_at: str = Field(..., description="ISO timestamp of creation")
     row_count: int = Field(..., description="Number of records in results")
     parameters: dict[str, Any] = Field(..., description="Analysis parameters used")
+
+    def model_post_init(self, __context: object) -> None:
+        """Generate display_name if not provided."""
+        if not self.display_name:
+            timestamp = self.created_at[:10] if len(self.created_at) >= 10 else self.created_at
+            self.display_name = f"{self.method_type}/{self.model_name} ({timestamp})"
 
 
 class AnalysisAvailability(BaseModel):

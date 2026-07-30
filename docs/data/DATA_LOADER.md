@@ -22,7 +22,7 @@ A high-performance ALTO XML parser for newspaper data with:
    - `ALTOParser` - Fast XML parser with namespace detection
    - `DataLoader` - High-level API with parallel processing
 
-2. **CLI command: `newspaper-explorer data load`**
+2. **CLI command: `newspaper-explorer data text parse`**
 
    - Load directories of XML files
    - Configurable workers and file patterns
@@ -68,10 +68,10 @@ Each row = one text line from ALTO XML:
 
 ```bash
 # Load all XML files
-newspaper-explorer data load data/raw/der_tag/xml_ocr data/extracted/lines.parquet
+newspaper-explorer data text parse data/raw/der_tag/xml_ocr data/extracted/lines.parquet
 
 # Test with 100 files
-newspaper-explorer data load data/raw/der_tag/xml_ocr test.parquet --max-files 100 --workers 4
+newspaper-explorer data text parse data/raw/der_tag/xml_ocr test.parquet --max-files 100 --workers 4
 ```
 
 ### Python API
@@ -152,10 +152,10 @@ dependencies = [
 
 ```
 1. Download & extract data
-   └─→ newspaper-explorer data download --all
+   └─→ newspaper-explorer data text download --all
 
 2. Load ALTO XML → Parquet
-   └─→ newspaper-explorer data load data/raw/der_tag/xml_ocr lines.parquet
+   └─→ newspaper-explorer data text parse data/raw/der_tag/xml_ocr lines.parquet
 
 3. Analysis in Python/Notebook
    └─→ df = DataLoader.load_parquet("lines.parquet")
@@ -274,7 +274,7 @@ The data loader is now fully functional and optimized for large-scale newspaper 
 pip install -e .
 
 # Load your data
-newspaper-explorer data load data/raw/der_tag/xml_ocr data/extracted/lines.parquet
+newspaper-explorer data text parse data/raw/der_tag/xml_ocr data/extracted/lines.parquet
 
 # Start analyzing!
 python -c "from newspaper_explorer.data.loading import DataLoader; df = DataLoader.load_parquet('data/extracted/lines.parquet'); print(df.describe())"

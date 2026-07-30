@@ -29,6 +29,7 @@ from newspaper_explorer.analyze.layout.article_builder import ArticleBuilder
 from newspaper_explorer.analyze.layout.detection import LayoutDetector
 from newspaper_explorer.analyze.layout.headline_matcher import HeadlineMatcher
 from newspaper_explorer.analyze.layout.visualizer import LayoutVisualizer
+from newspaper_explorer.analyze.layout.vlm_detection import VLMLayoutDetector
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.ingest.loader import DataIngester
 from newspaper_explorer.data.utils.results import save_analysis_results
@@ -144,7 +145,7 @@ def detect(source, model_size, device, batch_size, conf_threshold, year, limit, 
 
     if not images_dir.exists():
         click.echo(f"[ERROR] Images directory not found: {images_dir}", err=True)
-        click.echo("  Run 'newspaper-explorer data download-images' first", err=True)
+        click.echo("  Run 'newspaper-explorer data images download' first", err=True)
         return
 
     # Collect image paths
@@ -1447,3 +1448,370 @@ def build_articles(source, year, text_data):
     click.echo("  (Headline object reconstruction from DataFrame)")
 
     click.echo(f"\n{'=' * 60}\n")
+
+
+@layout_group.command(name="vlm-detect")
+@click.option(
+    "--source",
+    required=True,
+    help="Source name (e.g., 'der_tag')",
+)
+@click.option(
+    "--model",
+    default="rednote-hilab/dots.mocr",
+    help="HuggingFace model ID (default: rednote-hilab/dots.mocr)",
+)
+@click.option(
+    "--prompt-mode",
+    type=click.Choice(["layout-all", "layout-only", "ocr"]),
+    default="layout-all",
+    help="VLM prompt mode (default: layout-all)",
+)
+@click.option(
+    "--device",
+    default="cuda:0",
+    help="Device for inference (default: cuda:0)",
+)
+@click.option(
+    "--gpu-memory-utilization",
+    type=float,
+    default=0.8,
+    help="Fraction of GPU memory to use (default: 0.8)",
+)
+@click.option(
+    "--max-model-len",
+    type=int,
+    default=4096,
+    help="Maximum context length (default: 4096)",
+)
+@click.option(
+    "--max-tokens",
+    type=int,
+    default=2048,
+    help="Maximum output tokens per image (default: 2048)",
+)
+@click.option(
+    "--year",
+    type=int,
+    help="Process only specific year",
+)
+@click.option(
+    "--limit",
+    type=int,
+    help="Limit number of pages to process",
+)
+@click.option(
+    "--batch-size",
+    type=int,
+    default=8,
+    help="Batch size for inference (default: 8)",
+)
+@click.option(
+    "--resume/--no-resume",
+    default=True,
+    help="Skip already processed pages (default: yes)",
+)
+def vlm_detect(
+    source,
+    model,
+    prompt_mode,
+    device,
+    gpu_memory_utilization,
+    max_model_len,
+    max_tokens,
+    year,
+    limit,
+    batch_size,
+    resume,
+):
+    """
+    Detect layout elements using a Vision-Language Model (VLM).
+
+    Uses vLLM to run models like dots.mocr for document layout detection.
+    Produces the same Detection/PageLayout output as the YOLO 'detect' command,
+    enabling comparison or ensemble use with YOLO results.
+
+    The VLM returns bounding boxes with categories, parsed into the standard
+    layout detection format. Results are saved identically to YOLO detections.
+
+    Examples:
+        # Basic VLM layout detection
+        newspaper-explorer analyze layout vlm-detect --source der_tag --year 1902
+
+        # Use different model with more tokens
+        newspaper-explorer analyze layout vlm-detect --source der_tag \\
+            --model rednote-hilab/dots.mocr --max-tokens 4096
+
+        # OCR mode instead of layout
+        newspaper-explorer analyze layout vlm-detect --source der_tag \\
+            --prompt-mode ocr --year 1902 --limit 10
+    """
+    import polars as pl
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
+
+    click.echo(f"\n{'=' * 60}")
+    click.echo("VLM Layout Detection")
+    click.echo(f"{'=' * 60}\n")
+
+    config = get_config()
+
+    # Find image files
+    click.echo(f"Finding images for source: {source}")
+    images_dir = config.data_dir / "raw" / source / "images"
+
+    if not images_dir.exists():
+        click.echo(f"[ERROR] Images directory not found: {images_dir}", err=True)
+        click.echo("  Run 'newspaper-explorer data download-images --source {source}' first", err=True)
+        return
+
+    # Collect image paths
+    image_paths = []
+    search_pattern = f"{year}/**/*.jpg" if year else "**/*.jpg"
+
+    for img_path in sorted(images_dir.glob(search_pattern)):
+        image_paths.append(img_path)
+        if limit and len(image_paths) >= limit:
+            break
+
+    if not image_paths:
+        click.echo(f"[ERROR] No images found in {images_dir}", err=True)
+        return
+
+    click.echo(f"[OK] Found {len(image_paths)} images")
+
+    # Generate analysis_id
+    model_short = model.split("/")[-1].replace(".", "_").replace("-", "_")[:20]
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    analysis_id = f"vlm_{model_short}_{prompt_mode}_{timestamp}"
+
+    # Check for existing results (resume)
+    output_dir = config.results_dir / source / "layout" / analysis_id
+    output_file = output_dir / "layout.parquet"
+
+    processed_pages = set()
+    if resume and output_file.exists():
+        existing_df = pl.read_parquet(output_file)
+        processed_pages = set(existing_df["page_id"].unique().to_list())
+        click.echo(f"[OK] Resume mode: {len(processed_pages)} pages already processed")
+
+    # Check GPU availability and free memory
+    if device.startswith("cuda"):
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                click.echo("[ERROR] CUDA requested but no GPUs available", err=True)
+                return
+
+            gpu_id = int(device.split(":")[1]) if ":" in device else 0
+            gpu_count = torch.cuda.device_count()
+
+            if gpu_id >= gpu_count:
+                click.echo(f"[ERROR] GPU {gpu_id} not found (only {gpu_count} GPUs)", err=True)
+                return
+
+            # Show memory status for selected GPU
+            total_mem = torch.cuda.get_device_properties(gpu_id).total_memory / 1024**3
+            torch.cuda.set_device(gpu_id)
+            free_mem = (torch.cuda.get_device_properties(gpu_id).total_memory
+                        - torch.cuda.memory_reserved(gpu_id)) / 1024**3
+            gpu_name = torch.cuda.get_device_name(gpu_id)
+            click.echo(f"[OK] GPU {gpu_id}: {gpu_name} ({free_mem:.1f}/{total_mem:.1f} GB free)")
+
+            # Warn if memory looks too low and suggest alternatives
+            required_mem = total_mem * gpu_memory_utilization
+            if free_mem < required_mem:
+                click.echo(
+                    f"[WARNING] GPU {gpu_id} may not have enough free memory "
+                    f"({free_mem:.1f} GB free, {required_mem:.1f} GB requested)",
+                    err=True,
+                )
+                # Show other GPUs with more free memory
+                for other_id in range(gpu_count):
+                    if other_id == gpu_id:
+                        continue
+                    other_total = torch.cuda.get_device_properties(other_id).total_memory / 1024**3
+                    click.echo(
+                        f"  Hint: Try --device cuda:{other_id} "
+                        f"({torch.cuda.get_device_name(other_id)}, {other_total:.1f} GB total)"
+                    )
+
+        except ImportError:
+            click.echo("[WARNING] PyTorch not found, cannot verify GPU", err=True)
+
+    # Initialize VLM detector
+    click.echo(f"\nLoading VLM model: {model}")
+    click.echo(f"  Prompt mode: {prompt_mode}")
+    click.echo(f"  GPU memory utilization: {gpu_memory_utilization}")
+    click.echo(f"  Max model length: {max_model_len}")
+    click.echo(f"  Max output tokens: {max_tokens}")
+
+    detector = VLMLayoutDetector(
+        model_name=model,
+        prompt_mode=prompt_mode,
+        device=device,
+        gpu_memory_utilization=gpu_memory_utilization,
+        max_model_len=max_model_len,
+        max_tokens=max_tokens,
+        source_name=source,
+    )
+
+    # Filter out already-processed images in resume mode
+    if processed_pages:
+        original_count = len(image_paths)
+        image_paths = [
+            img
+            for img in image_paths
+            if detector._generate_page_id(img) not in processed_pages
+        ]
+        skipped = original_count - len(image_paths)
+        if skipped > 0:
+            click.echo(f"[OK] Skipping {skipped} already processed pages")
+
+        if not image_paths:
+            click.echo("[OK] All pages already processed!")
+            return
+
+    # Run detection in batches
+    click.echo(f"\nDetecting layout elements (batch_size={batch_size})...")
+    start_time = time.time()
+
+    # Suppress verbose logs during batch processing
+    vlm_logger = logging.getLogger("newspaper_explorer.analyze.layout.vlm_detection")
+    original_level = vlm_logger.level
+    vlm_logger.setLevel(logging.WARNING)
+
+    all_results = []
+    try:
+        with tqdm(total=len(image_paths), desc="Processing pages") as pbar:
+            for i in range(0, len(image_paths), batch_size):
+                batch_paths = image_paths[i : i + batch_size]
+                batch_results = detector.detect_batch(batch_paths)
+                all_results.extend(batch_results)
+                pbar.update(len(batch_paths))
+    finally:
+        vlm_logger.setLevel(original_level)
+
+    duration = time.time() - start_time
+    completed_at = datetime.now().isoformat()
+
+    # Flatten detections into rows
+    all_detections = []
+    skipped_count = 0
+
+    for page_layout in all_results:
+        for det in page_layout.detections:
+            try:
+                source_id = str(det.source_id) if det.source_id is not None else None
+                issue_id = str(det.issue_id) if det.issue_id is not None else None
+
+                all_detections.append(
+                    {
+                        "detection_id": det.detection_id,
+                        "page_id": det.page_id,
+                        "source_id": source_id,
+                        "issue_id": issue_id,
+                        "class_name": det.class_name,
+                        "confidence": det.confidence,
+                        "bbox_x1": det.bbox.x1,
+                        "bbox_y1": det.bbox.y1,
+                        "bbox_x2": det.bbox.x2,
+                        "bbox_y2": det.bbox.y2,
+                        "bbox_width": det.bbox.width,
+                        "bbox_height": det.bbox.height,
+                        "image_path": page_layout.image_path,
+                        "text_content": det.text_content,
+                    }
+                )
+            except Exception as e:
+                logger.debug(f"Skipping detection with problematic data: {e}")
+                skipped_count += 1
+
+    if skipped_count > 0:
+        click.echo(f"[WARNING] Skipped {skipped_count} detections with incomplete data", err=True)
+
+    # Save results
+    if all_detections:
+        df = pl.DataFrame(all_detections)
+
+        # Merge with existing data if resuming
+        if resume and output_file.exists():
+            existing_df = pl.read_parquet(output_file)
+            df = pl.concat([existing_df, df])
+            click.echo(f"\nAppended {len(all_detections)} new detections")
+
+        # Create metadata
+        metadata = AnalysisMetadata(
+            analysis_id=analysis_id,
+            analysis_type="layout",
+            method_type="vlm",
+            model_name=model,
+            model_version=prompt_mode,
+            source=source,
+            completed_at=completed_at,
+            duration_seconds=duration,
+            granularity="page",
+            parameters={
+                "model": model,
+                "prompt_mode": prompt_mode,
+                "device": device,
+                "gpu_memory_utilization": gpu_memory_utilization,
+                "max_model_len": max_model_len,
+                "max_tokens": max_tokens,
+                "batch_size": batch_size,
+                "year_filter": year,
+            },
+            input_data={
+                "num_images": len(image_paths),
+                "year_filter": year,
+            },
+            output_data={
+                "num_pages": df["page_id"].n_unique(),
+                "num_detections": len(df),
+                "detections_by_class": df.group_by("class_name")
+                .agg(pl.len().alias("count"))
+                .to_dicts(),
+            },
+        )
+
+        results_dict = save_analysis_results(
+            results_df=df,
+            metadata=metadata,
+            results_base_dir=config.results_dir / source,
+        )
+
+        click.echo(f"\nSaved {len(df)} detections to: {results_dict['results_path']}")
+        click.echo(f"Saved metadata to: {results_dict['metadata_path']}")
+        click.echo(f"Analysis ID: {analysis_id}")
+    else:
+        click.echo("\nNo detections to save", err=True)
+
+    # Statistics
+    total_detections = sum(len(r.detections) for r in all_results)
+    pages_per_second = len(all_results) / duration if duration > 0 else 0
+
+    click.echo(f"\n{'=' * 60}")
+    click.echo("VLM Detection Complete!")
+    click.echo(f"{'=' * 60}")
+    click.echo(f"Model: {model}")
+    click.echo(f"Prompt mode: {prompt_mode}")
+    click.echo(f"Pages processed: {len(all_results)}")
+    click.echo(f"Total detections: {total_detections}")
+    click.echo(f"Duration: {duration:.1f}s ({pages_per_second:.2f} pages/sec)")
+
+    if all_detections:
+        df_stats = pl.DataFrame(all_detections)
+        class_counts = (
+            df_stats.group_by("class_name")
+            .agg(pl.len().alias("count"))
+            .sort("count", descending=True)
+        )
+        click.echo("\nDetections by class:")
+        for row in class_counts.iter_rows(named=True):
+            click.echo(f"  {row['class_name']}: {row['count']}")
+
+    click.echo(f"{'=' * 60}\n")

@@ -60,14 +60,19 @@ class TestMainCLI:
         """Test that analyze command group is registered."""
         result = runner.invoke(cli, ["analyze", "--help"])
         assert result.exit_code == 0
-        # Analyze command should show its help
-        assert result.exit_code == 0
 
-    def test_data_subcommand_accessible(self, runner: CliRunner) -> None:
-        """Test that data subcommands are accessible."""
+    def test_data_list_sources_accessible(self, runner: CliRunner) -> None:
+        """Test that flat data commands are accessible."""
         result = runner.invoke(cli, ["data", "list-sources"])
         assert result.exit_code == 0
         assert "Available Data Sources" in result.output
+
+    def test_data_text_group_accessible(self, runner: CliRunner) -> None:
+        """Test that data text subgroup is accessible."""
+        result = runner.invoke(cli, ["data", "text", "--help"])
+        assert result.exit_code == 0
+        assert "parse" in result.output
+        assert "download" in result.output
 
     def test_cli_version_info(self, runner: CliRunner) -> None:
         """Test that CLI provides version information if available."""
@@ -91,8 +96,6 @@ class TestMainCLI:
     def test_prog_name_when_main(self) -> None:
         """Test that prog_name is set correctly when run as main."""
         runner = CliRunner()
-        # This tests the if __name__ == "__main__" block behavior
-        # by ensuring the CLI works with explicit prog_name
         result = runner.invoke(cli, ["--help"], prog_name="newspaper-explorer")
         assert result.exit_code == 0
 
@@ -115,8 +118,12 @@ class TestCLIIntegration:
         result = runner.invoke(cli, ["data", "--help"])
         assert result.exit_code == 0
 
-        # Data subcommand help
+        # Data subcommand help (flat)
         result = runner.invoke(cli, ["data", "info", "--help"])
+        assert result.exit_code == 0
+
+        # Data subgroup help (nested)
+        result = runner.invoke(cli, ["data", "text", "parse", "--help"])
         assert result.exit_code == 0
 
     def test_command_isolation(self, runner: CliRunner) -> None:

@@ -44,7 +44,7 @@ async def list_layout_results(source_name: str):
                 try:
                     with open(metadata_file, "r") as f:
                         metadata = json.load(f)
-                except:
+                except (OSError, json.JSONDecodeError, ValueError):
                     pass
 
             # Get basic stats from data
@@ -66,9 +66,9 @@ async def list_layout_results(source_name: str):
                                 "min": str(dates.min()),
                                 "max": str(dates.max()),
                             }
-                    except:
+                    except (ValueError, TypeError):
                         pass
-            except:
+            except (OSError, pl.exceptions.ComputeError):
                 stats = {}
 
             results.append(
@@ -187,7 +187,7 @@ async def get_layout_pages(
 
             # Convert absolute path to relative (extract path after /images/)
             # Format: /full/path/data/raw/{source}/images/YYYY/MM/DD/...
-            # Convert to: YYYY/MM/DD/...
+            # We extract: YYYY/MM/DD/...
             if raw_image_path and "/images/" in str(raw_image_path):
                 relative_path = str(raw_image_path).split("/images/", 1)[1]
             else:

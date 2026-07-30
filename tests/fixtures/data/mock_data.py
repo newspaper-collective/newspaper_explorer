@@ -25,8 +25,10 @@ def mock_config(tmp_path: Path) -> Mock:
     """
     config = Mock()
     config.data_dir = tmp_path
-    config.download_dir = tmp_path / "downloads"
+    config.archives_dir = tmp_path / "archives"
     config.extracted_dir = tmp_path / "extracted"
+    config.parsed_dir = tmp_path / "parsed"
+    config.preprocessed_dir = tmp_path / "preprocessed"
     config.sources_dir = tmp_path / "sources"
     config.results_dir = tmp_path / "results"
     return config

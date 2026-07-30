@@ -202,8 +202,14 @@ The preprocessing steps are organized into modules. All steps can be chained tog
 - `lemmatize_germalemma` - Thorough lemmatization (GermaLemma, slower)
 
 **6. Validation** (`validation.py`) - Quality metrics:
-- `calculate_quality_metrics` - Calculate OCR quality scores
-- `filter_by_quality_score` - Filter by quality score
+- `calculate_quality_metrics` - Calculate OCR quality scores (auto-discovers hunspell wordlist for OOV rate)
+- `filter_by_quality_score` - Filter by quality score (good/review/poor)
+
+Quality metrics are included in the **advanced** and **full** pipeline presets.
+To use them, generate a wordlist first:
+```bash
+newspaper-explorer data validation generate-wordlist --source-type hunspell
+```
 
 **Key Insights**:
 - **normalize_unicode** should typically be **FIRST** - it handles OCR artifacts and standardizes characters
@@ -1258,9 +1264,9 @@ Transnormer and DTA-CAB use Parquet-based caching:
 
 ```bash
 # Download and parse data
-newspaper-explorer data download --source der_tag
-newspaper-explorer data parse --source der_tag
-newspaper-explorer data aggregate --source der_tag
+newspaper-explorer data text download --source der_tag
+newspaper-explorer data text parse --source der_tag
+newspaper-explorer data text aggregate --source der_tag
 
 # Preprocess
 newspaper-explorer data preprocess \

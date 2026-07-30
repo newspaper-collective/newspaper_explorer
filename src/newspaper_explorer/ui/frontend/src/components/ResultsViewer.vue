@@ -180,7 +180,7 @@ defineExpose({
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-muted-foreground">Records:</span>
-                <span class="font-medium">{{ metadata.row_count.toLocaleString() }}</span>
+                <span class="font-medium">{{ (metadata.row_count ?? 0).toLocaleString() }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-muted-foreground">Created:</span>
@@ -218,7 +218,7 @@ defineExpose({
 
       <!-- Quick stats -->
       <div v-if="metadata" class="mt-3 text-xs text-muted-foreground">
-        <span>{{ metadata.row_count.toLocaleString() }} records</span>
+        <span>{{ (metadata.row_count ?? 0).toLocaleString() }} records</span>
         <span class="mx-1">•</span>
         <span>{{ formattedDate }}</span>
         <span class="mx-1">•</span>

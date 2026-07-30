@@ -103,13 +103,13 @@ def get_source_paths(source_config: SourceConfig) -> dict[str, Path]:
     data_type = source_config.data_type
 
     raw_dir = config.data_dir / "raw" / dataset_name / data_type
-    text_dir = config.data_dir / "raw" / dataset_name / "text"
     images_dir = config.data_dir / "raw" / dataset_name / "images"
-    output_file = text_dir / f"{dataset_name}_lines.parquet"
+    parsed_dir = config.parsed_dir / dataset_name
+    output_file = parsed_dir / "lines.parquet"
 
     return {
         "raw_dir": raw_dir,
-        "text_dir": text_dir,
+        "parsed_dir": parsed_dir,
         "images_dir": images_dir,
         "output_file": output_file,
     }
@@ -167,7 +167,7 @@ def get_source_status(source_name: str) -> SourceStatus:
         mets_file_count = total_xml_count - alto_file_count
 
     # Download archives status - single pass for both tar.gz and zip
-    downloads_dir = app_config.download_dir / config.dataset_name
+    downloads_dir = app_config.archives_dir / config.dataset_name
     has_download_archives = False
     download_archives_count = 0
 
@@ -212,9 +212,7 @@ def get_source_status(source_name: str) -> SourceStatus:
         parsed_size_mb = output_file.stat().st_size / (1024 * 1024)
 
     # Aggregated data status
-    textblocks_path = (
-        app_config.data_dir / "processed" / config.dataset_name / "text" / "textblocks.parquet"
-    )
+    textblocks_path = app_config.parsed_dir / config.dataset_name / "textblocks.parquet"
     has_aggregated_data = textblocks_path.exists()
     aggregated_row_count = 0
     aggregated_size_mb = 0.0

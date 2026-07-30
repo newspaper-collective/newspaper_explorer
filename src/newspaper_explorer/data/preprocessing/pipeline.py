@@ -32,6 +32,7 @@ from newspaper_explorer.data.preprocessing.cleaning import (
     remove_long_words,
     remove_numbers,
     remove_punctuation,
+    remove_short_words,
     remove_stopwords,
 )
 from newspaper_explorer.data.preprocessing.filtering import (
@@ -101,6 +102,7 @@ STEP_CONFIG: dict[str, dict[str, Any]] = {
     "remove_numbers": {"func": remove_numbers},
     "remove_stopwords": {"func": remove_stopwords},
     "remove_long_words": {"func": remove_long_words},
+    "remove_short_words": {"func": remove_short_words},
     "remove_garbage_words": {"func": remove_garbage_words},
     "only_keep_allowed_chars": {"func": only_keep_allowed_chars},
     # === Lemmatization (lemmatization.py) ===
@@ -388,6 +390,7 @@ class TextPreprocessor:
         output_df: pl.DataFrame,
         duration_seconds: float,
         previous_preprocessing: Optional[dict[str, Any]] = None,
+        preprocessing_id: Optional[str] = None,
     ) -> PreprocessingMetadata:
         """
         Create preprocessing metadata for saving alongside results.
@@ -431,7 +434,7 @@ class TextPreprocessor:
             previous_preprocessing=previous_preprocessing,
             status="completed",
             completed_at=datetime.now().isoformat(),
-            preprocessing_id=None,  # Will be auto-generated
+            preprocessing_id=preprocessing_id,  # Use explicit or auto-generate
             error_message=None,  # Not needed for completed status
         )
 
@@ -447,6 +450,8 @@ class TextPreprocessor:
         num_gpus: int = 1,
         use_cache: bool = True,
         save: bool = True,
+        results_filename: str = "textblocks.parquet",
+        preprocessing_id: Optional[str] = None,
     ) -> PreprocessingResult:
         """
         Run the full preprocessing workflow: load, process, and save.
@@ -467,6 +472,7 @@ class TextPreprocessor:
             num_gpus: Number of GPUs for parallel transnormer processing (default: 1)
             use_cache: Enable caching for transnormer (default: True)
             save: Whether to save results to disk (default: True)
+            results_filename: Filename for output parquet (default: "textblocks.parquet")
 
         Returns:
             PreprocessingResult with metadata, paths, and statistics
@@ -493,10 +499,8 @@ class TextPreprocessor:
         # Resolve input path
         if input_path is None:
             input_path = (
-                self._config.data_dir
-                / "processed"
+                self._config.parsed_dir
                 / self._source_config.dataset_name
-                / "text"
                 / "textblocks.parquet"
             )
 
@@ -584,6 +588,7 @@ class TextPreprocessor:
             output_df=df,
             duration_seconds=duration,
             previous_preprocessing=previous_preprocessing,
+            preprocessing_id=preprocessing_id,
         )
 
         # Save results
@@ -591,7 +596,8 @@ class TextPreprocessor:
             paths = save_preprocessing_results(
                 results_df=df,
                 metadata=metadata,
-                processed_base_dir=self._config.data_dir / "processed",
+                processed_base_dir=self._config.preprocessed_dir,
+                results_filename=results_filename,
             )
             output_dir = paths["output_dir"]
             results_path = paths["results_path"]

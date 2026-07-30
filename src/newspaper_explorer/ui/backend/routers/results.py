@@ -83,7 +83,19 @@ async def get_metadata(
     """
     try:
         metadata = load_analysis_metadata(source, analysis_type, run_id)
-        return metadata.model_dump()
+        data = metadata.model_dump()
+        # Add display_name expected by frontend
+        if "display_name" not in data:
+            timestamp = data.get("created_at", "")[:10]
+            data["display_name"] = (
+                f"{data.get('method_type', '')}/{data.get('model_name', '')} ({timestamp})"
+            )
+        data["run_id"] = run_id or "latest"
+        # Ensure row_count is available at top level for the frontend
+        if "row_count" not in data:
+            output_data: dict[str, Any] = data.get("output_data") or {}
+            data["row_count"] = output_data.get("row_count", 0)
+        return data
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:

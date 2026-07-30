@@ -31,9 +31,10 @@ async def get_source_info(source_name: str):
 
         # Check what data is available
         raw_path = Path(app_config.data_dir) / "raw" / source_name
+        parsed_path = Path(app_config.parsed_dir) / source_name
         results_path = Path(app_config.results_dir) / source_name
 
-        has_text = (raw_path / "text").exists()
+        has_text = parsed_path.exists()
         has_images = (raw_path / "images").exists()
 
         # Calculate total archive size from parts
@@ -79,7 +80,7 @@ async def get_source_info(source_name: str):
                                 with open(metadata_files[0], "r") as f:
                                     metadata = json.load(f)
                                 break
-                            except:
+                            except (OSError, json.JSONDecodeError, ValueError):
                                 pass
 
                     analysis_results[analysis_type] = AnalysisResultSummary(
@@ -102,8 +103,8 @@ async def get_source_info(source_name: str):
         xml_total_size = None
         if has_text:
             try:
-                text_path = raw_path / "text"
-                xml_files = list(text_path.rglob("*.xml"))
+                xml_path = raw_path / config.data_type
+                xml_files = list(xml_path.rglob("*.xml")) if xml_path.exists() else []
                 xml_file_count = len(xml_files)
                 if xml_file_count > 0:
                     total_bytes = sum(f.stat().st_size for f in xml_files)
@@ -118,7 +119,7 @@ async def get_source_info(source_name: str):
 
         # Calculate parquet size
         parquet_size = None
-        parquet_path = raw_path / "text" / f"{source_name}_lines.parquet"
+        parquet_path = parsed_path / "lines.parquet"
         if parquet_path.exists():
             try:
                 size_bytes = parquet_path.stat().st_size
@@ -218,7 +219,5 @@ async def get_source_stats(source_name: str):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

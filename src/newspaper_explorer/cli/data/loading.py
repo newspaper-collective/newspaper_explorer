@@ -6,7 +6,8 @@ from typing import Optional
 
 import click
 
-from newspaper_explorer.cli.utils import errors, output
+from newspaper_explorer.cli.utils import errors
+from newspaper_explorer.cli.utils import output as out
 from newspaper_explorer.cli.utils.options import (
     force_option,
     force_resume_option,
@@ -44,24 +45,24 @@ def parse_cmd(source: str, *, force: bool, limit: Optional[int]) -> None:
 
     \b
     Examples:
-      newspaper-explorer data loading parse --source der_tag
-      newspaper-explorer data loading parse --source der_tag --force
-      newspaper-explorer data loading parse --source der_tag --limit 100
+      newspaper-explorer data text parse --source der_tag
+      newspaper-explorer data text parse --source der_tag --force
+      newspaper-explorer data text parse --source der_tag --limit 100
     """
     # Setup logging - WARNING for library, INFO for CLI
     config = get_config()
     logging.basicConfig(level=logging.WARNING, format=config.cli_log_format)
 
     try:
-        output.header(f"PARSE XML: {source.upper()}")
+        out.header(f"PARSE XML: {source.upper()}")
 
         # Show configuration
-        output.section("CONFIGURATION")
-        output.key_value("Resume mode", "Disabled" if force else "Enabled")
+        out.section("CONFIGURATION")
+        out.key_value("Resume mode", "Disabled" if force else "Enabled")
         if limit:
-            output.key_value("File limit", f"{limit:,}")
+            out.key_value("File limit", f"{limit:,}")
 
-        output.section("PARSING")
+        out.section("PARSING")
         ingester = DataIngester(source_name=source)
 
         # Load the source with optional limit
@@ -69,35 +70,34 @@ def parse_cmd(source: str, *, force: bool, limit: Optional[int]) -> None:
         df = ingester.load_source(skip_processed=skip_processed, max_files=limit)
 
         if len(df) == 0:
-            output.error("No data loaded. Check if files exist and are valid.")
+            out.error("No data loaded. Check if files exist and are valid.")
             return
 
         # Construct output path from source config
         source_config = load_source_config(source)
         paths = get_source_paths(source_config)
-        source_name = source_config.dataset_name
-        output_path = paths["text_dir"] / f"{source_name}_lines.parquet"
+        output_path = paths["parsed_dir"] / "lines.parquet"
 
         # Calculate file size
         file_size_mb = output_path.stat().st_size / (1024 * 1024) if output_path.exists() else 0
 
-        output.section("RESULTS")
-        output.key_value("Total rows", f"{len(df):,}")
-        output.key_value("Columns", len(df.columns))
-        output.key_value("File size", f"{file_size_mb:.1f} MB")
-        output.key_value("Output file", str(output_path))
+        out.section("RESULTS")
+        out.key_value("Total rows", f"{len(df):,}")
+        out.key_value("Columns", len(df.columns))
+        out.key_value("File size", f"{file_size_mb:.1f} MB")
+        out.key_value("Output file", str(output_path))
 
         # Show sample
-        output.section("SAMPLE DATA")
+        out.section("SAMPLE DATA")
         click.echo(df.head(3))
 
         click.echo()
-        output.success("Parsing completed successfully!")
+        out.success("Parsing completed successfully!")
 
     except FileNotFoundError as e:
         errors.handle_error(
             e,
-            tip=f"Run 'newspaper-explorer data download --source {source}' first",
+            tip=f"Run 'newspaper-explorer data text download --source {source}' first",
             show_traceback=False,
         )
     except (ValueError, RuntimeError) as e:
@@ -107,14 +107,14 @@ def parse_cmd(source: str, *, force: bool, limit: Optional[int]) -> None:
 @loading_group.command(name="aggregate")
 @source_option()
 @input_file_option(
-    help_text="Input parquet file (default: data/raw/{source}/text/{source}_lines.parquet)"
+    help_text="Input parquet file (default: data/parsed/{source}/lines.parquet)"
 )
 @output_path_option(
-    help_text="Output parquet file (default: data/processed/{source}/text/textblocks.parquet)"
+    help_text="Output parquet file (default: data/parsed/{source}/textblocks.parquet)"
 )
 @force_option()
 def aggregate_cmd(
-    source: str, input_file: Optional[str], output_file: Optional[str], *, force: bool
+    source: str, input_file: Optional[str], output: Optional[str], *, force: bool
 ) -> None:
     """
     Aggregate line-level data into text blocks.
@@ -123,14 +123,15 @@ def aggregate_cmd(
     based on text_block_id. Each block represents a coherent text region
     (paragraph, column, etc.) with concatenated text and bounding box.
 
-    Output is automatically saved to data/processed/{source}/text/textblocks.parquet
+    Output is automatically saved to data/parsed/{source}/textblocks.parquet
     unless a custom output path is specified.
 
     \b
     Examples:
-      newspaper-explorer data loading aggregate --source der_tag
-      newspaper-explorer data loading aggregate --source der_tag --force
+      newspaper-explorer data text aggregate --source der_tag
+      newspaper-explorer data text aggregate --source der_tag --force
     """
+    output_file = output  # Avoid shadowing the 'out' module alias
     try:
         # Load config
         source_config = load_source_config(source)
@@ -140,65 +141,61 @@ def aggregate_cmd(
         paths = get_source_paths(source_config)
 
         # Determine input path
-        input_path = (
-            Path(input_file) if input_file else paths["text_dir"] / f"{source_name}_lines.parquet"
-        )
+        input_path = Path(input_file) if input_file else paths["parsed_dir"] / "lines.parquet"
 
         # Determine output path
         output_path = (
-            Path(output_file)
-            if output_file
-            else Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
+            Path(output_file) if output_file else paths["parsed_dir"] / "textblocks.parquet"
         )
 
         # Check input exists
         errors.require_file(
             input_path,
             error_message=f"Input file not found: {input_path}",
-            tip=f"Run 'newspaper-explorer data loading parse --source {source}' first",
+            tip=f"Run 'newspaper-explorer data text parse --source {source}' first",
         )
 
         # Check output - use confirm_overwrite utility
         if not errors.confirm_overwrite(output_path, force=force):
-            output.info("Skipping (file exists, use --force to overwrite)")
+            out.info("Skipping (file exists, use --force to overwrite)")
             return
 
-        output.header(f"AGGREGATE TEXT BLOCKS: {source_name.upper()}")
+        out.header(f"AGGREGATE TEXT BLOCKS: {source_name.upper()}")
 
         # Show configuration
-        output.section("CONFIGURATION")
-        output.key_value("Input file", str(input_path))
-        output.key_value("Output file", str(output_path))
+        out.section("CONFIGURATION")
+        out.key_value("Input file", str(input_path))
+        out.key_value("Output file", str(output_path))
 
         # Aggregate
-        output.section("PROCESSING")
-        output.info("Aggregating text blocks...")
+        out.section("PROCESSING")
+        out.info("Aggregating text blocks...")
         df = load_and_aggregate_textblocks(str(input_path))
 
         if len(df) == 0:
-            output.error("No data after aggregation")
+            out.error("No data after aggregation")
             return
 
         # Save output
-        output.info("Saving aggregated data...")
+        out.info("Saving aggregated data...")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.write_parquet(output_path, compression="zstd")
 
         # Calculate file size
         file_size_mb = output_path.stat().st_size / (1024 * 1024)
 
-        output.section("RESULTS")
-        output.key_value("Text blocks", f"{len(df):,}")
-        output.key_value("Columns", len(df.columns))
-        output.key_value("File size", f"{file_size_mb:.1f} MB")
-        output.key_value("Output", str(output_path))
+        out.section("RESULTS")
+        out.key_value("Text blocks", f"{len(df):,}")
+        out.key_value("Columns", len(df.columns))
+        out.key_value("File size", f"{file_size_mb:.1f} MB")
+        out.key_value("Output", str(output_path))
 
         # Show sample
-        output.section("SAMPLE DATA")
+        out.section("SAMPLE DATA")
         click.echo(df.select(["text_block_id", "text", "year", "month", "day"]).head(3))
 
         click.echo()
-        output.success("Aggregation completed successfully!")
+        out.success("Aggregation completed successfully!")
 
     except FileNotFoundError as e:
         errors.handle_error(e, show_traceback=False)

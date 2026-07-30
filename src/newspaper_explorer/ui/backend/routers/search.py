@@ -40,7 +40,7 @@ async def search_text(
 
                 config = get_config()
                 parquet_path = str(
-                    Path(config.data_dir) / "raw" / source_name / "text" / query.run_id
+                    Path(config.parsed_dir) / source_name / query.run_id
                 )
 
         qe = QueryEngine(source=source_name, in_memory=True)

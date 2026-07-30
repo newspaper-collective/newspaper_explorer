@@ -40,7 +40,7 @@ def resolve_input_path(
         >>> # Auto-detect (prefers textblocks)
         >>> path, id_col = resolve_input_path("der_tag")
         >>> print(path)
-        /path/to/data/processed/der_tag/text/textblocks.parquet
+        /path/to/data/parsed/der_tag/textblocks.parquet
         >>> print(id_col)
         text_block_id
 
@@ -55,8 +55,8 @@ def resolve_input_path(
         id_col = id_column if id_column else detect_id_column(input_path)
     else:
         # Auto-detect default file (textblocks preferred)
-        textblocks_path = config.data_dir / "processed" / source / "text" / "textblocks.parquet"
-        lines_path = config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+        textblocks_path = config.parsed_dir / source / "textblocks.parquet"
+        lines_path = config.parsed_dir / source / "lines.parquet"
 
         if textblocks_path.exists():
             input_path = textblocks_path
@@ -145,14 +145,14 @@ def get_source_text_path(source: str, input_type: str = "textblocks") -> Path:
 
     Example:
         >>> get_source_text_path("der_tag", "textblocks")
-        /path/to/data/processed/der_tag/text/textblocks.parquet
+        /path/to/data/parsed/der_tag/textblocks.parquet
     """
     config = get_config()
 
     if input_type == "textblocks":
-        return config.data_dir / "processed" / source / "text" / "textblocks.parquet"
+        return config.parsed_dir / source / "textblocks.parquet"
 
-    return config.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+    return config.parsed_dir / source / "lines.parquet"
 
 
 def get_source_images_path(source: str) -> Path:

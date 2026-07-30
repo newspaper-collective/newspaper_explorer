@@ -13,7 +13,7 @@ linguistic patterns.
 Example:
     >>> from newspaper_explorer.analyze.keywords.rake import RAKEExtractor
     >>> extractor = RAKEExtractor(source_name="der_tag")
-    >>> keyphrases = extractor.extract_keyphrases(top_k=10)
+    >>> keywords = extractor.extract_keyphrases(top_k=10)
 """
 
 from datetime import datetime
@@ -27,6 +27,7 @@ import polars as pl
 from rake_nltk import Rake
 from tqdm import tqdm
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
@@ -64,7 +65,7 @@ def _worker_extract_batch(
             results.append(
                 {
                     "doc_id": doc_id,
-                    "keyphrases": [],
+                    "keywords": [],
                     "scores": [],
                 }
             )
@@ -82,7 +83,7 @@ def _worker_extract_batch(
             results.append(
                 {
                     "doc_id": doc_id,
-                    "keyphrases": list(phrases),
+                    "keywords": list(phrases),
                     "scores": list(scores),  # RAKE scores are already numeric
                 }
             )
@@ -90,7 +91,7 @@ def _worker_extract_batch(
             results.append(
                 {
                     "doc_id": doc_id,
-                    "keyphrases": [],
+                    "keywords": [],
                     "scores": [],
                 }
             )
@@ -153,9 +154,9 @@ class RAKEExtractor:
             self.input_file = Path(input_file)
         else:
             # Default to textblocks for better phrase extraction
-            source_dir = self.config.data_dir / "raw" / source_name / "text"
-            textblocks_file = source_dir / f"{source_name}_textblocks.parquet"
-            lines_file = source_dir / f"{source_name}_lines.parquet"
+            source_dir = self.config.parsed_dir / source_name
+            textblocks_file = source_dir / "textblocks.parquet"
+            lines_file = source_dir / "lines.parquet"
 
             if textblocks_file.exists():
                 self.input_file = textblocks_file
@@ -165,6 +166,9 @@ class RAKEExtractor:
                 logger.info("Using lines.parquet (line-level data)")
             else:
                 self.input_file = textblocks_file
+
+        # Auto-resolve text column (prefer text_processed if available)
+        self.text_column = resolve_text_column(self.text_column, file_path=str(self.input_file))
 
         # Setup stopwords for RAKE
         stopwords = self._get_stopwords(use_stopwords, custom_stopwords)
@@ -222,7 +226,7 @@ class RAKEExtractor:
                 results.append(
                     {
                         "doc_id": doc_id,
-                        "keyphrases": [],
+                        "keywords": [],
                         "scores": [],
                     }
                 )
@@ -240,7 +244,7 @@ class RAKEExtractor:
                 results.append(
                     {
                         "doc_id": doc_id,
-                        "keyphrases": list(phrases),
+                        "keywords": list(phrases),
                         "scores": list(scores),
                     }
                 )
@@ -248,7 +252,7 @@ class RAKEExtractor:
                 results.append(
                     {
                         "doc_id": doc_id,
-                        "keyphrases": [],
+                        "keywords": [],
                         "scores": [],
                     }
                 )
@@ -274,7 +278,7 @@ class RAKEExtractor:
             num_workers: Number of worker processes (default: CPU count - 1)
 
         Returns:
-            DataFrame with columns: doc_id, source_id, issue_id, page_id, text_block_id, keyphrases, scores
+            DataFrame with columns: doc_id, source_id, issue_id, page_id, text_block_id, keywords, scores
         """
         start_time = time.time()
 
@@ -349,12 +353,15 @@ class RAKEExtractor:
                 # Create worker function with fixed parameters
                 worker_fn = _worker_extract_batch
 
+                # Get stopwords once for all workers
+                worker_stopwords = self._get_stopwords(True, None)
+
                 # Prepare arguments for each batch
                 worker_args = [
                     (
                         batch,
                         top_k,
-                        self._get_stopwords(True, None),  # Get stopwords for workers
+                        worker_stopwords,
                         self.min_phrase_length,
                         self.max_phrase_length,
                     )
@@ -445,7 +452,7 @@ class RAKEExtractor:
         logger.info("Creating metadata...")
 
         # Calculate statistics
-        total_keyphrases = sum(len(kp_list) for kp_list in results_df["keyphrases"].to_list())
+        total_keyphrases = sum(len(kp_list) for kp_list in results_df["keywords"].to_list())
         avg_keyphrases = total_keyphrases / len(results_df) if len(results_df) > 0 else 0
         avg_score = (
             sum(

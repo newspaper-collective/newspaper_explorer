@@ -18,7 +18,7 @@ class TestZenodoDownloader:
         """Create mock config."""
         config = MagicMock()
         config.data_dir = str(tmp_path / "data")
-        config.download_dir = str(tmp_path / "downloads")
+        config.archives_dir = str(tmp_path / "archives")
         config.extracted_dir = str(tmp_path / "extracted")
         return config
 

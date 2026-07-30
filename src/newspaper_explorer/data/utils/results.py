@@ -12,7 +12,11 @@ from typing import Optional, cast
 import polars as pl
 
 from newspaper_explorer.config.base import get_config
-from newspaper_explorer.data.utils.metadata import load_metadata, save_metadata
+from newspaper_explorer.data.utils.metadata import (
+    find_metadata_for_parquet,
+    load_metadata,
+    save_metadata,
+)
 from newspaper_explorer.models.data.metadata import (
     AnalysisMetadata,
     AnalysisType,
@@ -273,7 +277,10 @@ def load_analysis_metadata(
     # Strategy 1: Flat structure
     flat_path = analysis_dir / parquet_filename
     if flat_path.exists() and run_id is None:
-        return cast("AnalysisMetadata", load_metadata(flat_path))
+        metadata_path = find_metadata_for_parquet(flat_path)
+        if metadata_path is None:
+            raise FileNotFoundError(f"Metadata JSON not found for {flat_path}")
+        return cast("AnalysisMetadata", load_metadata(metadata_path))
 
     # Strategy 2: Timestamped runs
     run_dirs = sorted([d for d in analysis_dir.glob("*/") if d.is_dir()])
@@ -294,7 +301,10 @@ def load_analysis_metadata(
     if not parquet_path.exists():
         raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
 
-    return cast("AnalysisMetadata", load_metadata(parquet_path))
+    metadata_path = find_metadata_for_parquet(parquet_path)
+    if metadata_path is None:
+        raise FileNotFoundError(f"Metadata JSON not found for {parquet_path}")
+    return cast("AnalysisMetadata", load_metadata(metadata_path))
 
 
 def save_preprocessing_results(
@@ -306,12 +316,14 @@ def save_preprocessing_results(
     """
     Save preprocessing results with standardized subdirectory structure.
 
-    Creates structure: {processed_base_dir}/{source}/text/{preprocessing_id}/
+    Creates structure: {processed_base_dir}/{source}/{input_type}/{preprocessing_id}/
+
+    The input_type subdirectory (lines/ or textblocks/) is derived from results_filename.
 
     Args:
         results_df: Preprocessed DataFrame to save
         metadata: Preprocessing metadata object
-        processed_base_dir: Base processed directory (e.g., config.processed_dir)
+        processed_base_dir: Base processed directory (e.g., config.preprocessed_dir)
         results_filename: Name for results file (default: textblocks.parquet)
 
     Returns:
@@ -329,23 +341,25 @@ def save_preprocessing_results(
         >>> metadata = PreprocessingMetadata(
         ...     source="der_tag",
         ...     steps=["normalize", "lowercase"],
-        ...     parameters={"text_column": "text"}
+        ...     parameters={"text_column": "text"},
+        ...     preprocessing_id="standard_textblocks",
         ... )
         >>>
         >>> paths = save_preprocessing_results(
         ...     results_df=df,
         ...     metadata=metadata,
-        ...     processed_base_dir=config.processed_dir,
+        ...     processed_base_dir=config.preprocessed_dir,
         ... )
         >>>
         >>> # Results saved to:
-        >>> # data/processed/der_tag/text/normalize_lowercase_20251110_120000/
+        >>> # data/preprocessed/der_tag/textblocks/standard_textblocks/
         >>> #   ├── textblocks.parquet
         >>> #   └── metadata.json
     """
-    # Create subdirectory structure: {base}/{source}/text/{preprocessing_id}/
+    # Derive input_type subdirectory from filename (lines.parquet -> lines, textblocks.parquet -> textblocks)
+    input_type = Path(results_filename).stem
     preprocessing_id = metadata.preprocessing_id or "unknown"
-    output_dir = processed_base_dir / metadata.source / "text" / preprocessing_id
+    output_dir = processed_base_dir / metadata.source / input_type / preprocessing_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save results parquet

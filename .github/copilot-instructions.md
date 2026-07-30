@@ -146,7 +146,7 @@ src/newspaper_explorer/
 │   │   ├── info.py          # info, list-sources
 │   │   ├── loading.py       # parse, aggregate, find-empty
 │   │   ├── preprocessing.py # preprocess
-│   │   └── validation.py    # validate-alto-mets
+│   │   └── validation.py    # all, alto, alto-parents, images, mets-references, generate-wordlist
 │   ├── analyze/       # Analysis commands (nested structure)
 │   │   ├── commands.py      # Main analyze group
 │   │   ├── entities/        # Entity extraction commands
@@ -645,7 +645,7 @@ cli/{group}/{module}/
 - `cli/data/loading.py` - Parse, aggregate, find-empty commands
 - `cli/data/info.py` - Info & list-sources commands (with image status)
 - `cli/data/preprocessing.py` - Preprocess command
-- `cli/data/validation.py` - Validate ALTO-METS command
+- `cli/data/validation.py` - Validation commands (all, alto, alto-parents, images, mets-references, generate-wordlist)
 - `cli/analyze/commands.py` - Main analyze group
 - `cli/analyze/entities/commands.py` - Entity extraction commands
 - `cli/analyze/layout/commands.py` - Layout analysis commands

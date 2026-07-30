@@ -12,115 +12,135 @@ pip install -e .
 
 This will make the `newspaper-explorer` command available in your terminal.
 
+## Command Structure
+
+The CLI uses a hybrid structure with grouped and flat commands:
+
+```
+newspaper-explorer
+├── data                        # Data management
+│   ├── text                    # Text data pipeline
+│   │   ├── download            # Download archives from Zenodo
+│   │   ├── unpack              # Extract downloaded archives
+│   │   ├── verify              # Verify checksums
+│   │   ├── parse               # Parse ALTO XML to Parquet
+│   │   └── aggregate           # Aggregate lines into text blocks
+│   ├── images                  # Image data pipeline
+│   │   ├── download            # Download page images from METS
+│   │   └── build-index         # Build image index
+│   ├── validation              # Data validation
+│   │   ├── validate-alto-mets  # Validate ALTO/METS consistency
+│   │   ├── images              # Validate downloaded images
+│   │   └── generate-wordlist   # Generate German wordlist
+│   ├── list-sources            # List available sources (flat)
+│   ├── info                    # Show source status (flat)
+│   ├── analyze-chars           # Character analysis (flat)
+│   ├── analyze-tokens          # Token analysis (flat)
+│   ├── longest-tokens          # Find longest tokens (flat)
+│   ├── preprocess              # Run preprocessing pipeline (flat)
+│   └── list-pipelines          # List preprocessing pipelines (flat)
+└── analyze                     # Analysis commands
+    ├── entities                # Entity extraction
+    ├── emotions                # Emotion classification
+    ├── topics                  # Topic modeling
+    ├── keywords                # Keyword extraction
+    └── layout                  # Layout detection
+```
+
 ## Commands
 
 ### Data Management
 
-All data-related commands are under the `data` subcommand.
+#### Text Pipeline
 
-#### List Available Parts
-
-```bash
-newspaper-explorer data list
-```
-
-Shows all available dataset parts with their years, sizes, and MD5 checksums.
-
-#### Check Status
-
-```bash
-# Basic status
-newspaper-explorer data status
-
-# Detailed status with paths and checksums
-newspaper-explorer data status --verbose
-```
-
-Shows what's downloaded and extracted.
-
-#### Download Data
+Text data commands are grouped under `data text`:
 
 ```bash
 # Download a single part
-newspaper-explorer data download --part dertag_1900-1902
+newspaper-explorer data text download --part dertag_1900-1902
 
-# Download multiple parts (comma-separated)
-newspaper-explorer data download --parts dertag_1900-1902,dertag_1903-1905
-
-# Download multiple parts in parallel (faster)
-newspaper-explorer data download --parts dertag_1900-1902,dertag_1903-1905 --parallel
+# Download multiple parts in parallel
+newspaper-explorer data text download --parts dertag_1900-1902,dertag_1903-1905 --parallel
 
 # Download all parts
-newspaper-explorer data download --all
+newspaper-explorer data text download --all
 
 # Force re-download
-newspaper-explorer data download --part dertag_1900-1902 --force
+newspaper-explorer data text download --part dertag_1900-1902 --force
 
-# Download without extracting
-newspaper-explorer data download --part dertag_1900-1902 --no-extract
+# Unpack archives
+newspaper-explorer data text unpack --source der_tag
 
-# Download without error fixes
-newspaper-explorer data download --part dertag_1900-1902 --no-fix
+# Verify checksums
+newspaper-explorer data text verify --source der_tag
 
-# Control number of parallel workers
-newspaper-explorer data download --all --parallel --max-workers 5
+# Parse ALTO XML to Parquet
+newspaper-explorer data text parse --source der_tag
+
+# Aggregate lines into text blocks
+newspaper-explorer data text aggregate --source der_tag
 ```
 
-#### Extract Data
+#### Image Pipeline
 
-```bash
-# Extract a downloaded part
-newspaper-explorer data extract dertag_1900-1902
-
-# Extract multiple parts
-newspaper-explorer data extract dertag_1900-1902 dertag_1903-1905
-
-# Extract without error fixes
-newspaper-explorer data extract dertag_1900-1902 --no-fix
-```
-
-#### Verify Checksums
-
-```bash
-# Verify one part
-newspaper-explorer data verify dertag_1900-1902
-
-# Verify multiple parts
-newspaper-explorer data verify dertag_1900-1902 dertag_1903-1905
-```
-
-#### Load Text Data
-
-```bash
-# Load source to Parquet (parse ALTO XML)
-newspaper-explorer data load --source der_tag
-
-# Resume loading (skip already processed files)
-newspaper-explorer data load --source der_tag
-
-# Force reprocess all files
-newspaper-explorer data load --source der_tag --force
-
-# Check loading status
-newspaper-explorer data load-status --source der_tag
-```
-
-#### Download Images
+Image commands are grouped under `data images`:
 
 ```bash
 # Download high-resolution page images
-newspaper-explorer data download-images --source der_tag
+newspaper-explorer data images download --source der_tag
 
 # Customize parallel workers (default: 8)
-newspaper-explorer data download-images --source der_tag --max-workers 16
+newspaper-explorer data images download --source der_tag --max-workers 16
 
-# Adjust retry attempts for unstable connections (default: 3)
-newspaper-explorer data download-images --source der_tag --max-retries 5
+# Build image index
+newspaper-explorer data images build-index --source der_tag
 ```
 
 Images are stored in `data/raw/{source}/images/` with the same directory structure as XML files.
 
-See [IMAGES.md](IMAGES.md) for detailed image downloading documentation.
+See [IMAGES.md](../data/IMAGES.md) for detailed image downloading documentation.
+
+#### Validation
+
+Validation commands are grouped under `data validation`:
+
+```bash
+# Validate ALTO/METS consistency
+newspaper-explorer data validation validate-alto-mets --source der_tag
+
+# Validate downloaded images
+newspaper-explorer data validation images --source der_tag
+
+# Generate German wordlist for quality validation
+newspaper-explorer data validation generate-wordlist --source-type hunspell
+```
+
+#### Flat Data Commands
+
+Commonly used commands are available directly under `data`:
+
+```bash
+# List available sources
+newspaper-explorer data list-sources
+
+# Show detailed source status
+newspaper-explorer data info --source der_tag
+
+# Character analysis
+newspaper-explorer data analyze-chars --source der_tag
+
+# Token analysis
+newspaper-explorer data analyze-tokens --source der_tag
+
+# Find longest tokens
+newspaper-explorer data longest-tokens --source der_tag
+
+# Run preprocessing pipeline
+newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
+
+# List available preprocessing pipelines
+newspaper-explorer data list-pipelines
+```
 
 ## Help
 
@@ -133,8 +153,11 @@ newspaper-explorer --help
 # Help for data commands
 newspaper-explorer data --help
 
+# Help for text pipeline
+newspaper-explorer data text --help
+
 # Help for specific command
-newspaper-explorer data download --help
+newspaper-explorer data text download --help
 ```
 
 ## Examples
@@ -143,26 +166,35 @@ newspaper-explorer data download --help
 
 ```bash
 # 1. See what's available
-newspaper-explorer data list
+newspaper-explorer data list-sources
 
 # 2. Check current status
-newspaper-explorer data status
+newspaper-explorer data info --source der_tag
 
 # 3. Download and extract a specific time period
-newspaper-explorer data download --parts dertag_1900-1902,dertag_1903-1905
+newspaper-explorer data text download --parts dertag_1900-1902,dertag_1903-1905
 
 # 4. Verify the downloads
-newspaper-explorer data verify --parts dertag_1900-1902,dertag_1903-1905
+newspaper-explorer data text verify --source der_tag
 
-# 5. Check status again
-newspaper-explorer data status -v
+# 5. Parse to Parquet
+newspaper-explorer data text parse --source der_tag
+
+# 6. Aggregate into text blocks
+newspaper-explorer data text aggregate --source der_tag
+
+# 7. Download images
+newspaper-explorer data images download --source der_tag
+
+# 8. Run preprocessing
+newspaper-explorer data preprocess --source der_tag --normalize --lemmatize
 ```
 
 ### Download Everything
 
 ```bash
 # Download and extract all parts (be patient - this is a lot of data!)
-newspaper-explorer data download --all
+newspaper-explorer data text download --all
 ```
 
 ## Python API
@@ -191,4 +223,4 @@ downloader.download_and_extract(
 downloader.print_status_summary()
 ```
 
-See [DATA.md](DATA.md) for complete Python API documentation.
+See [DATA.md](../data/DATA.md) for complete Python API documentation.

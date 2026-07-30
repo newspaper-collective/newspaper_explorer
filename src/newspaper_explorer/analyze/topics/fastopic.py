@@ -35,6 +35,7 @@ import numpy as np
 import polars as pl
 from tqdm import tqdm
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config import external_tools  # noqa: F401 (sets SENTENCE_TRANSFORMERS_HOME)
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
@@ -105,12 +106,8 @@ class FASTopicExtractor:
             self.input_file = Path(input_file)
         else:
             # Try textblocks first, fall back to lines
-            textblocks_file = (
-                config.data_dir / "processed" / source_name / "text" / "textblocks.parquet"
-            )
-            lines_file = (
-                config.data_dir / "raw" / source_name / "text" / f"{source_name}_lines.parquet"
-            )
+            textblocks_file = config.parsed_dir / source_name / "textblocks.parquet"
+            lines_file = config.parsed_dir / source_name / "lines.parquet"
 
             if textblocks_file.exists():
                 self.input_file = textblocks_file
@@ -125,6 +122,11 @@ class FASTopicExtractor:
                     f"  - {lines_file}\n"
                     f"Run 'newspaper-explorer data parse' or 'newspaper-explorer data aggregate' first"
                 )
+
+        # Auto-resolve text column (prefer text_processed if available)
+        self.text_column = resolve_text_column(
+            self.text_column, file_path=str(self.input_file)
+        )
 
         # Results directory
         self.results_dir = config.results_dir / source_name / "topics"

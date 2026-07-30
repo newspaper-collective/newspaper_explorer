@@ -43,13 +43,13 @@ Image downloading uses the same source configuration as text loading:
 
 ```bash
 # Download all images for a source
-newspaper-explorer data download-images --source der_tag
+newspaper-explorer data images download --source der_tag
 
 # Customize parallel workers (default: 8)
-newspaper-explorer data download-images --source der_tag --max-workers 16
+newspaper-explorer data images download --source der_tag --max-workers 16
 
 # Adjust retry attempts (default: 3)
-newspaper-explorer data download-images --source der_tag --max-retries 5
+newspaper-explorer data images download --source der_tag --max-retries 5
 ```
 
 ### Programmatic Usage
@@ -211,11 +211,11 @@ See `analysis/layout/` for image-based analysis modules.
 
 ```bash
 # 1. Download and extract XML data
-newspaper-explorer data download --source der_tag --all
-newspaper-explorer data load --source der_tag
+newspaper-explorer data text download --all
+newspaper-explorer data text parse --source der_tag
 
 # 2. Download images
-newspaper-explorer data download-images --source der_tag
+newspaper-explorer data images download --source der_tag
 
 # 3. Analyze with images and text together
 # (custom analysis combining both data types)

@@ -224,22 +224,21 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Project-specific: Downloaded newspaper data
-# Keep .gitkeep files but ignore the actual data
-data/downloads/*.tar.gz
-data/downloads/*.zip
+# Project-specific: Data directories
+data/archives/
 data/extracted/
-data/processed/
 data/raw/
+data/parsed/
+data/preprocessed/
+
+# Models (downloaded/trained)
 /models/
-!models/.gitkeep
-!data/downloads/.gitkeep
-!data/extracted/.gitkeep
-!data/processed/.gitkeep
-!data/raw/.gitkeep
+
+# Results (analysis outputs, validation reports)
+results/
 
 # Large mallet model files
 results/*/topics/models/
 
-
 __scrap/
+MagicMock/

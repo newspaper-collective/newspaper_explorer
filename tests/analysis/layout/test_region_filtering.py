@@ -5,7 +5,7 @@ Test coordinate-based filtering in RegionExtractor.
 import pytest
 from pathlib import Path
 from newspaper_explorer.analyze.layout.region_extraction import RegionExtractor
-from newspaper_explorer.analyze.layout.schemas import Detection, BoundingBox
+from newspaper_explorer.models.analysis.layout import Detection, BoundingBox
 
 
 class TestCoordinateFiltering:

@@ -17,6 +17,7 @@ class TestImageIndexer:
         """Create a mock config pointing to temp directory."""
         config = MagicMock()
         config.data_dir = str(tmp_path / "data")
+        config.parsed_dir = Path(tmp_path / "data" / "parsed")
         return config
 
     @pytest.fixture
@@ -25,6 +26,7 @@ class TestImageIndexer:
         source = tmp_path / "data" / "raw" / "test_source"
         (source / "images").mkdir(parents=True)
         (source / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
         return source
 
     @pytest.fixture
@@ -216,11 +218,13 @@ class TestBuildMetsCache:
         """Create an ImageIndexer with mocked dependencies."""
         mock_config = MagicMock()
         mock_config.data_dir = str(tmp_path / "data")
+        mock_config.parsed_dir = Path(tmp_path / "data" / "parsed")
 
         # Create directory structure
         source_dir = tmp_path / "data" / "raw" / "test_source"
         (source_dir / "images").mkdir(parents=True)
         (source_dir / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
 
         with patch(
             "newspaper_explorer.data.indexing.image_index.get_config",
@@ -247,11 +251,13 @@ class TestBuildAltoDimensionCache:
         """Create an ImageIndexer with mocked dependencies."""
         mock_config = MagicMock()
         mock_config.data_dir = str(tmp_path / "data")
+        mock_config.parsed_dir = Path(tmp_path / "data" / "parsed")
 
         # Create directory structure
         source_dir = tmp_path / "data" / "raw" / "test_source"
         (source_dir / "images").mkdir(parents=True)
         (source_dir / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
 
         with patch(
             "newspaper_explorer.data.indexing.image_index.get_config",
@@ -279,11 +285,13 @@ class TestCreateIndex:
         """Create an ImageIndexer with mocked dependencies."""
         mock_config = MagicMock()
         mock_config.data_dir = str(tmp_path / "data")
+        mock_config.parsed_dir = Path(tmp_path / "data" / "parsed")
 
         # Create directory structure
         source_dir = tmp_path / "data" / "raw" / "test_source"
         (source_dir / "images").mkdir(parents=True)
         (source_dir / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
 
         with patch(
             "newspaper_explorer.data.indexing.image_index.get_config",
@@ -424,10 +432,12 @@ class TestLoadMetadata:
         """Create an ImageIndexer with mocked dependencies."""
         mock_config = MagicMock()
         mock_config.data_dir = str(tmp_path / "data")
+        mock_config.parsed_dir = Path(tmp_path / "data" / "parsed")
 
         source_dir = tmp_path / "data" / "raw" / "test_source"
         (source_dir / "images").mkdir(parents=True)
         (source_dir / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
 
         with patch(
             "newspaper_explorer.data.indexing.image_index.get_config",
@@ -480,10 +490,12 @@ class TestGetStatsWithMetadata:
         """Create an ImageIndexer with mocked dependencies."""
         mock_config = MagicMock()
         mock_config.data_dir = str(tmp_path / "data")
+        mock_config.parsed_dir = Path(tmp_path / "data" / "parsed")
 
         source_dir = tmp_path / "data" / "raw" / "test_source"
         (source_dir / "images").mkdir(parents=True)
         (source_dir / "xml_ocr").mkdir(parents=True)
+        (tmp_path / "data" / "parsed" / "test_source").mkdir(parents=True)
 
         with patch(
             "newspaper_explorer.data.indexing.image_index.get_config",

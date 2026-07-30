@@ -1317,7 +1317,7 @@ print(anger_keywords.head(20))
 
 ```bash
 # Test on 1000 rows
-newspaper-explorer data parse --source der_tag --year 1902 --limit 1000
+newspaper-explorer data text parse --source der_tag --year 1902 --limit 1000
 
 newspaper-explorer analyze emotions predict \
     --source der_tag \

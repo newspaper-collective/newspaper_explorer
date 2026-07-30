@@ -107,7 +107,7 @@ class TextLinker:
         Example:
             >>> from newspaper_explorer.data.loading.loader import DataLoader
             >>> from newspaper_explorer.data.indexing.image_index import ImageIndexer
-            >>> df = DataLoader.load_parquet("data/processed/der_tag/text/der_tag_lines.parquet")
+            >>> df = DataLoader.load_parquet("data/parsed/der_tag/lines.parquet")
             >>> linker = TextLinker(source_name="der_tag")
             >>> for page_id in page_ids:
             ...     linker.link_detections_to_text(

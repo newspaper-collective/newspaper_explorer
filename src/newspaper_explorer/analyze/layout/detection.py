@@ -167,8 +167,8 @@ class LayoutDetector:
             from huggingface_hub import hf_hub_download
 
             # Define the local directory to save models
-            download_path = Path("./models")
-            download_path.mkdir(exist_ok=True)
+            download_path = Path("./models/layout")
+            download_path.mkdir(parents=True, exist_ok=True)
 
             # Select model file
             selected_model_file = model_files.get(model_size.lower())

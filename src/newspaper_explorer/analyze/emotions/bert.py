@@ -33,6 +33,7 @@ from tqdm import tqdm
 from transformers import logging as transformers_logging
 from transformers.models.bert import BertForSequenceClassification, BertTokenizerFast
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
@@ -447,6 +448,11 @@ class EmotionPredictor:
         Returns:
             Path to output file
         """
+        # Auto-resolve text column (prefer text_processed if available)
+        text_column = resolve_text_column(
+            text_column, file_path=str(input_file)
+        )
+
         if self.multi_gpu and self.num_gpus > 1:
             return self._predict_parallel(input_file, text_column, limit)
         else:
@@ -878,17 +884,11 @@ class EmotionPredictor:
 
         # Find input file if not specified
         if input_file is None:
-            # Try processed directory first (aggregated/normalized)
-            processed_dir = config.data_dir / "processed" / self.source_name
-            raw_dir = config.data_dir / "raw" / self.source_name / "text"
+            parsed_dir = config.parsed_dir / self.source_name
 
             candidates = [
-                # Processed (preferred)
-                processed_dir / f"{self.source_name}_textblocks.parquet",
-                processed_dir / f"{self.source_name}_lines.parquet",
-                # Raw (fallback)
-                raw_dir / f"{self.source_name}_textblocks.parquet",
-                raw_dir / f"{self.source_name}_lines.parquet",
+                parsed_dir / "textblocks.parquet",
+                parsed_dir / "lines.parquet",
             ]
 
             for candidate in candidates:

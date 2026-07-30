@@ -5,7 +5,8 @@ Tests for caption-picture matching using center-to-center distance.
 import polars as pl
 import pytest
 
-from newspaper_explorer.analyze.layout.region_matching import BoundingBox, ProximityMatcher
+from newspaper_explorer.analyze.layout.region_matching import ProximityMatcher
+from newspaper_explorer.models.analysis.layout import BoundingBox, Detection
 
 
 class TestCenterToCenterMatching:
@@ -22,10 +23,10 @@ class TestCenterToCenterMatching:
         # Caption is BELOW picture: bottom edge at 200, caption top at 220
         caption_bbox = BoundingBox(x1=120, y1=220, x2=180, y2=260)
 
-        # With new algorithm: vertical_dist = 220 - 200 = 20px
+        # With spatial algorithm: vertical_dist = 220 - 200 = 20px
         # horizontal_offset = 0 (centers aligned)
         # score = 20 + (0 * 0.2) = 20
-        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
         assert abs(distance - 20.0) < 0.01, f"Expected ~20 (edge distance), got {distance}"
 
     def test_shortest_distance_match(self):
@@ -47,9 +48,9 @@ class TestCenterToCenterMatching:
         # Caption 3: diagonal, overlaps corner - also uses center-to-center fallback
         caption3_bbox = BoundingBox(x1=200, y1=200, x2=300, y2=300)
 
-        dist1 = matcher.calculate_distance(picture_bbox, caption1_bbox)
-        dist2 = matcher.calculate_distance(picture_bbox, caption2_bbox)
-        dist3 = matcher.calculate_distance(picture_bbox, caption3_bbox)
+        dist1 = matcher._calculate_distance(picture_bbox, caption1_bbox)
+        dist2 = matcher._calculate_distance(picture_bbox, caption2_bbox)
+        dist3 = matcher._calculate_distance(picture_bbox, caption3_bbox)
 
         # Caption 1 should have best score (properly positioned below)
         assert dist1 < dist2, f"Caption 1 ({dist1}) should be closer than caption 2 ({dist2})"
@@ -130,7 +131,7 @@ class TestCenterToCenterMatching:
         # Caption far away - top at 380, so vertical_dist = 380 - 200 = 180
         caption_bbox = BoundingBox(x1=120, y1=380, x2=180, y2=420)
 
-        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
         # With spatial algorithm: vertical_dist = 180, h_offset = 0
         # score = 180 + 0*0.2 = 180
         assert abs(distance - 180.0) < 0.01, f"Expected ~180 (vertical distance), got {distance}"
@@ -150,7 +151,7 @@ class TestCenterToCenterMatching:
         # score = 50 + 0*0.2 = 50
         caption_bbox = BoundingBox(x1=120, y1=100, x2=180, y2=150)
 
-        distance = matcher.calculate_distance(picture_bbox, caption_bbox)
+        distance = matcher._calculate_distance(picture_bbox, caption_bbox)
         assert abs(distance - 50.0) < 0.01, f"Expected ~50 (edge distance), got {distance}"
         assert distance < matcher.search_radius, "Caption above should be within range"
 
@@ -172,80 +173,57 @@ class TestCenterToCenterMatching:
         assert abs(dist1 - dist2) < 0.01, "Distances should be equal"
         assert abs(dist1 - 100.0) < 0.01, "Both should be 100 pixels away"
 
-    def test_landscape_image_corner_problem(self):
+    def test_landscape_image_spatial_matching(self):
         """
-        Test the landscape image problem: caption at bottom-center should win
+        Test the landscape image problem: caption below center should win
         over caption at top-left corner, even if corner is closer by pure distance.
 
-        Scenario:
-        - Wide landscape image: 100x100 to 500x300 (400px wide, 200px tall)
-        - Caption A: Top-left corner at (50, 50) - pure distance ~70px from corner
-        - Caption B: Bottom-center at (250, 320) - pure distance ~50px but properly positioned
-
-        With spatial awareness, caption B should win (properly positioned below).
+        Uses ProximityMatcher.match_elements with Detection objects.
         """
-        from newspaper_explorer.cli.analyze.captions.commands import find_nearest_caption
+        matcher = ProximityMatcher(search_radius=400, relative_position="any")
 
         # Wide landscape picture
-        picture_bbox = {
-            "bbox_x1": 100,
-            "bbox_y1": 100,
-            "bbox_x2": 500,  # 400px wide
-            "bbox_y2": 300,  # 200px tall
-        }
-
-        # Picture center: (300, 200)
-        pic_center_x = (100 + 500) / 2  # 300
-        pic_center_y = (100 + 300) / 2  # 200
+        picture = Detection(
+            detection_id="pic_1",
+            class_name="Picture",
+            confidence=0.9,
+            bbox=BoundingBox(x1=100, y1=100, x2=500, y2=300),  # 400px wide, 200px tall
+            page_id="test_page",
+        )
 
         # Caption A: Near top-left corner
-        # Center would be close to picture's top-left corner (100, 100)
-        caption_a_data = {
-            "detection_id": "cap_a",
-            "bbox_x1": 30,
-            "bbox_y1": 50,
-            "bbox_x2": 90,
-            "bbox_y2": 80,
-            "text_content": "Corner caption",
-        }
-        cap_a_center_x = (30 + 90) / 2  # 60
-        cap_a_center_y = (50 + 80) / 2  # 65
-
-        # Pure center-to-center distance to caption A
-        dist_a_pure = (
-            (pic_center_x - cap_a_center_x) ** 2 + (pic_center_y - cap_a_center_y) ** 2
-        ) ** 0.5
-        # ~252px - quite far from center
+        caption_a = Detection(
+            detection_id="cap_a",
+            class_name="Caption",
+            confidence=0.9,
+            bbox=BoundingBox(x1=30, y1=50, x2=90, y2=80),
+            page_id="test_page",
+            text_content="Corner caption",
+        )
 
         # Caption B: Directly below picture, centered
-        caption_b_data = {
-            "detection_id": "cap_b",
-            "bbox_x1": 250,
-            "bbox_y1": 320,  # 20px below picture
-            "bbox_x2": 350,
-            "bbox_y2": 350,
-            "text_content": "Proper caption below",
-        }
-        cap_b_center_x = (250 + 350) / 2  # 300 - aligned with picture center!
-        cap_b_center_y = (320 + 350) / 2  # 335
+        caption_b = Detection(
+            detection_id="cap_b",
+            class_name="Caption",
+            confidence=0.9,
+            bbox=BoundingBox(x1=250, y1=320, x2=350, y2=350),  # 20px below, centered
+            page_id="test_page",
+            text_content="Proper caption below",
+        )
 
-        # Pure center-to-center distance to caption B
-        dist_b_pure = (
-            (pic_center_x - cap_b_center_x) ** 2 + (pic_center_y - cap_b_center_y) ** 2
-        ) ** 0.5
-        # ~135px
+        # Match without text extraction (we already have text)
+        matches = matcher.match_elements(
+            source_elements=[picture],
+            target_elements=[caption_a, caption_b],
+            extract_text=False,
+        )
 
-        # Create DataFrame with both captions
-        captions_df = pl.DataFrame([caption_a_data, caption_b_data])
-
-        # Run the matching algorithm
-        result = find_nearest_caption(picture_bbox, captions_df, max_distance=200)
-
-        # Caption B should win (properly positioned below, even though pure distance might differ)
-        assert result == "Proper caption below", (
-            f"Expected properly positioned caption below to win, got: {result}. "
-            f"Pure distances: A={dist_a_pure:.1f}px, B={dist_b_pure:.1f}px. "
-            "Spatial awareness should prioritize positioned captions."
+        assert len(matches) == 1
+        matched_source, matched_target = matches[0]
+        assert matched_source.detection_id == "pic_1"
+        assert matched_target is not None
+        assert matched_target.detection_id == "cap_b", (
+            f"Expected properly positioned caption below to win, got: {matched_target.detection_id}"
         )
 
 

@@ -1,202 +1,157 @@
 # German Wordlists for OCR Quality Validation
 
-**Location:** `data/wordlist_de.txt` and `data/wordlists/`
+**Location:** `data/wordlists/` (centralized, configured via `Config.wordlists_dir`)
 **Status:** Ready
 **Purpose:** Provide vocabulary for out-of-vocabulary (OOV) rate calculation
 
-> **📚 For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)**
+> For comprehensive preprocessing documentation, see [PREPROCESSING.md](PREPROCESSING.md)
 > For quality validation details, see [QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)
 
 ---
 
 ## Summary
 
-You now have **three German wordlists** for OCR quality validation:
+Four German wordlist sources for OCR quality validation, all stored centrally:
 
-| Source | Words | Size | Best For |
-|--------|-------|------|----------|
-| **spaCy** | 244,057 | 2.7 MB | General modern German, fast |
-| **Leipzig** | 155,006 | 1.9 MB | Most common words, frequency-based |
-| **DTA** | Manual | - | Historical German (1500-1900+) |
+| Source | File | Words | Best For |
+|--------|------|-------|----------|
+| **spaCy** | `wordlist_spacy_de.txt` | ~244k | General modern German, fast |
+| **Leipzig** | `wordlist_leipzig_de.txt` | ~155k | Most common words, frequency-based |
+| **Hunspell** | `wordlist_hunspell_de.txt` | ~142k | Modern + old orthography stems |
+| **DTA** | `wordlist_dta_de.txt` | varies | Historical German (1600-1900+) |
 
 ## Available Wordlists
 
-### 1. spaCy (Ready)
-- **Location**: `data/wordlist_de.txt`
-- **Words**: 244,057
-- **Source**: spaCy de_core_news_sm model vocabulary
-- **Generated**: Already done
+### 1. spaCy
+- **File**: `data/wordlists/wordlist_spacy_de.txt`
+- **Words**: ~244,000
+- **Source**: spaCy `de_core_news_sm` model vocabulary
+- **Use for**: General German text, modern vocabulary
 
-**Use for**: General German text, modern vocabulary
+### 2. Leipzig Corpora
+- **File**: `data/wordlists/wordlist_leipzig_de.txt`
+- **Words**: ~155,000
+- **Source**: German news corpus 2021 (100k sentences), frequency-based
+- **Use for**: Most common modern German words
 
-### 2. Leipzig Corpora (Ready)
-- **Location**: `data/wordlists/wordlist_leipzig.txt`
-- **Words**: 155,006
-- **Source**: German news corpus 2021 (100k sentences)
-- **Downloaded**: Automatically
+### 3. Hunspell (igerman98)
+- **File**: `data/wordlists/wordlist_hunspell_de.txt`
+- **Words**: ~142,000 stems
+- **Source**: Merged from two igerman98 Hunspell dictionaries:
+  - `de_DE` (modern, post-1996 orthography) via [wooorm/dictionaries](https://github.com/wooorm/dictionaries)
+  - `de_DE-1901` (old/classical orthography, pre-1996) via [elastic/hunspell](https://github.com/elastic/hunspell/tree/master/dicts/de_DE-1901)
+- **Use for**: Comprehensive coverage of both modern and historical German spellings
+- **Note**: The old orthography variant includes forms like "dass" (old: "dass"), "Schloss" (old: "Schloss"), "Fotografie" (old: "Photographie"), "Telefon" (old: "Telephon") -- essential for 1900-1920 newspapers
 
-**Use for**: Most common modern German words, frequency-based
-
-### 3. DTA - Deutsches Textarchiv ([WARNING] Manual Download)
-- **Location**: TBD (after download)
-- **Words**: Est. 200k-300k historical words
-- **Source**: Historical German texts (1500-1900+)
-- **Download**: https://www.deutschestextarchiv.de/download
-
-**Recommended**: DTA-Kernkorpus, lemmatisiert (270MB, 1467 texts)
-- Direct link: http://media.dwds.de/dta/download/dta_komplett_2020-10-23.lemma.zip
-- Extract to: `data/dta/kern_lemmatized/`
-
-**Use for**: Historical German from 1910-1920 newspaper period
-
-### 4. Hunspell ([ERROR] Download Failed)
-- **Alternative**: System package installation
-- **Install**: `sudo apt-get install hunspell-de-de`
-- **Location**: `/usr/share/hunspell/de_DE.dic`
-- **Words**: ~2 million word forms (with compounds)
+### 4. DTA - Deutsches Textarchiv
+- **File**: `data/wordlists/wordlist_dta_de.txt`
+- **Words**: varies by period selection
+- **Source**: DTA Kernkorpus lemmatized text (1800-1899 + 1900-1999 periods)
+- **Use for**: Historical German vocabulary, essential for 1910-1920 newspaper OCR
 
 ## Usage
 
-### Basic Usage
+### Generating Wordlists
+
+```python
+from newspaper_explorer.data.utils.wordlists import generate_wordlist
+
+# Generate any wordlist (saves to central data/wordlists/ directory)
+generate_wordlist(source="spacy")
+generate_wordlist(source="leipzig")
+generate_wordlist(source="hunspell")
+generate_wordlist(source="dta")
+```
+
+### Loading Wordlists
+
+```python
+from newspaper_explorer.data.utils.wordlists import load_wordlist, get_wordlist_path
+
+# Load by source name
+vocab = load_wordlist(get_wordlist_path("spacy"))
+print(f"Loaded {len(vocab):,} words")
+
+# Load by explicit path
+vocab = load_wordlist("data/wordlists/wordlist_spacy_de.txt")
+```
+
+### Quality Validation
 
 ```python
 from newspaper_explorer.data.preprocessing.validation import calculate_quality_metrics
+from newspaper_explorer.data.utils.wordlists import get_wordlist_path
 
-# Use spaCy wordlist (general modern German)
+# Use spaCy wordlist
 df = calculate_quality_metrics(
     df,
     input_column="text",
-    german_wordlist_path="data/wordlist_de.txt"
+    german_wordlist_path=str(get_wordlist_path("spacy")),
 )
 
-# Or use Leipzig wordlist (frequency-based)
+# Or use Leipzig wordlist
 df = calculate_quality_metrics(
     df,
     input_column="text",
-    german_wordlist_path="data/wordlists/wordlist_leipzig.txt"
+    german_wordlist_path=str(get_wordlist_path("leipzig")),
 )
 ```
 
-### Combine Multiple Wordlists
+### Combining Multiple Wordlists
 
 For best coverage, combine multiple wordlists:
 
 ```python
-# Load all wordlists
-spacy_words = set(line.strip() for line in open("data/wordlist_de.txt"))
-leipzig_words = set(line.strip() for line in open("data/wordlists/wordlist_leipzig.txt"))
+from newspaper_explorer.data.utils.wordlists import load_wordlist, get_wordlist_path
 
-# Combine
-combined = spacy_words | leipzig_words  # Union
+spacy_words = load_wordlist(get_wordlist_path("spacy"))
+leipzig_words = load_wordlist(get_wordlist_path("leipzig"))
+hunspell_words = load_wordlist(get_wordlist_path("hunspell"))
 
-# Save combined
-with open("data/wordlist_combined.txt", "w") as f:
-    for word in sorted(combined):
-        f.write(f"{word}\n")
-
-# Use combined
-df = calculate_quality_metrics(
-    df,
-    german_wordlist_path="data/wordlist_combined.txt"
-)
+combined = spacy_words | leipzig_words | hunspell_words
+print(f"Combined: {len(combined):,} unique words")
 ```
 
-### Test Quality Validation
+### Path Helpers
 
 ```python
-# Test with existing script
-python3 test_quality_with_wordlist.py
+from newspaper_explorer.data.utils.wordlists import get_wordlists_dir, get_wordlist_path
+
+# Get the central wordlists directory
+print(get_wordlists_dir())  # .../data/wordlists/
+
+# Get canonical path for any source
+print(get_wordlist_path("spacy"))    # .../data/wordlists/wordlist_spacy_de.txt
+print(get_wordlist_path("leipzig"))  # .../data/wordlists/wordlist_leipzig_de.txt
+print(get_wordlist_path("hunspell")) # .../data/wordlists/wordlist_hunspell_de.txt
+print(get_wordlist_path("dta"))      # .../data/wordlists/wordlist_dta_de.txt
 ```
 
-## Recommendations
-
-### For 1910-1920 German Newspapers
+## Recommendations for 1910-1920 German Newspapers
 
 **Best combination**:
-1. **Start with**: spaCy wordlist (`data/wordlist_de.txt`) - 244k words
-2. **Add**: DTA corpus (after manual download) - historical variants
-3. **Optional**: Leipzig for frequency weighting
+1. **Start with**: spaCy wordlist -- 244k modern German words (fast, already generated)
+2. **Add**: DTA corpus -- historical spellings from your newspaper period
+3. **Supplement**: Hunspell -- comprehensive word stems
+4. **Optional**: Leipzig -- frequency-weighted common words
 
 **Why this combination**:
-- spaCy: Modern German baseline
-- DTA: Historical spellings and vocabulary from your newspaper period
+- spaCy: Modern German baseline vocabulary
+- DTA: Historical spellings and vocabulary ("Thal" -> "Tal", "eigenthumlich" -> "eigentumlich")
+- Hunspell: Comprehensive morphological coverage
 - Leipzig: Most common words for better OOV rate calculation
 
-### Quick Start (Already Working)
-
-Just use the spaCy wordlist - it's already generated and works well:
-
-```python
-df = calculate_quality_metrics(
-    df,
-    german_wordlist_path="data/wordlist_de.txt"
-)
-```
-
-## Next Steps
-
-### 1. Download DTA Corpus (Recommended)
-
-```bash
-# Download DTA-Kernkorpus, lemmatisiert
-cd data
-wget http://media.dwds.de/dta/download/dta_komplett_2020-10-23.lemma.zip
-
-# Extract
-unzip dta_komplett_2020-10-23.lemma.zip -d dta/kern_lemmatized
-
-# Generate wordlist
-python3 -c "
-from newspaper_explorer.data.preprocessing.wordlist_utils import extract_dta_vocab
-
-vocab = extract_dta_vocab(
-    'data/dta/kern_lemmatized',
-    output_path='data/wordlists/wordlist_dta.txt'
-)
-print(f'DTA wordlist: {len(vocab):,} words')
-"
-```
-
-### 2. Test Quality Validation
-
-```bash
-# Test with wordlist
-python3 test_quality_with_wordlist.py
-```
-
-### 3. Integrate with Preprocessing
-
-```python
-from newspaper_explorer.data.preprocessing.pipeline import TextPreprocessor
-
-preprocessor = TextPreprocessor()
-
-# Add quality validation to your pipeline
-df = preprocessor.pipeline(
-    df,
-    steps=[
-        "normalize_unicode",
-        "normalize_long_s",
-        "calculate_quality_metrics",  # Calculate quality metrics
-        "filter_by_quality_score",    # Remove poor quality
-    ],
-)
-```
-
-## Files Created
+## File Layout
 
 ```
-data/
-├── wordlist_de.txt                           # spaCy (244k words) [OK]
-└── wordlists/
-    ├── wordlist_leipzig.txt                  # Leipzig (155k words) [OK]
-    ├── wordlist_hunspell.txt                 # Hunspell (pending) [ERROR]
-    └── wordlist_dta.txt                      # DTA (after manual download) [WARNING]
+data/wordlists/
+    wordlist_spacy_de.txt       # spaCy (244k words)
+    wordlist_leipzig_de.txt     # Leipzig (155k words)
+    wordlist_hunspell_de.txt    # Hunspell stems (~142k words, modern + old orthography)
+    wordlist_dta_de.txt         # DTA historical German
 ```
 
 ## See Also
 
 - **[PREPROCESSING.md](PREPROCESSING.md)** - Complete preprocessing guide
 - **[QUALITY_VALIDATION.md](QUALITY_VALIDATION.md)** - OCR quality validation
-- **[NORMALIZATION.md](NORMALIZATION.md)** - Text normalization methods
-- **[METADATA.md](METADATA.md)** - Preprocessing metadata system

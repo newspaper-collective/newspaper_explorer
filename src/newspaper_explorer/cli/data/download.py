@@ -61,10 +61,10 @@ def download_cmd(
 
     \b
     Examples:
-      newspaper-explorer data download download --source der_tag --all
-      newspaper-explorer data download download --source der_tag --part dertag_1900-1902
-      newspaper-explorer data download download --source der_tag --parts dertag_1900-1902,dertag_1903-1905
-      newspaper-explorer data download download --source der_tag --all --parallel
+      newspaper-explorer data text download --source der_tag --all
+      newspaper-explorer data text download --source der_tag --part dertag_1900-1902
+      newspaper-explorer data text download --source der_tag --parts dertag_1900-1902,dertag_1903-1905
+      newspaper-explorer data text download --source der_tag --all --parallel
     """
 
     # Configure logging so user sees download progress
@@ -186,7 +186,7 @@ def unpack(source: str, part: str, parts: str, *, fix: bool) -> None:
     except FileNotFoundError as e:
         errors.handle_error(e)
         output.warning(
-            f"Tip: Download first with 'newspaper-explorer data download --source {source}'"
+            f"Tip: Download first with 'newspaper-explorer data text download --source {source}'"
         )
     except (ValueError, RuntimeError) as e:
         errors.handle_error(e, show_traceback=True)
@@ -209,9 +209,9 @@ def verify(source: str, part: str, parts: str) -> None:
 
     \b
     Examples:
-      newspaper-explorer data download verify --source der_tag
-      newspaper-explorer data download verify --source der_tag --part dertag_1900-1902
-      newspaper-explorer data download verify --source der_tag --parts dertag_1900-1902,dertag_1903-1905
+      newspaper-explorer data text verify --source der_tag
+      newspaper-explorer data text verify --source der_tag --part dertag_1900-1902
+      newspaper-explorer data text verify --source der_tag --parts dertag_1900-1902,dertag_1903-1905
     """
     # Combine single part and multiple parts
     part_names: list[str] = []

@@ -29,6 +29,7 @@ import polars as pl
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 
+from newspaper_explorer.cli.utils.options import resolve_text_column
 from newspaper_explorer.config.base import get_config
 from newspaper_explorer.data.utils.ids import ForeignKeys, extract_foreign_keys
 from newspaper_explorer.data.utils.results import save_analysis_results
@@ -147,9 +148,9 @@ class TFIDFExtractor:
         else:
             # Default to lines.parquet for page-level analysis
             # Falls back to textblocks.parquet if lines don't exist
-            source_dir = self.config.data_dir / "raw" / source_name / "text"
-            lines_file = source_dir / f"{source_name}_lines.parquet"
-            textblocks_file = source_dir / f"{source_name}_textblocks.parquet"
+            source_dir = self.config.parsed_dir / source_name
+            lines_file = source_dir / "lines.parquet"
+            textblocks_file = source_dir / "textblocks.parquet"
 
             if lines_file.exists():
                 self.input_file = lines_file
@@ -160,6 +161,9 @@ class TFIDFExtractor:
             else:
                 # Set to lines even if doesn't exist - will error later with helpful message
                 self.input_file = lines_file
+
+        # Auto-resolve text column (prefer text_processed if available)
+        self.text_column = resolve_text_column(self.text_column, file_path=str(self.input_file))
 
         # Setup stopwords
         self.stopwords = self._get_stopwords(use_stopwords, custom_stopwords)
@@ -379,11 +383,24 @@ class TFIDFExtractor:
         logger.info(f"Processing {tfidf_matrix.shape[0]:,} documents...")
 
         # Determine number of workers
+        LARGE_VOCAB_THRESHOLD = 500_000
+        use_multiprocessing = True
         if num_workers is None:
             # Reduce workers for large vocabulary to avoid OOM (each worker gets feature_names)
             # With 2.2M vocab, even shared initialization can cause issues with many workers
             num_workers = min(8, max(1, cpu_count() - 1))
-        logger.info(f"Using {num_workers} CPU workers for parallel extraction")
+
+        # For very large vocabularies, multiprocessing fails because dense batch matrices
+        # (batch_size x vocab_size) are too large to pickle through pipes.
+        # Fall back to single-process to avoid OOM.
+        vocab_size = tfidf_matrix.shape[1]
+        if vocab_size > LARGE_VOCAB_THRESHOLD:
+            logger.info(
+                f"Large vocabulary ({vocab_size:,} terms) - using single-process to avoid OOM"
+            )
+            use_multiprocessing = False
+        else:
+            logger.info(f"Using {num_workers} CPU workers for parallel extraction")
 
         # CRITICAL: For large datasets, we need to avoid loading dense matrices into memory
         # Process in smaller batches and use sparse matrix operations
@@ -395,37 +412,45 @@ class TFIDFExtractor:
         logger.info(f"Processing {num_batches:,} batches of ~{batch_size:,} documents each")
         logger.info(f"Memory-efficient streaming mode (sparse matrices)")
 
-        # Process batches in parallel with streaming (no pre-loading all batches)
         results = []
 
-        def batch_generator():
-            """Generator to create batches on-demand (memory efficient)"""
-            for batch_start in range(0, num_docs, batch_size):
-                batch_end = min(batch_start + batch_size, num_docs)
+        if use_multiprocessing:
 
-                # Get batch of documents and convert to dense only when needed
-                batch_matrix = tfidf_matrix[batch_start:batch_end]  # type: ignore
-                batch_dense = batch_matrix.toarray()
+            def batch_generator():
+                """Generator to create batches on-demand (memory efficient)"""
+                for batch_start in range(0, num_docs, batch_size):
+                    batch_end = min(batch_start + batch_size, num_docs)
+                    batch_matrix = tfidf_matrix[batch_start:batch_end]  # type: ignore
+                    batch_dense = batch_matrix.toarray()
+                    yield (batch_start, batch_end, batch_dense, top_k)
 
-                # Don't pass feature_names - workers get it via _init_worker
-                yield (batch_start, batch_end, batch_dense, top_k)
-
-        # Process with multiprocessing pool, initializing workers with feature_names
-        # Use imap_unordered for better memory efficiency (doesn't need to maintain order)
-        with Pool(
-            processes=num_workers, initializer=_init_worker, initargs=(feature_names,)
-        ) as pool:
-            for batch_results in tqdm(
-                pool.imap_unordered(_extract_keywords_batch, batch_generator(), chunksize=1),
+            with Pool(
+                processes=num_workers, initializer=_init_worker, initargs=(feature_names,)
+            ) as pool:
+                for batch_results in tqdm(
+                    pool.imap_unordered(_extract_keywords_batch, batch_generator(), chunksize=1),
+                    total=num_batches,
+                    desc="Extracting keywords",
+                    unit="batch",
+                ):
+                    results.extend(batch_results)
+        else:
+            # Single-process: avoids pickling large dense matrices through pipes
+            _init_worker(feature_names)
+            for batch_start in tqdm(
+                range(0, num_docs, batch_size),
                 total=num_batches,
                 desc="Extracting keywords",
                 unit="batch",
             ):
+                batch_end = min(batch_start + batch_size, num_docs)
+                batch_matrix = tfidf_matrix[batch_start:batch_end]  # type: ignore
+                batch_dense = batch_matrix.toarray()
+                batch_results = _extract_keywords_batch(
+                    (batch_start, batch_end, batch_dense, top_k)
+                )
                 results.extend(batch_results)
-                # Force garbage collection after each batch to free memory
-                import gc
-
-                gc.collect()
+                del batch_dense  # Free memory immediately
 
         # Create results DataFrame
         logger.info("Creating results DataFrame...")

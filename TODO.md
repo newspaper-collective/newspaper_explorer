@@ -51,10 +51,10 @@ Consolidate CLI improvements into a cohesive refactoring effort with reusable ut
     - [x] All extraction methods support limit parameter
     - [x] All commands follow consistent output patterns
     - [x] **Bonus**: Refactored emotions to also use save_analysis_results() for consistency
-- [ ] `cli/analyze/topics/commands.py` (1,787 lines) - LDA, BERTopic
-  - [ ] Apply decorators: source_option, input_file_option, output_name_option, limit_option
-  - [ ] Update error handling and output styling
-  - [ ] Standardize across lda, bertopic, query commands
+- [x] `cli/analyze/topics/commands.py` (1,586 lines) - LDA, BERTopic - **COMPLETED**
+  - [x] Apply decorators: source_option, input_file_option, output_name_option, limit_option
+  - [x] Update error handling and output styling
+  - [x] Standardize across lda, bertopic, query commands
 - [x] `cli/analyze/keywords/commands.py` (748 lines) - Keyword extraction - **COMPLETED (Phase 4: 2/5)**
   - [x] **Fully refactored with decorators and utilities**:
     - [x] Applied 16 decorator types across 4 commands (tfidf, rake, yake, keybert)
@@ -64,17 +64,13 @@ Consolidate CLI improvements into a cohesive refactoring effort with reusable ut
     - [x] Replaced 100% of click.echo() calls with output module (header, key_value, success, info, error)
     - [x] Removed 124 lines (14.2% reduction: 872 → 748 lines)
     - [x] All algorithm-specific options kept inline (no-stopwords, document_level, min_df, max_df, ngram_range, language, model, diversity, mmr, etc.)
-- [ ] `cli/analyze/topics/commands.py` (1,777 lines) - Topic modeling - **IN PROGRESS (Phase 4: 3/5)**
-  - [ ] **Commands**: lda, mallet, bertopic, fastopic, bertopic_batch
+- [x] `cli/analyze/topics/commands.py` (1,586 lines) - Topic modeling - **COMPLETED (Phase 4: 3/5)**
+  - [x] **Commands**: lda, mallet, bertopic, fastopic, bertopic_batch
   - [x] Created analyze/topics/utils.py with 4 helper functions (parsing, formatting)
-  - [x] Started LDA refactoring: Applied decorators (source, input_file, text_column, top_k, limit), renamed --stopwords → --custom-stopwords, partial output module conversion
-  - [ ] Complete LDA refactoring: Convert remaining click.echo() to output module
-  - [ ] Refactor mallet command with same pattern
-  - [ ] Refactor bertopic command with same pattern
-  - [ ] Refactor fastopic command with same pattern
-  - [ ] Refactor bertopic_batch command with same pattern
-  - [ ] Extract more CLI logic to analyze/topics/utils.py (workflow orchestration)
-  - [ ] Target: 10-15% line reduction (similar to keywords)
+  - [x] Applied decorators (source, input_file, text_column, top_k, limit)
+  - [x] Renamed --stopwords → --custom-stopwords
+  - [x] Converted all click.echo() to output module (246 calls)
+  - [x] All 5 commands fully refactored with consistent output patterns
 - [ ] `cli/analyze/layout/commands.py` (1,447 lines) - YOLO layout detection
   - [ ] Apply decorators where applicable (different pattern - image-focused)
   - [ ] Update error handling and output styling

@@ -850,17 +850,10 @@ async def get_sample_text(
         raise HTTPException(status_code=404, detail=f"Source not found: {source_name}") from exc
 
     # Try textblocks first, fall back to lines
-    text_path = (
-        config.data_dir / "processed" / source_config.dataset_name / "text" / "textblocks.parquet"
-    )
+    parsed_dir = config.parsed_dir / source_config.dataset_name
+    text_path = parsed_dir / "textblocks.parquet"
     if not text_path.exists():
-        text_path = (
-            config.data_dir
-            / "raw"
-            / source_config.dataset_name
-            / "text"
-            / f"{source_config.dataset_name}_lines.parquet"
-        )
+        text_path = parsed_dir / "lines.parquet"
 
     if not text_path.exists():
         raise HTTPException(status_code=404, detail=f"No text data found for {source_name}")
@@ -923,9 +916,7 @@ async def run_preprocessing_pipeline(
 
     # Estimate time (rough: 1ms per line for fast steps, 10ms for slow)
     config = get_config()
-    text_path = (
-        config.data_dir / "processed" / source_config.dataset_name / "text" / "textblocks.parquet"
-    )
+    text_path = config.parsed_dir / source_config.dataset_name / "textblocks.parquet"
     if text_path.exists():
         df = pl.read_parquet(text_path, columns=["text"])
         row_count = len(df)
@@ -971,7 +962,7 @@ async def run_preprocessing_pipeline(
     return PreprocessingRunResponse(
         job_id=job_id,
         estimated_time_seconds=estimated_seconds,
-        output_path=f"data/processed/{source_config.dataset_name}/text/preprocessed_{job_id}.parquet",
+        output_path=f"{config.preprocessed_dir}/{source_config.dataset_name}/preprocessed_{job_id}.parquet",
         message=f"Preprocessing started for {row_count:,} rows",
     )
 
@@ -1060,39 +1051,55 @@ async def list_preprocessed_datasets(source_name: str) -> list[PreprocessedDatas
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Source not found: {source_name}") from exc
 
-    processed_path = config.data_dir / "processed" / source_config.dataset_name / "text"
+    preprocessed_path = config.preprocessed_dir / source_config.dataset_name
 
-    if not processed_path.exists():
+    if not preprocessed_path.exists():
         return []
 
     datasets: list[PreprocessedDatasetInfo] = []
 
-    # Look for preprocessed parquet files (preprocessed_*.parquet pattern)
-    for parquet_file in processed_path.glob("preprocessed_*.parquet"):
-        # Get file stats
-        stat = parquet_file.stat()
-        created = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+    # Scan structure: preprocessed/{source}/{input_type}/{preset_name}/
+    for input_type_dir in preprocessed_path.iterdir():
+        if not input_type_dir.is_dir():
+            continue
+        for preset_dir in input_type_dir.iterdir():
+            if not preset_dir.is_dir():
+                continue
+            # Find parquet files in preset directory
+            parquet_files = list(preset_dir.glob("*.parquet"))
+            if not parquet_files:
+                continue
 
-        # Try to get row count and step count from metadata or file
-        row_count = None
-        steps = 0
+            parquet_file = parquet_files[0]
+            stat = parquet_file.stat()
+            created = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
 
-        try:
-            df = pl.read_parquet(parquet_file, n_rows=0)
-            # Estimate steps from column names or just use placeholder
-            steps = len([c for c in df.columns if c.startswith("text_")]) or 1
-        except (FileNotFoundError, pl.exceptions.ComputeError):
-            pass
+            # Try to get step count from metadata JSON
+            row_count = None
+            steps = 0
+            json_files = list(preset_dir.glob("*.json"))
+            if json_files:
+                try:
+                    import json
 
-        datasets.append(
-            PreprocessedDatasetInfo(
-                name=parquet_file.stem,
-                path=str(parquet_file.relative_to(config.data_dir)),
-                created=created,
-                steps=steps,
-                row_count=row_count,
+                    with json_files[0].open() as f:
+                        meta = json.load(f)
+                    steps = len(meta.get("steps", []))
+                    if meta.get("previous_preprocessing", {}) and meta["previous_preprocessing"].get("steps"):
+                        steps += len(meta["previous_preprocessing"]["steps"])
+                    row_count = meta.get("output_data", {}).get("row_count")
+                except Exception:
+                    pass
+
+            datasets.append(
+                PreprocessedDatasetInfo(
+                    name=f"{input_type_dir.name}/{preset_dir.name}",
+                    path=str(parquet_file.relative_to(config.preprocessed_dir.parent.parent)),
+                    created=created,
+                    steps=steps,
+                    row_count=row_count,
+                )
             )
-        )
 
     # Sort by creation date, newest first
     datasets.sort(key=lambda x: x.created, reverse=True)

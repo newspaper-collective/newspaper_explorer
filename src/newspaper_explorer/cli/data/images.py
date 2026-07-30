@@ -95,7 +95,7 @@ def download_images(
             output.success("All images downloaded successfully!")
 
         output.info(
-            "Tip: Validate images with 'newspaper-explorer data validation validate-images'",
+            "Tip: Validate images with 'newspaper-explorer data validation images'",
             muted=True,
         )
 

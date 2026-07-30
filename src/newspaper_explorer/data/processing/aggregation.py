@@ -162,7 +162,7 @@ def load_and_aggregate_textblocks(
         final_save_path = Path(save_path)
     elif auto_save:
         # Construct output path
-        final_save_path = Path("data") / "processed" / source_name / "text" / "textblocks.parquet"
+        final_save_path = Path("data") / "parsed" / source_name / "textblocks.parquet"
         logger.info(f"Auto-save enabled: will save to {final_save_path}")
     else:
         final_save_path = None

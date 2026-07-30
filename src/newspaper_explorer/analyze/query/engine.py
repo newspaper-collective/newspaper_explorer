@@ -79,7 +79,7 @@ class QueryEngine:
         # Set up paths
         self.data_dir = config.data_dir
         self.results_dir = config.results_dir
-        self.source_parquet = self.data_dir / "raw" / source / "text" / f"{source}_lines.parquet"
+        self.source_parquet = config.parsed_dir / source / "lines.parquet"
 
         # Create views for common queries
         self._create_views()
@@ -91,12 +91,9 @@ class QueryEngine:
             return
 
         # Create view for source data
+        parquet_path = str(self.source_parquet).replace("'", "''")
         self.con.execute(
-            """
-            CREATE OR REPLACE VIEW source_lines AS
-            SELECT * FROM read_parquet(?)
-        """,
-            [str(self.source_parquet)],
+            f"CREATE OR REPLACE VIEW source_lines AS SELECT * FROM read_parquet('{parquet_path}')"
         )
         logger.debug("Created source_lines view")
 

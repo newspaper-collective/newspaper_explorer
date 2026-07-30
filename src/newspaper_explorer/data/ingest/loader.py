@@ -253,7 +253,7 @@ class DataIngester:
             pattern: Glob pattern for finding files (default: from config)
             max_files: Maximum number of files to process (for testing)
             output_parquet: If provided, save result to this specific path
-            auto_save: If True, automatically save to data/raw/{source}/text/{source}_lines.parquet
+            auto_save: If True, automatically save to data/parsed/{source}/lines.parquet
             skip_processed: If True, load existing parquet and skip already processed files
 
         Returns:
@@ -279,8 +279,8 @@ class DataIngester:
         if output_parquet:
             save_path = output_parquet
         elif auto_save and source_name:
-            # Use fixed filename: {source}_lines.parquet
-            save_path = directory.parent / "text" / f"{source_name}_lines.parquet"
+            # Use fixed filename in parsed directory
+            save_path = get_config().parsed_dir / source_name / "lines.parquet"
 
         # Load existing parquet and skip already processed files
         existing_df = None

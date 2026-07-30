@@ -62,6 +62,8 @@ GENERAL_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "filter_empty_lines",
             "remove_garbage_words",
             {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            "calculate_quality_metrics",
+            {"name": "filter_by_quality_score", "args": {"min_quality": "review"}},
             "normalize_casing",
         ],
         "use_case": "When OCR quality is poor and aggressive filtering is needed",
@@ -77,6 +79,8 @@ GENERAL_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "filter_empty_lines",
             "remove_garbage_words",
             {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            "calculate_quality_metrics",
+            {"name": "filter_by_quality_score", "args": {"min_quality": "review"}},
             "normalize_casing",
             "remove_punctuation",
             "remove_numbers",
@@ -99,6 +103,10 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             # Note: NO lowercase - entities are case-sensitive
             # Note: NO punctuation removal - needed for abbreviations (Dr., Inc.)
         ],
@@ -113,8 +121,14 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             "normalize_casing",
             "remove_stopwords",
+            "remove_short_words",
+            "normalize_whitespace",
         ],
         "use_case": "Topic modeling, document clustering, thematic analysis",
     },
@@ -127,6 +141,10 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             # Note: NO lowercase - preserves emphasis (ANGRY vs angry)
             # Note: Keep punctuation - ! and ? matter for emotions
             # Note: Keep stopwords - "nicht gut" vs "gut" has different sentiment
@@ -142,10 +160,16 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             "normalize_casing",
             "remove_punctuation",
             "remove_numbers",
             "remove_stopwords",
+            "remove_short_words",
+            "normalize_whitespace",
         ],
         "use_case": "Keyword extraction, TF-IDF, important term identification",
     },
@@ -158,6 +182,10 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             # Note: Keep case, punctuation - models are trained on natural text
         ],
         "use_case": "Sentence/document embeddings, semantic similarity, vector search",
@@ -171,6 +199,10 @@ ANALYSIS_PIPELINES: dict[str, dict[str, Union[str, list[StepType]]]] = {
             "only_keep_allowed_chars",
             "dehyphenate",
             "filter_empty_lines",
+            "filter_lines_without_alphabetic_chars",
+            "remove_garbage_words",
+            {"name": "filter_by_word_count", "args": {"min_words": 2}},
+            {"name": "filter_by_total_character_length", "args": {"min_length": 10}},
             "normalize_casing",
         ],
         "use_case": "Concept extraction, semantic network analysis, knowledge graphs",
@@ -235,7 +267,7 @@ def get_preset(name: str) -> list[StepType]:
 
     steps = ALL_PIPELINES[name]["steps"]
     # Ensure we always return a list
-    if isinstance(steps, str):
+    if isinstance(steps, str):  # pragma: no cover
         return [steps]
     return list(steps)
 
@@ -294,6 +326,33 @@ def get_preset_info(name: str) -> dict[str, Union[str, list[StepType]]]:
         raise ValueError(f"Unknown preset '{name}'. Available: {available}")
 
     return ALL_PIPELINES[name].copy()
+
+
+def get_extra_steps(preset_name: str, base_preset: str = "standard") -> list[StepType]:
+    """
+    Get steps in a preset that are not already in the base preset.
+
+    Useful for chaining: run the base preset first, then only the extra
+    steps from a method-specific preset on top of the base output.
+
+    Args:
+        preset_name: The target preset to get extra steps from
+        base_preset: The base preset to subtract (default: "standard")
+
+    Returns:
+        List of steps in preset_name that are not in base_preset.
+        Returns empty list if preset is identical to base.
+
+    Example:
+        >>> get_extra_steps("keywords")
+        ['normalize_casing', 'remove_punctuation', 'remove_numbers', 'remove_stopwords']
+        >>> get_extra_steps("entities")
+        []
+    """
+    base_steps = get_preset(base_preset)
+    preset_steps = get_preset(preset_name)
+    base_step_names = {get_step_name(s) for s in base_steps}
+    return [s for s in preset_steps if get_step_name(s) not in base_step_names]
 
 
 def get_step_name(step: StepType) -> str:

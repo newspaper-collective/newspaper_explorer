@@ -479,7 +479,7 @@ Typical speeds (modern CPU):
 
 Run parsing first:
 ```bash
-newspaper-explorer data parse --source der_tag
+newspaper-explorer data text parse --source der_tag
 ```
 
 ### "Grouping columns not found: page_number"
